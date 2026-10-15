@@ -96,4 +96,11 @@ Meta: `sys.info` → `{live, proto, host, ops:[str]}`.
 - `GET /health` → `{ok:true,version}`
 - `GET /peaks?path=<url-encoded clip file_path>&n=<buckets>` → `{sr,ch,frames,n,min:[[..]...per ch],max:[...]}`
   (values -1..1). Cached by path+mtime. Wine paths (`Z:\home\x`, `C:\users\x`) are translated on Linux.
-- `GET /sets` → recent .als files; `POST /launch {set?:path}` → start Live (optionally opening a set).
+- `GET /sets` → `[{name (file stem), path (helper-native), mtime (epoch seconds)}]`, newest 50 from
+  `~/Documents/Ableton` and `~/Music` (skips `Backup/`).
+- `POST /launch` body `{set?:path}` → `{ok,pid,exe,set}`; starts Live, opening `set` if given.
+- `n` is clamped to 16..8192 (default 512). `path` is a helper-native path (Windows or Wine form).
+- Errors: `{ok:false, err:"..."}` with 400 (bad args), 404 (no file / Live not found), 415 (format needs ffmpeg),
+  422 (malformed file), 500.
+- Peaks: WAV (PCM 8/16/24/32, float32/64, EXTENSIBLE) and AIFF/AIFC (NONE/twos/sowt/fl32/fl64) are native;
+  other formats need `ffmpeg` + `ffprobe` on PATH.

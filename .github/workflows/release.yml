@@ -1,0 +1,148 @@
+name: Release
+
+# Pushing a tag such as v0.1.0 or v0.1.0-test1 publishes a GitHub release with the debug-signed APK,
+# the remote script zip and the helper zip. A tag containing "-" is a prerelease (the opt-in test
+# channel); a plain vX.Y.Z is the stable one.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, with the leading v (e.g. v0.1.0-test1)'
+        required: true
+
+permissions:
+  contents: write   # needed to create the release and upload files to it
+
+jobs:
+  build:
+    name: Build the release files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Same SDK setup as ci.yml and the PDF Draw App. See the note there.
+      - name: Set up the Android SDK
+        shell: bash
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/android-sdk}}"
+          MANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$MANAGER" ]; then
+            echo "No command line tools on the image; fetching them."
+            mkdir -p "$SDK/cmdline-tools"
+            curl -sSLo /tmp/cmdline-tools.zip \
+              https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+            unzip -q /tmp/cmdline-tools.zip -d "$SDK/cmdline-tools"
+            mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+            MANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          yes | "$MANAGER" --licenses > /dev/null 2>&1 || true
+          for package in "platform-tools" "build-tools;37.0.0" "platforms;android-37"; do
+            "$MANAGER" "$package" > /dev/null 2>&1 || echo "Could not add $package; carrying on."
+          done
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "sdk.dir=$SDK" > android/local.properties
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-home-cache-cleanup: true
+
+      # Release signing (later, once the keystore exists as repo secrets). Uncomment this block and
+      # the signingConfig wiring in android/app/build.gradle(.kts) that reads these env vars:
+      #
+      # - name: Restore the signing keystore
+      #   env:
+      #     KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      #   run: |
+      #     if [ -z "$KEYSTORE_BASE64" ]; then
+      #       echo "::error::KEYSTORE_BASE64 secret is not set."; exit 1
+      #     fi
+      #     echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/livecompanion.jks"
+      #
+      # Then, on the build step below, add:
+      #   env:
+      #     LC_KEYSTORE: ${{ runner.temp }}/livecompanion.jks
+      #     LC_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      #     LC_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      #     LC_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      # and assemble assembleRelease instead of assembleDebug.
+
+      - name: Make the wrapper runnable
+        run: chmod +x android/gradlew
+
+      - name: Build the APK (debug-signed for now)
+        working-directory: android
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Collect the release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.version || github.ref_name }}"
+          mkdir -p dist
+
+          APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -n 1)
+          cp "$APK" "dist/LiveCompanion-${TAG}.apk"
+
+          # The remote script zip keeps its LiveCompanion folder at the top, so unzipping it into
+          # Live's Remote Scripts folder gives the right layout.
+          (cd remote_script && zip -rq "$GITHUB_WORKSPACE/dist/LiveCompanion-remote-script.zip" LiveCompanion \
+            -x '*__pycache__*' '*.pyc')
+
+          zip -rq "$GITHUB_WORKSPACE/dist/LiveCompanion-helper.zip" helper \
+            -x 'helper/.cache/*' '*__pycache__*' '*.pyc'
+
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish the release
+    needs: build
+    # All files or none: the build job uploads them together, and this job publishes them together.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The tag's own message becomes the release notes, so its history has to be here.
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-files
+          path: dist
+
+      # Notes come from the tag message when it has one; otherwise the generated list is used.
+      - name: Take the notes from the tag
+        id: notes
+        shell: bash
+        run: |
+          {
+            echo 'body<<NOTES'
+            git tag -l --format='%(contents)' "${{ github.ref_name }}"
+            echo NOTES
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
+          name: LiveCompanion ${{ github.event.inputs.version || github.ref_name }}
+          body: ${{ steps.notes.outputs.body }}
+          generate_release_notes: true
+          # "-" in the tag means a test build: a prerelease, so the stable channel never offers it.
+          prerelease: ${{ contains(github.event.inputs.version || github.ref_name, '-') }}
+          files: dist/*

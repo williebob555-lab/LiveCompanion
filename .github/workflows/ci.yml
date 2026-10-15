@@ -1,0 +1,98 @@
+name: Build
+
+# Every push and pull request on main gets its Python helper tests run and its Android app
+# compiled and unit-tested. Same SDK setup as the PDF Draw App, so the two builds fail the same way.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  python:
+    name: Python (remote script, helper, mock)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test tools
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Tests
+        run: python -m pytest tests -q
+
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    # Gradle lives in android/; the SDK step writes local.properties there too.
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # The Android SDK, without the third-party action that used to do this.
+      #
+      # That action started failing on 16 Sep 2026 and took every build with it. The runner image
+      # already carries an SDK; this accepts the licences and asks for the pieces this app compiles
+      # against, and tolerates a package the image already has or names differently. Anything
+      # still missing is fetched by the Gradle plugin itself, once the licences are accepted.
+      - name: Set up the Android SDK
+        shell: bash
+        working-directory: .
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/android-sdk}}"
+          MANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$MANAGER" ]; then
+            echo "No command line tools on the image; fetching them."
+            mkdir -p "$SDK/cmdline-tools"
+            curl -sSLo /tmp/cmdline-tools.zip \
+              https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+            unzip -q /tmp/cmdline-tools.zip -d "$SDK/cmdline-tools"
+            mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+            MANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          yes | "$MANAGER" --licenses > /dev/null 2>&1 || true
+          for package in "platform-tools" "build-tools;37.0.0" "platforms;android-37"; do
+            "$MANAGER" "$package" > /dev/null 2>&1 || echo "Could not add $package; carrying on."
+          done
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "sdk.dir=$SDK" > android/local.properties
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-home-cache-cleanup: true
+
+      - name: Make the wrapper runnable
+        run: chmod +x gradlew
+
+      - name: Assemble debug APK and unit tests
+        run: ./gradlew assembleDebug testDebugUnitTest --stacktrace
+
+      - name: Keep the test report if it failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-reports
+          path: android/**/build/reports/tests
+          retention-days: 14
+
+      - name: Upload the debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
