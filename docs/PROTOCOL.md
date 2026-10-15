@@ -92,6 +92,20 @@ Browser: `browser.list {path:[str]}` → `[{name,folder,loadable,uri?}]` (path `
 `browser.preview {path}`, `browser.preview_stop`.
 Meta: `sys.info` → `{live, proto, host, ops:[str]}`.
 
+## Clarifications (binding)
+- `track.set` monitor value is int 0=In,1=Auto,2=Off. vol/pan/send `v` are raw parameter values.
+- `slot.create.len` and all lengths/times are beats.
+- After a successful `focus.set`, server sends fresh `focus, slots, arr, takes, devices` sections.
+- `clip.stop {loc}`: slot → stops that slot; arr/take → no-op ok.
+- `take.next {tr}` only. Play toggle = `song.play`/`song.stop`.
+- `rt.slot_pos` keys are slot indices as strings (JSON object keys).
+- Scene list length == slot count for every track.
+- `clip.close`/`device.close` (or the opened object disappearing) → `sec clip`/`sec params` with `d:null`.
+- `clip` section adds `notes_total`; notes capped at 5000 per section.
+- `quant`, `rec_quant`, `launch_quant`, `clip.quantize.grid` are Live's raw enum ints (passed through).
+- `auto_arm` ↔ `song.exclusive_arm`. `rt.beat_in_bar` is 0-based. A req without `id` gets `res` with `id:null`.
+- `browser.list []` roots include `key` (e.g. "instruments"); path elements accept key or display name.
+
 ## Helper HTTP (:9012)
 - `GET /health` → `{ok:true,version}`
 - `GET /peaks?path=<url-encoded clip file_path>&n=<buckets>` → `{sr,ch,frames,n,min:[[..]...per ch],max:[...]}`

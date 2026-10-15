@@ -1,0 +1,868 @@
+"""All protocol ops. Each op: fn(client, args) -> JSON-able result; raises OpError subclasses.
+
+Missing LOM API -> Unsupported("..."). Core wraps every call so a bad op can never break the tick."""
+from . import sections as S
+from .util import (OpError, BadArgs, Unsupported, g, num, intv, seq, need, need_num, need_int, is_int,
+                   resolve_track, resolve_slot, resolve_clip, resolve_device, slots_of, lane_clips,
+                   track_ref, parse_ref)
+
+BROWSER_ROOTS = ("instruments", "audio_effects", "midi_effects", "drums", "sounds", "samples", "packs",
+                 "user_library", "plugins", "clips")
+MAX_OP_NOTES = 4000
+MAX_BROWSER_ITEMS = 2000
+
+_SPEC = [None, False]
+
+
+def _note_spec(d):
+    """Build a note specification. Real Live wants Live.Clip.MidiNoteSpecification; fakes take dicts."""
+    if not _SPEC[1]:
+        _SPEC[1] = True
+        try:
+            from Live.Clip import MidiNoteSpecification  # only importable inside Live
+            _SPEC[0] = MidiNoteSpecification
+        except Exception:
+            _SPEC[0] = None
+    if _SPEC[0] is not None:
+        return _SPEC[0](**d)
+    return d
+
+
+def _b(v, name="value"):
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, int) and v in (0, 1):
+        return bool(v)
+    raise BadArgs("expected boolean: " + name)
+
+
+def _n(v, name="value", lo=None, hi=None):
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise BadArgs("expected number: " + name)
+    if v != v or v in (float("inf"), float("-inf")):
+        raise BadArgs("bad number: " + name)
+    if lo is not None and v < lo:
+        raise BadArgs("%s below %s" % (name, lo))
+    if hi is not None and v > hi:
+        raise BadArgs("%s above %s" % (name, hi))
+    return v
+
+
+def _i(v, name="value", lo=None, hi=None):
+    _n(v, name, lo, hi)
+    if int(v) != v:
+        raise BadArgs("expected integer: " + name)
+    return int(v)
+
+
+def _s(v, name="value"):
+    if not isinstance(v, str):
+        raise BadArgs("expected string: " + name)
+    return v
+
+
+def _put(obj, attr, val):
+    if obj is None or not hasattr(obj, attr):
+        raise Unsupported(attr)
+    setattr(obj, attr, val)
+
+
+def _call(obj, meth, *args):
+    f = getattr(obj, meth, None) if obj is not None else None
+    if f is None:
+        raise Unsupported(meth)
+    return f(*args)
+
+
+def clean_loc(loc):
+    if not isinstance(loc, dict):
+        raise BadArgs("bad loc")
+    out = {"w": loc.get("w"), "tr": loc.get("tr"), "i": loc.get("i")}
+    if loc.get("w") == "take":
+        out["lane"] = loc.get("lane")
+    return out
+
+
+class Ops(object):
+    def __init__(self, core):
+        self.core = core
+        self.last_take = {}
+        t = {}
+        t["song.play"] = lambda c, a: _call(self.song, "start_playing")
+        t["song.stop"] = lambda c, a: _call(self.song, "stop_playing")
+        t["song.continue"] = lambda c, a: _call(self.song, "continue_playing")
+        t["song.tap_tempo"] = lambda c, a: _call(self.song, "tap_tempo")
+        t["song.undo"] = self.song_undo
+        t["song.redo"] = self.song_redo
+        t["song.capture_midi"] = lambda c, a: _call(self.song, "capture_midi")
+        t["song.stop_all_clips"] = lambda c, a: _call(self.song, "stop_all_clips")
+        t["song.re_enable_automation"] = lambda c, a: _call(self.song, "re_enable_automation")
+        t["song.jump"] = self.song_jump
+        t["song.seek"] = self.song_seek
+        t["song.cue"] = self.song_cue
+        t["song.set"] = self.song_set
+        t["scene.fire"] = self.scene_fire
+        t["scene.create"] = self.scene_create
+        t["track.create"] = self.track_create
+        t["track.delete"] = self.track_delete
+        t["track.duplicate"] = self.track_duplicate
+        t["focus.set"] = self.focus_set
+        t["focus.follow"] = self.focus_follow
+        t["view.select"] = self.view_select
+        t["track.set"] = self.track_set
+        t["track.stop"] = self.track_stop
+        t["slot.fire"] = self.slot_fire
+        t["slot.create"] = self.slot_create
+        t["slot.delete"] = self.slot_delete
+        t["slot.duplicate"] = self.slot_duplicate
+        t["slot.copy"] = lambda c, a: self.slot_copy(c, a, False)
+        t["slot.move"] = lambda c, a: self.slot_copy(c, a, True)
+        t["take.next"] = self.take_next
+        t["clip.fire"] = self.clip_fire
+        t["clip.stop"] = self.clip_stop
+        t["clip.open"] = self.clip_open
+        t["clip.close"] = self.clip_close
+        t["clip.set"] = self.clip_set
+        t["clip.delete"] = self.clip_delete
+        t["clip.duplicate_loop"] = lambda c, a: _call(self._clip(a).clip, "duplicate_loop")
+        t["clip.crop"] = lambda c, a: _call(self._clip(a).clip, "crop")
+        t["clip.quantize"] = self.clip_quantize
+        t["clip.to_arr"] = self.clip_to_arr
+        t["arr.create_midi"] = self.arr_create_midi
+        t["arr.move"] = self.arr_move
+        t["notes.add"] = self.notes_add
+        t["notes.modify"] = self.notes_modify
+        t["notes.remove"] = self.notes_remove
+        t["notes.clear"] = self.notes_clear
+        t["notes.transpose"] = self.notes_transpose
+        t["notes.duplicate"] = self.notes_duplicate
+        t["warp.add"] = self.warp_add
+        t["warp.move"] = self.warp_move
+        t["warp.remove"] = self.warp_remove
+        t["takes.create_lane"] = self.takes_create_lane
+        t["takes.rename"] = self.takes_rename
+        t["takes.promote"] = self.takes_promote
+        t["device.open"] = self.device_open
+        t["device.close"] = self.device_close
+        t["device.toggle"] = self.device_toggle
+        t["device.param"] = self.device_param
+        t["device.delete"] = self.device_delete
+        t["device.select"] = self.device_select
+        t["device.var"] = self.device_var
+        t["chain.select"] = self.chain_select
+        t["browser.list"] = self.browser_list
+        t["browser.load"] = self.browser_load
+        t["browser.preview"] = self.browser_preview
+        t["browser.preview_stop"] = lambda c, a: _call(self._browser(), "stop_preview")
+        t["sys.info"] = self.sys_info
+        t["sys.probe"] = self.sys_probe
+        self.table = t
+
+    @property
+    def song(self):
+        return self.core.song
+
+    @property
+    def app(self):
+        return self.core.app
+
+    def run(self, client, op, a):
+        f = self.table.get(op)
+        if f is None:
+            raise OpError("unknown op: %s" % (op,))
+        return f(client, a)
+
+    # ------------------------------------------------------------ helpers
+    def _clip(self, a, key="loc"):
+        return resolve_clip(self.song, need(a, key, dict))
+
+    def _open_clip(self, c, midi=None):
+        if not c.clip:
+            raise OpError("no clip open")
+        cr = resolve_clip(self.song, c.clip)
+        is_audio = bool(g(cr.clip, "is_audio_clip", False))
+        if midi is True and is_audio:
+            raise BadArgs("opened clip is not a MIDI clip")
+        if midi is False and not is_audio:
+            raise BadArgs("opened clip is not an audio clip")
+        return cr
+
+    def _browser(self):
+        b = g(self.app, "browser", None)
+        if b is None:
+            raise Unsupported("browser")
+        return b
+
+    # ------------------------------------------------------------ song
+    def song_undo(self, c, a):
+        if g(self.song, "can_undo", True):
+            _call(self.song, "undo")
+
+    def song_redo(self, c, a):
+        if g(self.song, "can_redo", True):
+            _call(self.song, "redo")
+
+    def song_jump(self, c, a):
+        b = _n(need(a, "beats"), "beats")
+        if hasattr(self.song, "jump_by"):
+            self.song.jump_by(b)
+        else:
+            _put(self.song, "current_song_time", max(0.0, num(g(self.song, "current_song_time", 0.0)) + b))
+
+    def song_seek(self, c, a):
+        _put(self.song, "current_song_time", float(max(0.0, _n(need(a, "beats"), "beats"))))
+
+    def song_cue(self, c, a):
+        d = need(a, "dir")
+        if d == 1:
+            _call(self.song, "jump_to_next_cue")
+        elif d == -1:
+            _call(self.song, "jump_to_prev_cue")
+        else:
+            raise BadArgs("dir must be 1 or -1")
+
+    def song_set(self, c, a):
+        k = need(a, "k", str)
+        v = need(a, "v")
+        s = self.song
+        simple_bool = {"metronome": "metronome", "loop": "loop", "punch_in": "punch_in", "punch_out": "punch_out",
+                       "rec": "record_mode", "session_rec": "session_record", "overdub": "arrangement_overdub",
+                       "auto_arm": "exclusive_arm", "back_to_arr": "back_to_arranger"}
+        if k in simple_bool:
+            _put(s, simple_bool[k], _b(v, k))
+        elif k == "tempo":
+            _put(s, "tempo", float(_n(v, k, 20, 999)))
+        elif k == "sig":
+            if not (isinstance(v, (list, tuple)) and len(v) == 2):
+                raise BadArgs("sig must be [num,den]")
+            n, d = _i(v[0], "sig num", 1, 99), _i(v[1], "sig den", 1, 16)
+            if d not in (1, 2, 4, 8, 16):
+                raise BadArgs("bad denominator")
+            _put(s, "signature_numerator", n)
+            _put(s, "signature_denominator", d)
+        elif k == "loop_start":
+            _put(s, "loop_start", float(_n(v, k, 0)))
+        elif k == "loop_len":
+            _put(s, "loop_length", float(_n(v, k, 0.0001)))
+        elif k == "count_in":
+            _put(s, "count_in_duration", _i(v, k, 0, 4))
+        elif k == "quant":
+            _put(s, "clip_trigger_quantization", _i(v, k, 0, 13))
+        elif k == "rec_quant":
+            _put(s, "midi_recording_quantization", _i(v, k, 0, 13))
+        elif k == "view":
+            if v not in ("session", "arranger"):
+                raise BadArgs("view must be session|arranger")
+            av = g(self.app, "view", None)
+            _call(av, "show_view", "Session" if v == "session" else "Arranger")
+        else:
+            raise BadArgs("unknown song key: " + k)
+
+    # ------------------------------------------------------------ scenes / tracks
+    def scene_fire(self, c, a):
+        i = need_int(a, "i")
+        sc = seq(g(self.song, "scenes", ()))
+        if not 0 <= i < len(sc):
+            raise BadArgs("no such scene")
+        _call(sc[i], "fire")
+
+    def scene_create(self, c, a):
+        i = need_int(a, "i")
+        n = len(seq(g(self.song, "scenes", ())))
+        if not -1 <= i <= n:
+            raise BadArgs("scene index out of range")
+        _call(self.song, "create_scene", i)
+
+    def track_create(self, c, a):
+        kind = need(a, "kind", str)
+        i = a.get("i", -1)
+        i = _i(i, "i", -1)
+        if kind == "audio":
+            _call(self.song, "create_audio_track", i)
+        elif kind == "midi":
+            _call(self.song, "create_midi_track", i)
+        elif kind == "return":
+            _call(self.song, "create_return_track")
+        else:
+            raise BadArgs("kind must be audio|midi|return")
+
+    def _track_index(self, tr, allow_return=True):
+        k, i = parse_ref(tr)
+        resolve_track(self.song, tr)
+        if k == "m":
+            raise BadArgs("cannot do that to the master track")
+        if k == "r" and not allow_return:
+            raise BadArgs("not supported for return tracks")
+        return k, i
+
+    def track_delete(self, c, a):
+        k, i = self._track_index(need(a, "tr", str))
+        _call(self.song, "delete_track" if k == "t" else "delete_return_track", i)
+
+    def track_duplicate(self, c, a):
+        k, i = self._track_index(need(a, "tr", str), False)
+        _call(self.song, "duplicate_track", i)
+
+    # ------------------------------------------------------------ focus
+    def focus_set(self, c, a):
+        tr = need(a, "tr", str)
+        resolve_track(self.song, tr)
+        self.core.set_focus(c, tr)
+
+    def focus_follow(self, c, a):
+        on = _b(need(a, "on"), "on")
+        c.follow = on
+        c.pending.add("session")
+        if on:
+            self.core.follow_check(c)
+
+    def view_select(self, c, a):
+        t = resolve_track(self.song, need(a, "tr", str))
+        _put(g(self.song, "view", None), "selected_track", t)
+
+    # ------------------------------------------------------------ track.set
+    def _routing_set(self, t, cur, avail, name):
+        lst = seq(g(t, avail, ()))
+        for x in lst:
+            if S.display_name(x) == name:
+                _put(t, cur, x)
+                return
+        raise BadArgs("no such routing option: %s" % (name,))
+
+    def track_set(self, c, a):
+        tr = need(a, "tr", str)
+        k = need(a, "k", str)
+        v = need(a, "v")
+        t = resolve_track(self.song, tr)
+        mixer = g(t, "mixer_device", None)
+        if k == "name":
+            _put(t, "name", _s(v, k))
+        elif k == "color":
+            _put(t, "color", _i(v, k, 0, 0xFFFFFF))
+        elif k in ("arm", "monitor"):
+            if not g(t, "can_be_armed", False):
+                raise Unsupported("%s on this track" % k)
+            if k == "arm":
+                _put(t, "arm", _b(v, k))
+            else:
+                _put(t, "current_monitoring_state", _i(v, k, 0, 2))
+        elif k in ("mute", "solo"):
+            if tr == "m" and k == "solo":
+                raise Unsupported("solo on master")
+            _put(t, k, _b(v, k))
+        elif k == "folded":
+            if not g(t, "is_foldable", False):
+                raise Unsupported("fold on non-group track")
+            _put(t, "fold_state", _b(v, k))
+        elif k in ("vol", "pan", "send"):
+            if k == "send":
+                i = _i(need(a, "i"), "i", 0)
+                sends = seq(g(mixer, "sends", ()))
+                if i >= len(sends):
+                    raise BadArgs("no such send")
+                p = sends[i]
+            else:
+                p = g(mixer, "volume" if k == "vol" else "panning", None)
+            if p is None:
+                raise Unsupported(k)
+            lo, hi = num(g(p, "min", 0.0)), num(g(p, "max", 1.0))
+            p.value = max(lo, min(hi, float(_n(v, k))))
+        elif k == "in_type":
+            self._routing_set(t, "input_routing_type", "available_input_routing_types", _s(v, k))
+        elif k == "in_ch":
+            self._routing_set(t, "input_routing_channel", "available_input_routing_channels", _s(v, k))
+        elif k == "out_type":
+            self._routing_set(t, "output_routing_type", "available_output_routing_types", _s(v, k))
+        else:
+            raise BadArgs("unknown track key: " + k)
+
+    def track_stop(self, c, a):
+        _call(resolve_track(self.song, need(a, "tr", str)), "stop_all_clips")
+
+    # ------------------------------------------------------------ slots
+    def slot_fire(self, c, a):
+        _, s = resolve_slot(self.song, need(a, "tr", str), need_int(a, "i"))
+        _call(s, "fire")
+
+    def slot_create(self, c, a):
+        _, s = resolve_slot(self.song, need(a, "tr", str), need_int(a, "i"))
+        ln = _n(a.get("len", 4.0), "len", 0.0001, 4096)
+        if g(s, "has_clip", False):
+            raise OpError("slot already has a clip")
+        if g(self._track_of(a["tr"]), "has_midi_input", True) is False:
+            raise Unsupported("creating empty audio clips")
+        _call(s, "create_clip", float(ln))
+
+    def _track_of(self, tr):
+        return resolve_track(self.song, tr)
+
+    def slot_delete(self, c, a):
+        _, s = resolve_slot(self.song, need(a, "tr", str), need_int(a, "i"))
+        if not g(s, "has_clip", False):
+            raise OpError("slot is empty")
+        _call(s, "delete_clip")
+
+    def slot_duplicate(self, c, a):
+        tr, i = need(a, "tr", str), need_int(a, "i")
+        t, s = resolve_slot(self.song, tr, i)
+        if not g(s, "has_clip", False):
+            raise OpError("slot is empty")
+        sl = slots_of(t)
+        if i + 1 >= len(sl):
+            _call(self.song, "create_scene", len(seq(g(self.song, "scenes", ()))))
+            sl = slots_of(t)
+        _call(s, "duplicate_clip_to", sl[i + 1])
+
+    def slot_copy(self, c, a, move):
+        _, s = resolve_slot(self.song, need(a, "tr", str), need_int(a, "i"))
+        _, d = resolve_slot(self.song, need(a, "to_tr", str), need_int(a, "to_i"))
+        if not g(s, "has_clip", False):
+            raise OpError("source slot is empty")
+        if s is d or s == d:
+            return
+        _call(s, "duplicate_clip_to", d)
+        if move:
+            _call(s, "delete_clip")
+
+    def take_next(self, c, a):
+        tr = need(a, "tr", str)
+        t = resolve_track(self.song, tr)
+        if tr[0] != "t" or not g(t, "can_be_armed", False):
+            raise BadArgs("track cannot record")
+        sl = slots_of(t)
+        start = max(0, self.last_take.get(tr, 0))
+        idx = None
+        for i in range(start, len(sl)):
+            if not g(sl[i], "has_clip", False):
+                idx = i
+                break
+        if idx is None:
+            n = len(seq(g(self.song, "scenes", ())))
+            _call(self.song, "create_scene", n)
+            sl = slots_of(t)
+            idx = len(sl) - 1
+        _put(t, "arm", True)
+        sl[idx].fire()
+        self.last_take[tr] = idx
+        return {"i": idx}
+
+    # ------------------------------------------------------------ clips
+    def clip_fire(self, c, a):
+        cr = self._clip(a)
+        if cr.kind != "slot":
+            raise Unsupported("firing arrangement clips")
+        _call(cr.slot, "fire")
+
+    def clip_stop(self, c, a):
+        cr = self._clip(a)
+        if cr.kind != "slot":
+            return                      # PROTOCOL clarification: arr/take -> no-op ok
+        _call(cr.slot, "stop")
+
+    def clip_open(self, c, a):
+        loc = clean_loc(need(a, "loc", dict))
+        resolve_clip(self.song, loc)
+        c.clip = loc
+        c.pending.add("clip")
+        self.core.listeners_dirty = True
+
+    def clip_close(self, c, a):
+        c.clip = None
+        c.pending.add("clip")
+        self.core.listeners_dirty = True
+
+    def clip_set(self, c, a):
+        cr = self._clip(a)
+        k = need(a, "k", str)
+        v = need(a, "v")
+        clip = cr.clip
+        audio = bool(g(clip, "is_audio_clip", False))
+        if k in ("gain", "pitch_coarse", "pitch_fine", "warping", "warp_mode") and not audio:
+            raise BadArgs("%s is for audio clips" % k)
+        if k == "name":
+            _put(clip, "name", _s(v, k))
+        elif k == "color":
+            _put(clip, "color", _i(v, k, 0, 0xFFFFFF))
+        elif k in ("looping", "warping", "legato", "muted"):
+            _put(clip, k, _b(v, k))
+        elif k == "loop_start":
+            v = float(_n(v, k))
+            if v >= num(g(clip, "loop_end", 0.0)):
+                _put(clip, "loop_end", v + max(0.25, num(g(clip, "loop_end", 0.0)) - num(g(clip, "loop_start", 0.0))))
+            _put(clip, "loop_start", v)
+        elif k == "loop_end":
+            v = float(_n(v, k))
+            if v <= num(g(clip, "loop_start", 0.0)):
+                raise BadArgs("loop_end must be after loop_start")
+            _put(clip, "loop_end", v)
+        elif k in ("start_marker", "end_marker"):
+            _put(clip, k, float(_n(v, k)))
+        elif k == "gain":
+            _put(clip, "gain", float(_n(v, k, 0.0, 1.0)))
+        elif k == "pitch_coarse":
+            _put(clip, "pitch_coarse", _i(v, k, -48, 48))
+        elif k == "pitch_fine":
+            _put(clip, "pitch_fine", float(_n(v, k, -50, 50)))
+        elif k == "warp_mode":
+            if v not in S.WARP_MODE_IDS:
+                raise BadArgs("unknown warp mode")
+            _put(clip, "warp_mode", S.WARP_MODE_IDS[v])
+        elif k == "launch_mode":
+            _put(clip, "launch_mode", _i(v, k, 0, 3))
+        elif k == "launch_quant":
+            _put(clip, "launch_quantization", _i(v, k, 0, 13))
+        else:
+            raise BadArgs("unknown clip key: " + k)
+
+    def clip_delete(self, c, a):
+        cr = self._clip(a)
+        if cr.kind == "slot":
+            _call(cr.slot, "delete_clip")
+        else:
+            _call(cr.track, "delete_clip", cr.clip)
+
+    def clip_quantize(self, c, a):
+        cr = self._clip(a)
+        grid = _i(need(a, "grid"), "grid", 0, 13)
+        amount = float(_n(a.get("amount", 1.0), "amount", 0.0, 1.0))
+        _call(cr.clip, "quantize", grid, amount)
+
+    def clip_to_arr(self, c, a):
+        cr = self._clip(a)
+        t = float(_n(need(a, "time"), "time", 0.0))
+        _call(cr.track, "duplicate_clip_to_arrangement", cr.clip, t)
+
+    def arr_create_midi(self, c, a):
+        t = resolve_track(self.song, need(a, "tr", str))
+        if not g(t, "has_midi_input", False):
+            raise BadArgs("not a MIDI track")
+        _call(t, "create_midi_clip", float(_n(need(a, "start"), "start", 0.0)),
+              float(_n(need(a, "len"), "len", 0.0001)))
+
+    def arr_move(self, c, a):
+        cr = self._clip(a)
+        if cr.kind == "slot":
+            raise BadArgs("not an arrangement clip")
+        start = float(_n(need(a, "start"), "start", 0.0))
+        if not hasattr(cr.track, "duplicate_clip_to_arrangement") or not hasattr(cr.track, "delete_clip"):
+            raise Unsupported("moving arrangement clips")
+        cr.track.duplicate_clip_to_arrangement(cr.clip, start)
+        cr.track.delete_clip(cr.clip)
+
+    # ------------------------------------------------------------ notes
+    def _note_args(self, n, need_id=False):
+        if not isinstance(n, dict):
+            raise BadArgs("note must be an object")
+        out = {}
+        if "p" in n:
+            out["pitch"] = _i(n["p"], "p", 0, 127)
+        if "t" in n:
+            out["start_time"] = float(_n(n["t"], "t", 0.0))
+        if "d" in n:
+            out["duration"] = float(_n(n["d"], "d", 0.0001))
+        if "v" in n:
+            out["velocity"] = float(_n(n["v"], "v", 1, 127))
+        if "m" in n:
+            out["mute"] = _b(n["m"], "m")
+        if "prob" in n:
+            out["probability"] = float(_n(n["prob"], "prob", 0.0, 1.0))
+        if "vd" in n:
+            out["velocity_deviation"] = float(_n(n["vd"], "vd", -127, 127))
+        if "rv" in n:
+            out["release_velocity"] = float(_n(n["rv"], "rv", 0, 127))
+        return out
+
+    def _add(self, clip, specs):
+        if not specs:
+            return
+        _call(clip, "add_new_notes", tuple(_note_spec(s) for s in specs))
+
+    def notes_add(self, c, a):
+        cr = self._open_clip(c, True)
+        lst = need(a, "notes", list)
+        if len(lst) > MAX_OP_NOTES:
+            raise BadArgs("too many notes in one op")
+        specs = []
+        for n in lst:
+            d = self._note_args(n)
+            for k in ("pitch", "start_time", "duration"):
+                if k not in d:
+                    raise BadArgs("note missing p/t/d")
+            d.setdefault("velocity", 100.0)
+            d.setdefault("mute", False)
+            d.setdefault("probability", 1.0)
+            d.setdefault("velocity_deviation", 0.0)
+            d.setdefault("release_velocity", 64.0)
+            specs.append(d)
+        self._add(cr.clip, specs)
+        return {"n": len(specs)}
+
+    def _modify(self, clip, changes):
+        """changes: {note_id: {attr: value}}"""
+        notes = S.get_notes(clip)
+        touched = []
+        for n in notes:
+            nid = intv(g(n, "note_id", -1), -1)
+            if nid in changes:
+                for k, v in changes[nid].items():
+                    setattr(n, k, v)
+                touched.append(n)
+        if touched:
+            _call(clip, "apply_note_modifications", touched)
+        return len(touched)
+
+    def notes_modify(self, c, a):
+        cr = self._open_clip(c, True)
+        lst = need(a, "notes", list)
+        if len(lst) > MAX_OP_NOTES:
+            raise BadArgs("too many notes in one op")
+        changes = {}
+        for n in lst:
+            if not isinstance(n, dict) or not is_int(n.get("id")):
+                raise BadArgs("note needs integer id")
+            changes[n["id"]] = self._note_args(n)
+        return {"n": self._modify(cr.clip, changes)}
+
+    def _ids(self, a):
+        ids = need(a, "ids", list)
+        if len(ids) > MAX_OP_NOTES * 2:
+            raise BadArgs("too many ids")
+        return [_i(x, "id") for x in ids]
+
+    def notes_remove(self, c, a):
+        cr = self._open_clip(c, True)
+        ids = self._ids(a)
+        if ids:
+            _call(cr.clip, "remove_notes_by_id", ids)
+
+    def notes_clear(self, c, a):
+        cr = self._open_clip(c, True)
+        if hasattr(cr.clip, "remove_notes_extended"):
+            cr.clip.remove_notes_extended(0, 128, 0.0, S.NOTE_RANGE_END)
+            return
+        ids = [intv(g(n, "note_id", 0)) for n in S.get_notes(cr.clip)]
+        if ids:
+            _call(cr.clip, "remove_notes_by_id", ids)
+
+    def notes_transpose(self, c, a):
+        cr = self._open_clip(c, True)
+        ids = set(self._ids(a))
+        semis = _i(need(a, "semis"), "semis", -127, 127)
+        changes = {}
+        for n in S.get_notes(cr.clip):
+            nid = intv(g(n, "note_id", -1), -1)
+            if nid in ids:
+                changes[nid] = {"pitch": max(0, min(127, intv(g(n, "pitch", 60)) + semis))}
+        return {"n": self._modify(cr.clip, changes)}
+
+    def notes_duplicate(self, c, a):
+        cr = self._open_clip(c, True)
+        ids = set(self._ids(a))
+        off = float(_n(need(a, "offset"), "offset"))
+        specs = []
+        for n in S.get_notes(cr.clip):
+            if intv(g(n, "note_id", -1), -1) in ids:
+                st = num(g(n, "start_time", 0.0)) + off
+                if st < 0:
+                    continue
+                specs.append({"pitch": intv(g(n, "pitch", 60)), "start_time": st,
+                              "duration": num(g(n, "duration", 0.25), 0.25), "velocity": num(g(n, "velocity", 100.0)),
+                              "mute": bool(g(n, "mute", False)), "probability": num(g(n, "probability", 1.0), 1.0),
+                              "velocity_deviation": num(g(n, "velocity_deviation", 0.0)),
+                              "release_velocity": num(g(n, "release_velocity", 64.0), 64.0)})
+        self._add(cr.clip, specs)
+        return {"n": len(specs)}
+
+    # ------------------------------------------------------------ warp
+    def warp_add(self, c, a):
+        cr = self._open_clip(c, False)
+        beat = float(_n(need(a, "beat"), "beat"))
+        st = a.get("sample_time")
+        f = getattr(cr.clip, "add_warp_marker", None)
+        if f is None:
+            raise Unsupported("add_warp_marker")
+        if st is None:
+            f(beat)
+        else:
+            f(beat, float(_n(st, "sample_time")))
+
+    def warp_move(self, c, a):
+        cr = self._open_clip(c, False)
+        beat = float(_n(need(a, "beat"), "beat"))
+        to = float(_n(need(a, "to_beat"), "to_beat"))
+        _call(cr.clip, "move_warp_marker", beat, to - beat)
+
+    def warp_remove(self, c, a):
+        cr = self._open_clip(c, False)
+        _call(cr.clip, "remove_warp_marker", float(_n(need(a, "beat"), "beat")))
+
+    # ------------------------------------------------------------ takes
+    def takes_create_lane(self, c, a):
+        t = resolve_track(self.song, need(a, "tr", str))
+        _call(t, "create_take_lane")
+
+    def takes_rename(self, c, a):
+        t = resolve_track(self.song, need(a, "tr", str))
+        lanes = seq(g(t, "take_lanes", None))
+        i = need_int(a, "lane")
+        if not 0 <= i < len(lanes):
+            raise BadArgs("no such lane")
+        _put(lanes[i], "name", _s(need(a, "name"), "name"))
+
+    def takes_promote(self, c, a):
+        loc = need(a, "loc", dict)
+        if loc.get("w") != "take":
+            raise BadArgs("loc must be a take")
+        cr = resolve_clip(self.song, loc)
+        _call(cr.track, "duplicate_clip_to_arrangement", cr.clip, num(g(cr.clip, "start_time", 0.0)))
+
+    # ------------------------------------------------------------ devices
+    def _dev(self, a):
+        tr, path = need(a, "tr", str), need(a, "path", str)
+        d, owner, idx = resolve_device(self.song, tr, path)
+        return tr, path, d, owner, idx
+
+    def device_open(self, c, a):
+        tr, path, d, _, _ = self._dev(a)
+        c.device = (tr, path)
+        c.pending.add("params")
+        self.core.listeners_dirty = True
+
+    def device_close(self, c, a):
+        c.device = None
+        c.pending.add("params")
+        self.core.listeners_dirty = True
+
+    def device_toggle(self, c, a):
+        _, _, d, _, _ = self._dev(a)
+        ps = seq(g(d, "parameters", ()))
+        if not ps:
+            raise Unsupported("device on/off")
+        ps[0].value = 0.0 if S.device_on(d) else 1.0
+
+    def device_param(self, c, a):
+        _, _, d, _, _ = self._dev(a)
+        ps = seq(g(d, "parameters", ()))
+        i = need_int(a, "i")
+        if not 0 <= i < len(ps):
+            raise BadArgs("no such parameter")
+        v = float(_n(need(a, "v"), "v"))
+        p = ps[i]
+        p.value = max(num(g(p, "min", 0.0)), min(num(g(p, "max", 1.0), 1.0), v))
+
+    def device_delete(self, c, a):
+        _, _, d, owner, idx = self._dev(a)
+        _call(owner, "delete_device", idx)
+
+    def device_select(self, c, a):
+        _, _, d, _, _ = self._dev(a)
+        _call(g(self.song, "view", None), "select_device", d)
+
+    def device_var(self, c, a):
+        _, _, d, _, _ = self._dev(a)
+        if g(d, "variation_count", None) is None:
+            raise Unsupported("variations on this device")
+        act = need(a, "act", str)
+        if act == "store":
+            _call(d, "store_variation")
+            return
+        i = _i(need(a, "i"), "i", 0)
+        if i >= intv(g(d, "variation_count", 0)):
+            raise BadArgs("no such variation")
+        _put(d, "selected_variation_index", i)
+        if act == "recall":
+            _call(d, "recall_selected_variation")
+        elif act == "delete":
+            _call(d, "delete_selected_variation")
+        elif act != "select":
+            raise BadArgs("act must be store|recall|select|delete")
+
+    def chain_select(self, c, a):
+        _, _, d, _, _ = self._dev(a)
+        chains = seq(g(d, "chains", ()))
+        i = need_int(a, "i")
+        if not 0 <= i < len(chains):
+            raise BadArgs("no such chain")
+        view = g(d, "view", None)
+        if view is None or not hasattr(view, "selected_chain"):
+            raise Unsupported("selected_chain")
+        view.selected_chain = chains[i]
+
+    # ------------------------------------------------------------ browser
+    def _roots(self):
+        b = self._browser()
+        out = []
+        for k in BROWSER_ROOTS:
+            it = g(b, k, None)
+            if it is not None:
+                out.append((k, it))
+        return out
+
+    def _bitem(self, path):
+        if not isinstance(path, list) or not all(isinstance(x, str) for x in path):
+            raise BadArgs("path must be a list of strings")
+        if not path:
+            return None
+        first = path[0].lower().replace(" ", "_")
+        cur = None
+        for k, it in self._roots():
+            if k == first or _s(g(it, "name", "")).lower().replace(" ", "_") == first:
+                cur = it
+                break
+        if cur is None:
+            raise BadArgs("no such browser root")
+        for name in path[1:]:
+            kids = seq(g(cur, "children", ()))
+            nxt = None
+            for ch in kids:
+                if g(ch, "name", None) == name:
+                    nxt = ch
+                    break
+            if nxt is None:
+                for ch in kids:
+                    if _s(g(ch, "name", "")).lower() == name.lower():
+                        nxt = ch
+                        break
+            if nxt is None:
+                raise BadArgs("no such browser item: " + name)
+            cur = nxt
+        return cur
+
+    def browser_list(self, c, a):
+        path = need(a, "path", list)
+        item = self._bitem(path)
+        if item is None:
+            return [{"name": _s(g(it, "name", k)), "folder": True, "loadable": False, "key": k}
+                    for k, it in self._roots()]
+        out = []
+        for ch in seq(g(item, "children", ()))[:MAX_BROWSER_ITEMS]:
+            e = {"name": _s(g(ch, "name", "")), "folder": bool(g(ch, "is_folder", False)),
+                 "loadable": bool(g(ch, "is_loadable", False))}
+            uri = g(ch, "uri", None)
+            if uri:
+                e["uri"] = str(uri)
+            out.append(e)
+        return out
+
+    def browser_load(self, c, a):
+        t = resolve_track(self.song, need(a, "tr", str))
+        item = self._bitem(need(a, "path", list))
+        if item is None or not g(item, "is_loadable", False):
+            raise BadArgs("item is not loadable")
+        view = g(self.song, "view", None)
+        if g(view, "selected_track", None) != t:
+            _put(view, "selected_track", t)
+        _call(self._browser(), "load_item", item)
+
+    def browser_preview(self, c, a):
+        item = self._bitem(need(a, "path", list))
+        if item is None:
+            raise BadArgs("nothing to preview")
+        _call(self._browser(), "preview_item", item)
+
+    # ------------------------------------------------------------ meta
+    def sys_info(self, c, a):
+        return {"live": self.core.live_version, "proto": 1, "host": self.core.host, "ops": sorted(self.table)}
+
+    def sys_probe(self, c, a):
+        return self.core.run_probe()
