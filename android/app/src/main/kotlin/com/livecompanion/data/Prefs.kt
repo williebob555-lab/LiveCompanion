@@ -28,7 +28,13 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(K_TEST_CHANNEL, false)
         set(v) { sp.edit().putBoolean(K_TEST_CHANNEL, v).apply() }
 
+    /** "land" (default — owner preference), "port" or "auto". */
+    var orientation: String
+        get() = sp.getString(K_ORIENTATION, "land") ?: "land"
+        set(v) { sp.edit().putString(K_ORIENTATION, v).apply() }
+
     private companion object {
+        const val K_ORIENTATION = "orientation"
         const val K_RECENTS = "recents"
         const val K_FOLLOW = "follow_live"
         const val K_TEST_CHANNEL = "test_channel"

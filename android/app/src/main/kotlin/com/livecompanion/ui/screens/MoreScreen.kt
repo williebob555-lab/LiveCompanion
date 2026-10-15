@@ -86,6 +86,20 @@ fun MoreScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifi
             )
         }
 
+        Section("Screen") {
+            LiveLabel("Orientation")
+            var orient by remember { mutableStateOf(actions.prefs?.orientation ?: "land") }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                listOf("land" to "Landscape", "port" to "Portrait", "auto" to "Auto").forEach { (k, label) ->
+                    LiveTextButton(label, {
+                        orient = k
+                        actions.prefs?.orientation = k
+                        (context as? android.app.Activity)?.let { com.livecompanion.applyOrientation(it, k) }
+                    }, Modifier.weight(1f), on = orient == k)
+                }
+            }
+        }
+
         Section("App updates") {
             Info("Installed", installed)
             LiveLabel("Channel")

@@ -31,7 +31,9 @@ Single user (the owner). Read this before every change. Newest entries at the bo
 - Milestone reports: work autonomously through TODO phases; stop at milestones with summary + APK.
 
 ## Corrections from owner
-- (none yet)
+- 2026-10-15: Default orientation is LANDSCAPE (more natural clip editor). App locks to sensorLandscape by
+  default; Settings offers Landscape / Portrait / Auto. Phone-landscape (~360dp tall) is the PRIMARY layout to
+  optimize — keep vertical chrome minimal there so editors get height. Portrait must still work.
 
 ## Performance-sensitive areas
 - Remote script runs on Live's main thread. All socket I/O is non-blocking and done in the ~100 ms

@@ -16,6 +16,10 @@ Clip/track colors come from Live as RGB. Text on a clip color: black if luminanc
 Type: system sans, 11–13sp (labels 10sp caps). Flat, square-ish corners (2dp), no shadows, no gradients.
 Toggles look like Live buttons: small rectangles, lit when on.
 
+## Orientation
+Default = landscape (owner). Setting: Landscape / Portrait / Auto (Prefs.orientation, applied in MainActivity).
+Phone landscape (~360–411dp tall) is the primary target: minimize vertical chrome so editors get height.
+
 ## Layout rules (hard requirements)
 - Every screen must render with NO overlap/clipping at: 320x568dp (small phone), 360x800, 412x915,
   600x960 (small tablet/foldable), 840x1280 tablet, plus all of them in landscape, and fontScale 1.0 and 1.3.

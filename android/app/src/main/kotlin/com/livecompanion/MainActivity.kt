@@ -1,5 +1,7 @@
 package com.livecompanion
 
+import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -19,11 +21,21 @@ import com.livecompanion.ui.screens.LocalAppActions
 import com.livecompanion.ui.screens.MainShell
 import com.livecompanion.ui.theme.LiveTheme
 
+/** Applies the orientation setting: "land" (default), "port" or "auto". */
+fun applyOrientation(activity: Activity, mode: String) {
+    activity.requestedOrientation = when (mode) {
+        "port" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        "auto" -> ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+        else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    }
+}
+
 class MainActivity : ComponentActivity() {
     private val vm: AppViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        applyOrientation(this, vm.prefs.orientation)
         enableEdgeToEdge()
         setContent {
             LiveTheme {
