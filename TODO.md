@@ -4,7 +4,10 @@ Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (wh
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
 ## In progress
-- (none)
+- [~] M1.1 python-core agent (sonnet) — remote script, core, fake LOM, mock, tests
+- [~] M1.3 android-core agent (sonnet) — scaffold, net, state, theme, shell, Session, Settings/update, Roborazzi
+- [~] M1.2 + M1.4 + emulators agent (haiku) — helper, CI/release workflows, AVDs
+- Next when android-core lands: parallel screen agents (Arrange+Takes, Clip editor, Devices+Browser+Mix)
 
 ## Milestone 1 — "Broad strokes" (everything wired end-to-end, mock-tested) → owner QA
 ### M1.0 Foundations (orchestrator)
@@ -24,12 +27,12 @@ Rule: update this file when starting/finishing anything. If interrupted, resume 
 ### M1.2 Helper (agent: helper)
 - [ ] `/health`, `/peaks` (wav/aiff stdlib; ffmpeg fallback), cache, Wine path translation, `/sets`, `/launch`
 ### M1.3 Android app (agents: android-core, then android-screens in parallel)
-- [ ] Gradle project, Compose, theme tokens (docs/UI.md), WindowSizeClass shell
-- [ ] Connection: beacon discovery, manual connect, WebSocket client, req/res, reconnect + full resync
-- [ ] State store: per-section StateFlows, optimistic updates
-- [ ] Screens: Connect, Shell (transport bar, track header, tabs), Session, Arrange, Takes, Clip (props, piano roll, waveform), Devices, Browser, Mix, Settings
-- [ ] In-app update (mirror InkSlate UpdateCheck), stable/test channels
-- [ ] Screenshot matrix tests (Roborazzi) across sizes/orientations/font scales
+- [x] Gradle project, Compose, theme tokens (docs/UI.md), WindowSizeClass shell
+- [x] Connection: beacon discovery, manual connect, WebSocket client, req/res, reconnect + full resync
+- [x] State store: per-section StateFlows, optimistic updates
+- [ ] Screens (DONE: Connect, Shell, Session, Settings/More; placeholders for Arrange, Takes, Clip, Devices, Browser, Mix): Connect, Shell (transport bar, track header, tabs), Session, Arrange, Takes, Clip (props, piano roll, waveform), Devices, Browser, Mix, Settings
+- [x] In-app update (mirror InkSlate UpdateCheck), stable/test channels
+- [x] Screenshot matrix tests (Roborazzi) across sizes/orientations/font scales
 ### M1.4 CI/release
 - [ ] GitHub Actions: build debug APK + run python tests on push; release workflow on tag `v*` attaches APK + remote script zip
 ### M1.5 Verification
