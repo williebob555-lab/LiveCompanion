@@ -1,0 +1,45 @@
+# Owner preferences, corrections & sensitive areas
+
+Single user (the owner). Read this before every change. Newest entries at the bottom of each section.
+
+## Product preferences
+- Core focus: ONE track at a time — see and manipulate the clips on that track (session slots, arrangement lane, takes).
+- Target ONLY the latest Live (currently 12.4.1, Standard edition; no Max for Live). No back-compat shims.
+- Hosts: Windows native, and Fedora via Wine. Nothing in the remote script may be Windows-specific.
+- OUT of scope (owner decision): phone audio in/out, MIDI over the phone, plugin GUI mirroring.
+- IN scope: everything else technically possible — recording, multi-takes/take lanes, MIDI note editing,
+  clip/warp editing, devices/macros/variations, browser loading, waveforms, transport, undo.
+- Style: mirror Ableton Live's look (dark grey panels, flat, small type, Live's clip color palette). Dense.
+- UI must work on ALL screen sizes and both orientations. Never overlapping elements. No obnoxious
+  sliding/animated components (no gratuitous swipe drawers, bouncing sheets, marquee text).
+- Claude owns feature breadth and correctness; owner gives direction after QA rounds.
+
+## Process preferences
+- Files local in C:\LiveCompanion; public GitHub repo (williebob555-lab/LiveCompanion) for builds/releases.
+  Working software first; signing keys / release polish later.
+- In-app updates must work natively like the owner's other apps: mirror
+  `C:\PDF Draw App\core\src\main\kotlin\com\inkslate\core\UpdateCheck.kt` (GitHub Releases API, stable
+  channel = latest, opt-in test channel = prereleases, download APK + system installer). Owner will say when
+  ready to set up repo secrets (signing keystore); until then CI uses debug signing.
+- Docs must be human-digestible AND efficient for an agent to re-read. Keep them current.
+- TODO.md is the workstation: plan, in progress, done, next. Return point after interruptions.
+- Parallel agents allowed: use cheaper models (haiku/sonnet) for grunt work, keep total usage moderate.
+- Testing = dedicated QA agent working in rounds: (1) use as intended, (2) odd/interesting combos,
+  (3) use not as intended, (4) try to break it. Results -> qa/REVIEW_LOG.md. Orchestrator must push the
+  agent if shallow and rein it in if wasting time.
+- QA surfaces: mock Live server, Android emulators (multiple sizes/orientations), and real Live on this PC.
+- Milestone reports: work autonomously through TODO phases; stop at milestones with summary + APK.
+
+## Corrections from owner
+- (none yet)
+
+## Performance-sensitive areas
+- Remote script runs on Live's main thread. All socket I/O is non-blocking and done in the ~100 ms
+  `update_display` tick (plus schedule_message). Never block, never sleep, never do file I/O per tick.
+- Listeners: only attach detailed listeners for the FOCUSED track (+ its selected clip). Song-level
+  summary listeners are cheap ones only (name/color/arm/mute/solo). Remove listeners on focus change.
+- Coalesce: listener callbacks only mark sections dirty; serialization happens once per tick.
+- Meters/playhead: realtime channel at <= 20 Hz, only while a client is connected.
+- MIDI notes: send only for the clip open in the editor; cap note count per message (chunk if needed).
+- Waveform peaks: computed by the helper (not Live), cached on disk keyed by path+mtime.
+- Android: Compose recomposition — state flows per section; avoid recomposing whole screen on meter ticks.

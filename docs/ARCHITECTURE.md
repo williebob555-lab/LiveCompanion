@@ -1,0 +1,33 @@
+# Architecture
+
+```
+Android app (Kotlin/Compose) ──WebSocket JSON :9010──► LiveCompanion remote script (inside Live)
+        │      ◄──UDP beacon :9011 (discovery)────────         │ Live Object Model (LOM)
+        └──HTTP :9012──► Desktop helper (waveform peaks, launch Live/sets)
+```
+
+## Components
+| Part | Path | Runtime | Notes |
+|---|---|---|---|
+| Remote script | `remote_script/LiveCompanion/` | Live 12's embedded Python 3.11, stdlib only | Subclasses `_Framework.ControlSurface`. Same code on Windows & Wine. |
+| Core handlers | `remote_script/LiveCompanion/core/` | pure Python | Protocol + serializers + ops. Takes a `song`/`app` object — real LOM or fake. |
+| Mock Live | `mock/` | desktop Python 3.11+ | Fake LOM objects + standalone server running the SAME core. Used by QA & dev. |
+| Helper | `helper/` | desktop Python 3.11+ | Peaks for audio files (wav/aiff native; others via ffmpeg if present), launch Live. |
+| App | `android/` | minSdk 26, target latest | Compose, single-activity, OkHttp WebSocket, kotlinx.serialization. |
+
+## Threading / tick model (remote script)
+- Live calls `update_display()` ~every 100 ms on main thread. Each tick: accept/read sockets (non-blocking),
+  execute queued ops, flush dirty sections, send realtime frame (meters/playhead) if due.
+- LOM listeners only set dirty flags. See PREFERENCES "Performance-sensitive areas".
+
+## Install (Windows)
+`tools/install_remote_script.ps1` copies `remote_script/LiveCompanion` to
+`%USERPROFILE%\Documents\Ableton\User Library\Remote Scripts\LiveCompanion`. In Live: Settings → Link/Tempo/MIDI →
+Control Surface = LiveCompanion (Input/Output: None). Log: `%APPDATA%\Ableton\Live 12.4.1\Preferences\Log.txt`.
+Wine: same folder under the Wine prefix's Documents.
+
+## Build & run
+- Mock: `python mock/run_mock.py [--port 9010]`
+- Helper: `python helper/helper.py`
+- App: `android/gradlew assembleDebug` (JDK = Android Studio JBR). CI: `.github/workflows/`.
+- Tests: `python -m pytest tests/` (core against fake LOM); `android/gradlew test`.
