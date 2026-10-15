@@ -343,7 +343,10 @@ def test_launch_spawns_with_set(server, tmp_path, monkeypatch):
     monkeypatch.setattr(H, "_spawn", lambda cmd, cwd: (calls.append(cmd), FakeProc())[1])
     st, body = _post(server, "/launch", json.dumps({"set": str(als)}).encode())
     assert st == 200 and body["ok"] is True and body["pid"] == 4242
-    assert calls[0][0] == str(exe)
+    if os.name == "nt":
+        assert calls[0][0] == str(exe)
+    else:  # Linux launches through Wine
+        assert calls[0][0] == "wine" and str(exe) in calls[0]
     assert calls[0][-1] == str(als) or calls[0][-1].endswith("song.als")
 
 
