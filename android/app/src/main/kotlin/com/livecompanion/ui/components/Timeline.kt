@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -77,6 +78,20 @@ class TimelineView {
     }
 }
 
+/**
+ * Vertical scroll of a [Timeline]'s lanes. The ruler stays fixed; lane labels outside the timeline
+ * (gutter) should offset themselves by [offset] to stay aligned.
+ */
+@Stable
+class TimelineVScroll {
+    var offset by mutableFloatStateOf(0f)
+    var content by mutableFloatStateOf(0f)
+    var viewport by mutableFloatStateOf(0f)
+    val max get() = max(0f, content - viewport)
+    fun scrollBy(dy: Float) { offset = (offset + dy).coerceIn(0f, max) }
+    val clamped get() = offset.coerceIn(0f, max)
+}
+
 data class TClip(
     val key: String,
     val name: String,
@@ -119,6 +134,7 @@ fun Timeline(
     loop: TLoop? = null,
     onLoopChange: ((start: Double, len: Double, done: Boolean) -> Unit)? = null,
     follow: Boolean = false,
+    vScroll: TimelineVScroll? = null,
     onRulerTap: (Double) -> Unit = {},
     onClipTap: (lane: Int, clip: TClip) -> Unit = { _, _ -> },
     onEmptyTap: (lane: Int, beat: Double) -> Unit = { _, _ -> },
@@ -139,6 +155,8 @@ fun Timeline(
     val curRuler by rememberUpdatedState(onRulerTap)
     val curClipTap by rememberUpdatedState(onClipTap)
     val curEmptyTap by rememberUpdatedState(onEmptyTap)
+    val curV by rememberUpdatedState(vScroll)
+    vScroll?.let { v -> androidx.compose.runtime.SideEffect { v.content = laneHPx * lanes.size } }
     // While dragging a loop edge we render the local value; cleared when the finger lifts.
     var dragLoop by remember { mutableStateOf<TLoop?>(null) }
 
@@ -160,7 +178,7 @@ fun Timeline(
             .height(rulerH + laneHeight * lanes.size)
             .background(LiveColors.Bg)
             .clipToBounds()
-            .onSizeChanged { view.widthPx = it.width.toFloat() }
+            .onSizeChanged { view.widthPx = it.width.toFloat(); vScroll?.viewport = it.height - rulerPx }
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -222,6 +240,7 @@ fun Timeline(
                                     }
                                 } else {
                                     view.start = max(0.0, view.start - (c.position.x - c.previousPosition.x) / view.ppb)
+                                    if (p0.y > rulerPx) curV?.scrollBy(-(c.position.y - c.previousPosition.y))
                                 }
                                 c.consume()
                             }
@@ -239,7 +258,7 @@ fun Timeline(
                         if (p0.y <= rulerPx) {
                             curRuler(max(0.0, view.beatAt(p0.x)))
                         } else {
-                            val li = ((p0.y - rulerPx) / laneHPx).toInt()
+                            val li = ((p0.y - rulerPx + (curV?.clamped ?: 0f)) / laneHPx).toInt()
                             val lane = curLanes.getOrNull(li)
                             if (lane != null) {
                                 val beat = view.beatAt(p0.x)
@@ -262,7 +281,18 @@ fun Timeline(
     ) {
         Canvas(Modifier.fillMaxSize()) {
             if (!view.fitted) return@Canvas
-            drawTimeline(view, lanes, curBpb, dragLoop ?: loop, rulerPx, laneHPx, measurer, density.density)
+            val vs = vScroll
+            if (vs == null) {
+                drawTimeline(view, lanes, curBpb, dragLoop ?: loop, rulerPx, laneHPx, measurer, density.density)
+            } else {
+                // Lanes scroll vertically under a fixed ruler: draw everything shifted, then the ruler on top.
+                translate(top = -vs.clamped) {
+                    drawTimeline(view, lanes, curBpb, dragLoop ?: loop, rulerPx, laneHPx, measurer, density.density)
+                }
+                clipRect(0f, 0f, size.width, rulerPx) {
+                    drawTimeline(view, emptyList(), curBpb, dragLoop ?: loop, rulerPx, laneHPx, measurer, density.density)
+                }
+            }
         }
         PlayheadLayer(rt, view, Modifier.fillMaxSize())
     }

@@ -1,0 +1,31 @@
+{
+ "d": [
+  {
+   "folder": false,
+   "loadable": true,
+   "name": "Drum Rack",
+   "uri": "query:DrumRack"
+  },
+  {
+   "folder": false,
+   "loadable": true,
+   "name": "Instrument Rack",
+   "uri": "query:InstrumentRack"
+  },
+  {
+   "folder": true,
+   "loadable": false,
+   "name": "Synths",
+   "uri": "query:Synths"
+  },
+  {
+   "folder": true,
+   "loadable": false,
+   "name": "Samplers",
+   "uri": "query:Samplers"
+  }
+ ],
+ "id": 21,
+ "ok": true,
+ "t": "res"
+}

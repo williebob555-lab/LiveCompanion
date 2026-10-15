@@ -1,0 +1,39 @@
+{
+ "d": {
+  "devices": [
+   {
+    "chains": [],
+    "cls": "Eq8",
+    "macros": null,
+    "name": "EQ Eight",
+    "on": true,
+    "path": "0",
+    "type": "audio_fx",
+    "var": null
+   },
+   {
+    "chains": [],
+    "cls": "Compressor2",
+    "macros": null,
+    "name": "Compressor",
+    "on": true,
+    "path": "1",
+    "type": "audio_fx",
+    "var": null
+   },
+   {
+    "chains": [],
+    "cls": "Reverb",
+    "macros": null,
+    "name": "Reverb",
+    "on": true,
+    "path": "2",
+    "type": "audio_fx",
+    "var": null
+   }
+  ],
+  "tr": "t3"
+ },
+ "s": "devices",
+ "t": "sec"
+}

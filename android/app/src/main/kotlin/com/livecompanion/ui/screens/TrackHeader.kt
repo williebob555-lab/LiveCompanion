@@ -47,7 +47,7 @@ private val MONITOR_LABELS = listOf("IN", "AUTO", "OFF")
 
 /**
  * Fixed track header for the focused track: prev/next, name (opens a simple picker dialog),
- * arm/mute/solo/monitor, vol/pan mini faders, meter. 3 rows <420dp, 2 rows <700dp, else 1 row.
+ * arm/mute/solo/monitor, vol/pan mini faders, meter. 2 dense rows <640dp, else 1 row.
  */
 @Composable
 fun TrackHeader(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier) {
@@ -65,17 +65,17 @@ fun TrackHeader(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
     }
 
     val prev: @Composable RowScope.() -> Unit = {
-        LiveIconButton(LiveIconKind.Prev, { goto(if (idx <= 0) all.lastIndex else idx - 1) }, minWidth = 36.dp, enabled = all.size > 1)
+        LiveIconButton(LiveIconKind.Prev, { goto(if (idx <= 0) all.lastIndex else idx - 1) }, minWidth = 32.dp, enabled = all.size > 1)
     }
     val next: @Composable RowScope.() -> Unit = {
-        LiveIconButton(LiveIconKind.Next, { goto(if (idx < 0 || idx >= all.lastIndex) 0 else idx + 1) }, minWidth = 36.dp, enabled = all.size > 1)
+        LiveIconButton(LiveIconKind.Next, { goto(if (idx < 0 || idx >= all.lastIndex) 0 else idx + 1) }, minWidth = 32.dp, enabled = all.size > 1)
     }
     val nameBtn: @Composable RowScope.(Modifier) -> Unit = { m ->
-        LiveButton({ picker = true }, m, offColor = LiveColors.PanelHi, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)) { c ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                ColorChip(focus.color)
-                LiveText(focus.name.ifEmpty { "-" }, Modifier.weight(1f, fill = false), LiveType.Title, c)
-                LiveIcon(LiveIconKind.Down, c, size = 14.dp)
+        LiveButton({ picker = true }, m, offColor = LiveColors.PanelHi, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)) { c ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                ColorChip(focus.color, size = 10.dp)
+                LiveText(focus.name.ifEmpty { "-" }, Modifier.weight(1f, fill = false), LiveType.Body, c)
+                LiveIcon(LiveIconKind.Down, c, size = 12.dp)
             }
         }
     }
@@ -98,7 +98,7 @@ fun TrackHeader(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
                     val nxt = (mon + 1) % 3
                     set("monitor", nxt, { it.copy(monitor = nxt) }, { it.copy(monitor = nxt) })
                 },
-                m, mon == 0, LiveColors.Accent, minWidth = 44.dp,
+                m, mon == 0, LiveColors.Accent, minWidth = 40.dp,
             )
         }
     }
@@ -108,30 +108,23 @@ fun TrackHeader(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
         MeterBar(
             left = { rt.value.meters.focusL },
             right = { rt.value.meters.focusR },
-            modifier = Modifier.weight(0.8f).height(30.dp),
+            modifier = Modifier.weight(0.8f).height(28.dp),
         )
     }
 
     BoxWithConstraints(modifier.fillMaxWidth().background(LiveColors.Panel)) {
-        val gap = Arrangement.spacedBy(2.dp)
+        val gap = Arrangement.spacedBy(1.dp)
         when {
-            maxWidth >= 700.dp -> Row(Modifier.padding(2.dp), gap, Alignment.CenterVertically) {
+            maxWidth >= 640.dp -> Row(Modifier.padding(1.dp), gap, Alignment.CenterVertically) {
                 prev(); nameBtn(Modifier.weight(1.2f)); next()
                 toggles(Modifier)
                 faders()
             }
-            maxWidth >= 420.dp -> Column(Modifier.padding(2.dp), Arrangement.spacedBy(2.dp)) {
+            else -> Column(Modifier.padding(1.dp), Arrangement.spacedBy(1.dp)) {
                 Row(horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) {
                     prev(); nameBtn(Modifier.weight(1f)); next()
                     toggles(Modifier)
                 }
-                Row(horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) { faders() }
-            }
-            else -> Column(Modifier.padding(2.dp), Arrangement.spacedBy(2.dp)) {
-                Row(horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) {
-                    prev(); nameBtn(Modifier.weight(1f)); next()
-                }
-                Row(horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) { toggles(Modifier.weight(1f)) }
                 Row(horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) { faders() }
             }
         }
@@ -155,7 +148,7 @@ private fun VolFader(store: LiveStore, client: LiveClient, focus: FocusState, mo
             store.updateFocus { it.copy(vol = it.vol.copy(v = nv, str = "")) }
             client.opThrottled("vol:${focus.ref}", "track.set", "tr" to focus.ref, "k" to "vol", "v" to nv)
         },
-        modifier = modifier.height(30.dp),
+        modifier = modifier.height(28.dp),
         valueRange = v.min..v.max.coerceAtLeast(v.min + 0.001f),
         defaultValue = 0.85f,
         vertical = false,
@@ -172,7 +165,7 @@ private fun PanFader(store: LiveStore, client: LiveClient, focus: FocusState, mo
             store.updateFocus { it.copy(pan = it.pan.copy(v = nv, str = "")) }
             client.opThrottled("pan:${focus.ref}", "track.set", "tr" to focus.ref, "k" to "pan", "v" to nv)
         },
-        modifier = modifier.height(30.dp),
+        modifier = modifier.height(28.dp),
         valueRange = p.min..p.max.coerceAtLeast(p.min + 0.001f),
         defaultValue = 0f,
         vertical = false,

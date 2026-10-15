@@ -1,0 +1,107 @@
+{
+ "d": {
+  "slots": [
+   {
+    "clip": {
+     "audio": false,
+     "color": 16753961,
+     "len": 8.0,
+     "looping": true,
+     "muted": false,
+     "name": "Beat 1"
+    },
+    "has_clip": true,
+    "has_stop": true,
+    "i": 0,
+    "status": "stopped"
+   },
+   {
+    "clip": {
+     "audio": false,
+     "color": 16753961,
+     "len": 8.0,
+     "looping": true,
+     "muted": false,
+     "name": "Beat 2"
+    },
+    "has_clip": true,
+    "has_stop": true,
+    "i": 1,
+    "status": "stopped"
+   },
+   {
+    "clip": {
+     "audio": false,
+     "color": 16753961,
+     "len": 8.0,
+     "looping": true,
+     "muted": false,
+     "name": "Beat 3"
+    },
+    "has_clip": true,
+    "has_stop": true,
+    "i": 2,
+    "status": "stopped"
+   },
+   {
+    "clip": {
+     "audio": false,
+     "color": 16753961,
+     "len": 8.0,
+     "looping": true,
+     "muted": false,
+     "name": "Beat 4"
+    },
+    "has_clip": true,
+    "has_stop": true,
+    "i": 3,
+    "status": "stopped"
+   },
+   {
+    "clip": {
+     "audio": false,
+     "color": 16753961,
+     "len": 8.0,
+     "looping": true,
+     "muted": false,
+     "name": "Beat 5"
+    },
+    "has_clip": true,
+    "has_stop": true,
+    "i": 4,
+    "status": "stopped"
+   },
+   {
+    "clip": {
+     "audio": false,
+     "color": 16753961,
+     "len": 8.0,
+     "looping": true,
+     "muted": false,
+     "name": "Beat 6"
+    },
+    "has_clip": true,
+    "has_stop": true,
+    "i": 5,
+    "status": "stopped"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 6,
+    "status": "empty"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 7,
+    "status": "empty"
+   }
+  ],
+  "tr": "t0"
+ },
+ "s": "slots",
+ "t": "sec"
+}

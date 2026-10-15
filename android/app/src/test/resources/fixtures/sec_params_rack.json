@@ -1,0 +1,24 @@
+{
+ "d": {
+  "name": "Drum Rack",
+  "params": [
+   {
+    "i": 0,
+    "items": [
+     "Off",
+     "On"
+    ],
+    "max": 1.0,
+    "min": 0.0,
+    "name": "Device On",
+    "quant": true,
+    "str": "On",
+    "v": 1.0
+   }
+  ],
+  "path": "0",
+  "tr": "t0"
+ },
+ "s": "params",
+ "t": "sec"
+}

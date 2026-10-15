@@ -16,6 +16,10 @@ Android remote for Ableton Live 12 (Windows, or Fedora via Wine), focused on **o
 - Update TODO.md (move items, note decisions), and any doc whose facts changed.
 - New owner preference/correction -> `docs/PREFERENCES.md` immediately.
 
+## Gotchas
+- NEVER rewrite files with Windows PowerShell `Get-Content`/`Set-Content` — it mangles UTF-8 (→ becomes â†’)
+  and line endings. Use the Edit/Write tools or Python with encoding="utf-8", newline="".
+
 ## Layout
 ```
 remote_script/LiveCompanion/   Python Control Surface that runs inside Live (stdlib only)

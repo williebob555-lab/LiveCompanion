@@ -1,6 +1,16 @@
 package com.livecompanion.state
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import kotlin.math.roundToInt
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -14,6 +24,16 @@ val LiveJson: Json = Json {
     coerceInputValues = true
     explicitNulls = false
     encodeDefaults = true
+}
+
+/** Live reports velocities as floats (112.0); accept ints or floats, hold an Int. */
+object LenientIntSerializer : KSerializer<Int> {
+    override val descriptor = PrimitiveSerialDescriptor("LenientInt", PrimitiveKind.INT)
+    override fun deserialize(decoder: Decoder): Int {
+        val e = (decoder as JsonDecoder).decodeJsonElement().jsonPrimitive
+        return e.intOrNull ?: e.doubleOrNull?.roundToInt() ?: 0
+    }
+    override fun serialize(encoder: Encoder, value: Int) = encoder.encodeInt(value)
 }
 
 // ------------------------------------------------------------------ shared
@@ -81,6 +101,8 @@ data class TrackInfo(
     val foldable: Boolean = false,
     @SerialName("playing_slot") val playingSlot: Int = -1,
     @SerialName("fired_slot") val firedSlot: Int = -1,
+    /** Returns and master only. */
+    val vol: P? = null,
 )
 
 @Serializable
@@ -221,8 +243,8 @@ data class ParamsState(
 // ------------------------------------------------------------------ clip (opened)
 @Serializable
 data class Note(
-    val id: Int = 0, val p: Int = 60, val t: Double = 0.0, val d: Double = 0.25, val v: Int = 100,
-    val m: Boolean = false, val prob: Float = 1f, val vd: Float = 0f, val rv: Int = 64,
+    val id: Int = 0, val p: Int = 60, val t: Double = 0.0, val d: Double = 0.25, @Serializable(with = LenientIntSerializer::class) val v: Int = 100,
+    val m: Boolean = false, val prob: Float = 1f, val vd: Float = 0f, @Serializable(with = LenientIntSerializer::class) val rv: Int = 64,
 )
 
 @Serializable
@@ -262,6 +284,7 @@ data class ClipState(
     @SerialName("warp_markers") val warpMarkers: List<WarpMarker> = emptyList(),
     // midi only
     val notes: List<Note> = emptyList(),
+    @SerialName("notes_total") val notesTotal: Int = 0,
 )
 
 // ------------------------------------------------------------------ rt frame

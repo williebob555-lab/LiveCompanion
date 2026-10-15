@@ -205,6 +205,7 @@ class LiveClient(
                 val d = msg["d"] ?: return
                 if (name == "focus") (d as? JsonObject)?.get("ref")?.jsonPrimitive?.contentOrNull?.let { if (it.isNotEmpty()) lastFocus = it }
                 store.handleSection(name, d)
+                if (name == "tracks" && lastFocus.isEmpty()) autoFocus()
             }
             "rt" -> msg["d"]?.let { store.handleRt(it) }
             "log" -> {
@@ -214,6 +215,14 @@ class LiveClient(
             }
             "pong" -> Unit
         }
+    }
+
+    /** First connect: focus Live's selected track, else the first track, so the app never opens on "No track selected". */
+    private fun autoFocus() {
+        val t = store.tracks.value
+        val ref = t.find(store.session.value.selTrack)?.ref ?: t.tracks.firstOrNull()?.ref ?: t.all.firstOrNull()?.ref ?: return
+        store.focusPending(ref)
+        op("focus.set", "tr" to ref)
     }
 
     /** After (re)connect: server already re-sent global sections; restore this client's own state. */

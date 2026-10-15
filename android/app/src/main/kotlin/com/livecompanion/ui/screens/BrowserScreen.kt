@@ -47,6 +47,7 @@ data class BrowserItem(
     val folder: Boolean = false,
     val loadable: Boolean = false,
     val uri: String? = null,
+    val key: String? = null,
 )
 
 /** Browser state that survives tab switches: current path, per-path listing cache, preview. One per [LiveStore]. */

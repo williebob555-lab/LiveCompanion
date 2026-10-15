@@ -1,0 +1,67 @@
+{
+ "d": [
+  {
+   "folder": true,
+   "key": "instruments",
+   "loadable": false,
+   "name": "Instruments"
+  },
+  {
+   "folder": true,
+   "key": "audio_effects",
+   "loadable": false,
+   "name": "Audio Effects"
+  },
+  {
+   "folder": true,
+   "key": "midi_effects",
+   "loadable": false,
+   "name": "MIDI Effects"
+  },
+  {
+   "folder": true,
+   "key": "drums",
+   "loadable": false,
+   "name": "Drums"
+  },
+  {
+   "folder": true,
+   "key": "sounds",
+   "loadable": false,
+   "name": "Sounds"
+  },
+  {
+   "folder": true,
+   "key": "samples",
+   "loadable": false,
+   "name": "Samples"
+  },
+  {
+   "folder": true,
+   "key": "packs",
+   "loadable": false,
+   "name": "Packs"
+  },
+  {
+   "folder": true,
+   "key": "user_library",
+   "loadable": false,
+   "name": "User Library"
+  },
+  {
+   "folder": true,
+   "key": "plugins",
+   "loadable": false,
+   "name": "Plug-ins"
+  },
+  {
+   "folder": true,
+   "key": "clips",
+   "loadable": false,
+   "name": "Clips"
+  }
+ ],
+ "id": 20,
+ "ok": true,
+ "t": "res"
+}

@@ -1,22 +1,23 @@
-﻿# TODO â€” workstation
+# TODO — workstation
 
-Legend: `[ ]` todo Â· `[~]` in progress (who) Â· `[x]` done Â· `[!]` blocked (why)
+Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (why)
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
 ## In progress
-- [~] M1.1 python-core agent (sonnet) â€” remote script, core, fake LOM, mock, tests
+- [~] M1.1 python-core agent (sonnet) — remote script, core, fake LOM, mock, tests
 - [~] screens agent A (sonnet): Arrange + Takes (+ ui/components/Timeline.kt)
 - [~] screens agent B (sonnet): Clip editor (props, piano roll, waveform via helper)
 - [~] screens agent C (sonnet): Devices + Browser + Mix
 - [x] screens agent C done (Devices/Browser/Mix, Dense.kt, ColorPalette.kt) — uncommitted until build green
 - [x] screens agent A done (Arrange/Takes, Timeline.kt) — uncommitted until build green
-- [ ] Shell hook to switch tabs (Arrange/Takes/Session "Open in Clip tab"); Takes ruler should stay fixed; arr clip drag-move
-- [ ] Protocol gap (server side DONE, vol on returns/master): tracks section T lacks vol for returns/master → add `vol:P` to T (server + Models + Mix return strip faders)
-- Next: density pass on Shell/Session (orchestrator noted rows/buttons ~48dp, too chunky vs "dense" pref),
+- [x] Shell tab hook (LocalTabNavigator), Open in Clip (Session menu/Arrange/Takes), Takes ruler fixed (TimelineVScroll). [ ] arr clip drag-move still open
+- [x] Protocol gap DONE (server+Models+Mix return/master faders) (vol on returns/master): tracks section T lacks vol for returns/master → add `vol:P` to T (server + Models + Mix return strip faders)
+- [x] Density pass done (32dp rows, single-line tabs, 11-12sp); contract test (tools/dump_fixtures.py + ContractTest) done; S1 auto-focus, S2 pan label bg done.
+- Next (was): density pass on Shell/Session (orchestrator noted rows/buttons ~48dp, too chunky vs "dense" pref),
   then emulator smoke against mock, then QA agent rounds.
 - Done this phase: android-core (a7447d5), helper+CI (90a6b45), AVDs lc_phone_small/lc_phone/lc_tablet created.
 
-## Milestone 1 â€” "Broad strokes" (everything wired end-to-end, mock-tested) â†’ owner QA
+## Milestone 1 — "Broad strokes" (everything wired end-to-end, mock-tested) → owner QA
 ### M1.0 Foundations (orchestrator)
 - [x] Docs system (CLAUDE.md, docs/*, qa/REVIEW_LOG.md, this file)
 - [x] git init + public repo williebob555-lab/LiveCompanion + .gitignore
@@ -28,7 +29,7 @@ Rule: update this file when starting/finishing anything. If interrupted, resume 
 - [x] All ops in PROTOCOL.md (graceful `unsupported` where LOM lacks it)
 - [x] UDP discovery beacon
 - [x] ControlSurface wrapper `__init__.py` + install script `tools/install_remote_script.ps1` (+ .sh for Wine)
-- [x] `probe.py`: dumps dir() of key LOM objects to Log.txt / a JSON file â†’ fills docs/LOM_NOTES.md
+- [x] `probe.py`: dumps dir() of key LOM objects to Log.txt / a JSON file → fills docs/LOM_NOTES.md
 - [x] Fake LOM (`mock/fake_lom.py`): realistic demo set (8 tracks, audio+midi, slots, arr clips, take lanes, racks, browser tree), simulated playback clock + recording
 - [x] `mock/run_mock.py` server using same core; pytest suite in `tests/` (65 tests green)
 ### M1.2 Helper (agent: helper)
@@ -44,7 +45,7 @@ Rule: update this file when starting/finishing anything. If interrupted, resume 
 - [x] GitHub Actions (not yet run on GitHub): build debug APK + run python tests on push; release workflow on tag `v*` attaches APK + remote script zip
 ### M1.5 Verification
 - [ ] Run probe against real Live 12.4.1, reconcile LOM_NOTES + fix ops
-- [ ] QA agent rounds R1â€“R4 (mock + emulators, then real Live)
+- [ ] QA agent rounds R1–R4 (mock + emulators, then real Live)
 - [ ] Milestone report + APK to owner
 
 ## Later / ideas
@@ -52,7 +53,8 @@ Rule: update this file when starting/finishing anything. If interrupted, resume 
 - Take ratings sync to Live clip names? (decide after owner QA)
 
 ## QA follow-ups
-- (none yet)
+- [ ] S1 auto-focus a track on connect (qa/REVIEW_LOG R0)
+- [ ] S2 pan readout overlaps center line
 
 ## Done log
 - 2026-10-15 Docs system created; process questions answered (public repo, local+CI builds, mock+emulator+real Live QA, milestone reports).

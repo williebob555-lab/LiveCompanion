@@ -1,0 +1,39 @@
+{
+ "d": {
+  "clips": [
+   {
+    "audio": false,
+    "color": 16753961,
+    "end": 8.0,
+    "i": 0,
+    "looping": true,
+    "muted": false,
+    "name": "Beat A",
+    "start": 0.0
+   },
+   {
+    "audio": false,
+    "color": 16753961,
+    "end": 16.0,
+    "i": 1,
+    "looping": true,
+    "muted": false,
+    "name": "Beat B",
+    "start": 8.0
+   },
+   {
+    "audio": false,
+    "color": 16753961,
+    "end": 32.0,
+    "i": 2,
+    "looping": true,
+    "muted": false,
+    "name": "Beat C",
+    "start": 16.0
+   }
+  ],
+  "tr": "t0"
+ },
+ "s": "arr",
+ "t": "sec"
+}

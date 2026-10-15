@@ -1,0 +1,19 @@
+{
+ "d": {
+  "clips": [
+   {
+    "audio": true,
+    "color": 12581632,
+    "end": 6.0,
+    "i": 0,
+    "looping": true,
+    "muted": false,
+    "name": "Guitar Main",
+    "start": 0.0
+   }
+  ],
+  "tr": "t4"
+ },
+ "s": "arr",
+ "t": "sec"
+}

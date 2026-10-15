@@ -1,6 +1,8 @@
 package com.livecompanion.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
@@ -176,7 +178,7 @@ fun LiveFader(
         if (label != null) {
             LiveText(
                 label,
-                Modifier.align(Alignment.Center),
+                Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.55f), LiveShapes.Small).padding(horizontal = 3.dp),
                 LiveType.Small,
                 color = Color.White,
                 textAlign = TextAlign.Center,

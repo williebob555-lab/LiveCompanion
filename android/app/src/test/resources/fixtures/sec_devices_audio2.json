@@ -1,0 +1,29 @@
+{
+ "d": {
+  "devices": [
+   {
+    "chains": [],
+    "cls": "Amp",
+    "macros": null,
+    "name": "Amp",
+    "on": true,
+    "path": "0",
+    "type": "audio_fx",
+    "var": null
+   },
+   {
+    "chains": [],
+    "cls": "Cabinet",
+    "macros": null,
+    "name": "Cabinet",
+    "on": true,
+    "path": "1",
+    "type": "audio_fx",
+    "var": null
+   }
+  ],
+  "tr": "t4"
+ },
+ "s": "devices",
+ "t": "sec"
+}

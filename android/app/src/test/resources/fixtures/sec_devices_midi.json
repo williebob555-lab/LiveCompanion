@@ -1,0 +1,88 @@
+{
+ "d": {
+  "devices": [
+   {
+    "chains": [
+     {
+      "devices": [
+       {
+        "chains": [],
+        "cls": "OriginalSimpler",
+        "macros": null,
+        "name": "Simpler",
+        "on": true,
+        "path": "0.c0.0",
+        "type": "instrument",
+        "var": null
+       }
+      ],
+      "i": 0,
+      "name": "Kick"
+     },
+     {
+      "devices": [
+       {
+        "chains": [],
+        "cls": "OriginalSimpler",
+        "macros": null,
+        "name": "Simpler",
+        "on": true,
+        "path": "0.c1.0",
+        "type": "instrument",
+        "var": null
+       },
+       {
+        "chains": [],
+        "cls": "Saturator",
+        "macros": null,
+        "name": "Saturator",
+        "on": true,
+        "path": "0.c1.1",
+        "type": "audio_fx",
+        "var": null
+       }
+      ],
+      "i": 1,
+      "name": "Snare"
+     },
+     {
+      "devices": [
+       {
+        "chains": [],
+        "cls": "OriginalSimpler",
+        "macros": null,
+        "name": "Simpler",
+        "on": true,
+        "path": "0.c2.0",
+        "type": "instrument",
+        "var": null
+       }
+      ],
+      "i": 2,
+      "name": "Hat"
+     }
+    ],
+    "cls": "DrumGroupDevice",
+    "macros": null,
+    "name": "Drum Rack",
+    "on": true,
+    "path": "0",
+    "type": "rack",
+    "var": null
+   },
+   {
+    "chains": [],
+    "cls": "Compressor2",
+    "macros": null,
+    "name": "Compressor",
+    "on": true,
+    "path": "1",
+    "type": "audio_fx",
+    "var": null
+   }
+  ],
+  "tr": "t0"
+ },
+ "s": "devices",
+ "t": "sec"
+}

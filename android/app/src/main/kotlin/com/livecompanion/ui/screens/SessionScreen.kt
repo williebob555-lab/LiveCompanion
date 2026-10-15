@@ -74,29 +74,30 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
     var menuSlot by remember { mutableIntStateOf(-1) }
     var action by remember { mutableStateOf<SlotAction?>(null) }
     val tr = slotsState.tr.ifEmpty { focus.ref }
+    val goTab = LocalTabNavigator.current
 
     Column(modifier.fillMaxSize().background(LiveColors.Bg)) {
         Row(
-            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(2.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(1.dp),
+            horizontalArrangement = Arrangement.spacedBy(1.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             LiveButton(
                 onClick = { client.op("take.next", "tr" to tr) },
                 modifier = Modifier.weight(1.4f),
-                minHeight = 44.dp,
+                minHeight = 32.dp,
                 onColor = LiveColors.Rec,
                 offColor = LiveColors.Rec.copy(alpha = 0.85f),
                 enabled = tr.isNotEmpty(),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    LiveIcon(LiveIconKind.Rec, Color.White, size = 16.dp)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    LiveIcon(LiveIconKind.Rec, Color.White, size = 12.dp)
                     LiveText("TAKE", style = LiveType.Title, color = Color.White)
-                    LiveIcon(LiveIconKind.Play, Color.White, size = 14.dp)
+                    LiveIcon(LiveIconKind.Play, Color.White, size = 11.dp)
                 }
             }
-            LiveTextButton("Stop", { client.op("track.stop", "tr" to tr) }, Modifier.weight(0.8f), minHeight = 44.dp, enabled = tr.isNotEmpty())
-            LiveTextButton("Scenes", { showScenes = !showScenes }, Modifier.weight(0.9f), on = showScenes, minHeight = 44.dp)
+            LiveTextButton("Stop", { client.op("track.stop", "tr" to tr) }, Modifier.weight(0.8f), minHeight = 32.dp, enabled = tr.isNotEmpty())
+            LiveTextButton("Scenes", { showScenes = !showScenes }, Modifier.weight(0.9f), on = showScenes, minHeight = 32.dp)
         }
 
         val slots = slotsState.slots
@@ -108,8 +109,8 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
             LazyColumn(
                 Modifier.fillMaxWidth().weight(1f),
                 state = rememberLazyListState(),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(2.dp),
+                verticalArrangement = Arrangement.spacedBy(1.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(1.dp),
             ) {
                 items(slots, key = { it.i }) { slot ->
                     SlotRow(
@@ -153,6 +154,7 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                 when (a) {
                     is SlotAction.Duplicate -> client.op("slot.duplicate", "tr" to tr, "i" to menu.i)
                     is SlotAction.Delete -> client.op("slot.delete", "tr" to tr, "i" to menu.i)
+                    is SlotAction.Edit -> { client.op("clip.open", "loc" to Loc.slot(tr, menu.i)); goTab(Tab.Clip) }
                     is SlotAction.Create -> client.op("slot.create", "tr" to tr, "i" to menu.i, "len" to a.len)
                     else -> action = a
                 }
@@ -181,6 +183,7 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
 sealed interface SlotAction {
     data object Duplicate : SlotAction
     data object Delete : SlotAction
+    data object Edit : SlotAction
     data class Create(val len: Double) : SlotAction
     data class Rename(val i: Int) : SlotAction
     data class CopyTo(val i: Int) : SlotAction
@@ -210,11 +213,11 @@ private fun SlotRow(
         else -> dim(base, 0.7f)
     }
     val fg = if (!slot.hasClip) LiveColors.TextDim else onColor(cellBg)
-    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = 44.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = 32.dp), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
         if (showScene) {
-            LiveButton(onSceneFire, Modifier.width(54.dp).fillMaxHeight(), minHeight = 44.dp, minWidth = 54.dp) { c ->
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    LiveIcon(LiveIconKind.Play, c, size = 12.dp)
+            LiveButton(onSceneFire, Modifier.width(44.dp).fillMaxHeight(), minHeight = 32.dp, minWidth = 44.dp, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp)) { c ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    LiveIcon(LiveIconKind.Play, c, size = 9.dp)
                     LiveText(sceneLabel, style = LiveType.Small, color = c)
                 }
             }
@@ -223,7 +226,7 @@ private fun SlotRow(
             Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .heightIn(min = 44.dp)
+                .heightIn(min = 32.dp)
                 .clip(LiveShapes.Small)
                 .background(cellBg)
                 .then(if (status == SlotStatus.TRIGGERED) Modifier.border(2.dp, LiveColors.Accent, LiveShapes.Small) else Modifier)
@@ -239,32 +242,32 @@ private fun SlotRow(
                         }
                     } else Modifier
                 )
-                .padding(horizontal = 6.dp),
+                .padding(horizontal = 4.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
                     when (status) {
-                        SlotStatus.PLAYING -> Box(Modifier.size(22.dp).background(LiveColors.Play, LiveShapes.Small), contentAlignment = Alignment.Center) {
-                            LiveIcon(LiveIconKind.Play, Color.Black, size = 14.dp)
+                        SlotStatus.PLAYING -> Box(Modifier.size(18.dp).background(LiveColors.Play, LiveShapes.Small), contentAlignment = Alignment.Center) {
+                            LiveIcon(LiveIconKind.Play, Color.Black, size = 11.dp)
                         }
-                        SlotStatus.TRIGGERED -> LiveIcon(LiveIconKind.Play, LiveColors.Accent, size = 16.dp)
-                        SlotStatus.RECORDING -> LiveIcon(LiveIconKind.Rec, LiveColors.Rec, size = 18.dp)
-                        SlotStatus.STOPPED -> LiveIcon(LiveIconKind.Play, fg, size = 14.dp)
-                        else -> if (armed) LiveIcon(LiveIconKind.Rec, LiveColors.Rec.copy(alpha = 0.6f), size = 14.dp)
+                        SlotStatus.TRIGGERED -> LiveIcon(LiveIconKind.Play, LiveColors.Accent, size = 12.dp)
+                        SlotStatus.RECORDING -> LiveIcon(LiveIconKind.Rec, LiveColors.Rec, size = 14.dp)
+                        SlotStatus.STOPPED -> LiveIcon(LiveIconKind.Play, fg, size = 11.dp)
+                        else -> if (armed) LiveIcon(LiveIconKind.Rec, LiveColors.Rec.copy(alpha = 0.6f), size = 11.dp)
                     }
                 }
                 LiveText(
                     clip?.name?.ifEmpty { if (clip.audio) "Audio" else "MIDI" } ?: "",
                     Modifier.weight(1f, fill = false),
-                    LiveType.Body,
+                    LiveType.Small,
                     fg,
                 )
             }
         }
         LiveIconButton(
             LiveIconKind.Stop, onStop, Modifier.fillMaxHeight(),
-            enabled = active, minHeight = 44.dp,
+            enabled = active, minHeight = 32.dp,
         )
     }
 }
@@ -274,6 +277,7 @@ private fun SlotMenuDialog(slot: SlotInfo, onDismiss: () -> Unit, onPick: (SlotA
     LiveDialog("Slot ${slot.i + 1}" + (slot.clip?.name?.takeIf { it.isNotEmpty() }?.let { " - $it" } ?: ""), onDismiss) {
         val full = Modifier.fillMaxWidth()
         if (slot.hasClip) {
+            LiveTextButton("Edit clip", { onPick(SlotAction.Edit) }, full)
             LiveTextButton("Rename", { onPick(SlotAction.Rename(slot.i)) }, full)
             LiveTextButton("Duplicate", { onPick(SlotAction.Duplicate) }, full)
             LiveTextButton("Copy to...", { onPick(SlotAction.CopyTo(slot.i)) }, full)

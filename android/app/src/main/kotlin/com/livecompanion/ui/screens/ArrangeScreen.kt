@@ -71,6 +71,7 @@ fun ArrangeScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
     val session by store.session.collectAsState()
     val focus by store.focus.collectAsState()
     val clipSec by store.clip.collectAsState()
+    val goTab = LocalTabNavigator.current
     val tr = arr.tr.ifEmpty { focus.ref }
     val view = remember { TimelineView() }
     var follow by remember { mutableStateOf(false) }
@@ -178,6 +179,10 @@ fun ArrangeScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                 }
                 val loc = Loc.arr(tr, selClip.i)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    DBtn("Open in Clip", {
+                        client.op("clip.open", "loc" to loc)
+                        goTab(Tab.Clip)
+                    }, Modifier)
                     DBtn("Fire", {
                         client.op("song.seek", "beats" to selClip.start)
                         if (!session.playing) client.op("song.play")

@@ -1,0 +1,246 @@
+{
+ "d": {
+  "master": {
+   "arm": false,
+   "armable": false,
+   "color": 10132122,
+   "fired_slot": -1,
+   "foldable": false,
+   "folded": false,
+   "group": null,
+   "kind": "master",
+   "monitor": 1,
+   "mute": false,
+   "name": "Master",
+   "playing_slot": -1,
+   "ref": "m",
+   "solo": false,
+   "vol": {
+    "max": 1.0,
+    "min": 0.0,
+    "str": "0.0 dB",
+    "v": 0.85
+   }
+  },
+  "returns": [
+   {
+    "arm": false,
+    "armable": false,
+    "color": 9160191,
+    "fired_slot": -1,
+    "foldable": false,
+    "folded": false,
+    "group": null,
+    "kind": "return",
+    "monitor": 1,
+    "mute": false,
+    "name": "A Reverb",
+    "playing_slot": -1,
+    "ref": "r0",
+    "solo": false,
+    "vol": {
+     "max": 1.0,
+     "min": 0.0,
+     "str": "0.0 dB",
+     "v": 0.85
+    }
+   },
+   {
+    "arm": false,
+    "armable": false,
+    "color": 14183652,
+    "fired_slot": -1,
+    "foldable": false,
+    "folded": false,
+    "group": null,
+    "kind": "return",
+    "monitor": 1,
+    "mute": false,
+    "name": "B Delay",
+    "playing_slot": -1,
+    "ref": "r1",
+    "solo": false,
+    "vol": {
+     "max": 1.0,
+     "min": 0.0,
+     "str": "0.0 dB",
+     "v": 0.85
+    }
+   }
+  ],
+  "scenes": [
+   {
+    "color": 16749734,
+    "i": 0,
+    "name": "Intro"
+   },
+   {
+    "color": 13408551,
+    "i": 1,
+    "name": "Verse"
+   },
+   {
+    "color": 12581632,
+    "i": 2,
+    "name": "Pre"
+   },
+   {
+    "color": 2490280,
+    "i": 3,
+    "name": "Chorus"
+   },
+   {
+    "color": 9160191,
+    "i": 4,
+    "name": "Verse 2"
+   },
+   {
+    "color": 9611263,
+    "i": 5,
+    "name": "Bridge"
+   },
+   {
+    "color": 15029152,
+    "i": 6,
+    "name": "Chorus 2"
+   },
+   {
+    "color": 16749734,
+    "i": 7,
+    "name": "Outro"
+   }
+  ],
+  "tracks": [
+   {
+    "arm": false,
+    "armable": true,
+    "color": 16753961,
+    "fired_slot": -1,
+    "foldable": false,
+    "folded": false,
+    "group": null,
+    "kind": "midi",
+    "monitor": 1,
+    "mute": false,
+    "name": "Drums",
+    "playing_slot": -1,
+    "ref": "t0",
+    "solo": false
+   },
+   {
+    "arm": false,
+    "armable": true,
+    "color": 1769263,
+    "fired_slot": -1,
+    "foldable": false,
+    "folded": false,
+    "group": null,
+    "kind": "midi",
+    "monitor": 1,
+    "mute": false,
+    "name": "Bass",
+    "playing_slot": -1,
+    "ref": "t1",
+    "solo": false
+   },
+   {
+    "arm": false,
+    "armable": true,
+    "color": 5538020,
+    "fired_slot": -1,
+    "foldable": false,
+    "folded": false,
+    "group": null,
+    "kind": "midi",
+    "monitor": 1,
+    "mute": false,
+    "name": "Keys",
+    "playing_slot": -1,
+    "ref": "t2",
+    "solo": false
+   },
+   {
+    "arm": false,
+    "armable": true,
+    "color": 15029152,
+    "fired_slot": -1,
+    "foldable": false,
+    "folded": false,
+    "group": null,
+    "kind": "audio",
+    "monitor": 1,
+    "mute": false,
+    "name": "Vocals",
+    "playing_slot": -1,
+    "ref": "t3",
+    "solo": false
+   },
+   {
+    "arm": false,
+    "armable": true,
+    "color": 12581632,
+    "fired_slot": -1,
+    "foldable": false,
+    "folded": false,
+    "group": null,
+    "kind": "audio",
+    "monitor": 1,
+    "mute": false,
+    "name": "Guitar",
+    "playing_slot": -1,
+    "ref": "t4",
+    "solo": false
+   },
+   {
+    "arm": false,
+    "armable": false,
+    "color": 6094824,
+    "fired_slot": -1,
+    "foldable": true,
+    "folded": false,
+    "group": null,
+    "kind": "group",
+    "monitor": 1,
+    "mute": false,
+    "name": "FX Group",
+    "playing_slot": -1,
+    "ref": "t5",
+    "solo": false
+   },
+   {
+    "arm": false,
+    "armable": true,
+    "color": 9611263,
+    "fired_slot": -1,
+    "foldable": false,
+    "folded": false,
+    "group": "t5",
+    "kind": "audio",
+    "monitor": 1,
+    "mute": false,
+    "name": "FX Audio",
+    "playing_slot": -1,
+    "ref": "t6",
+    "solo": false
+   },
+   {
+    "arm": false,
+    "armable": true,
+    "color": 16749734,
+    "fired_slot": -1,
+    "foldable": false,
+    "folded": false,
+    "group": "t5",
+    "kind": "midi",
+    "monitor": 1,
+    "mute": false,
+    "name": "FX MIDI",
+    "playing_slot": -1,
+    "ref": "t7",
+    "solo": false
+   }
+  ]
+ },
+ "s": "tracks",
+ "t": "sec"
+}

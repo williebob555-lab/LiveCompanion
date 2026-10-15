@@ -1,0 +1,29 @@
+{
+ "d": {
+  "clips": [
+   {
+    "audio": true,
+    "color": 15029152,
+    "end": 14.0,
+    "i": 0,
+    "looping": true,
+    "muted": false,
+    "name": "Vox Main",
+    "start": 8.0
+   },
+   {
+    "audio": true,
+    "color": 15029152,
+    "end": 22.0,
+    "i": 1,
+    "looping": true,
+    "muted": false,
+    "name": "Vox Main 2",
+    "start": 16.0
+   }
+  ],
+  "tr": "t3"
+ },
+ "s": "arr",
+ "t": "sec"
+}

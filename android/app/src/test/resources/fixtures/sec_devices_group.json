@@ -1,0 +1,19 @@
+{
+ "d": {
+  "devices": [
+   {
+    "chains": [],
+    "cls": "GlueCompressor",
+    "macros": null,
+    "name": "Glue Compressor",
+    "on": true,
+    "path": "0",
+    "type": "audio_fx",
+    "var": null
+   }
+  ],
+  "tr": "t5"
+ },
+ "s": "devices",
+ "t": "sec"
+}

@@ -10,7 +10,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
+import com.livecompanion.ui.components.TimelineVScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -87,6 +95,7 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
     val session by store.session.collectAsState()
     val focus by store.focus.collectAsState()
     val ctx = LocalContext.current
+    val goTab = LocalTabNavigator.current
     val ratings = remember { TakeRatings(ctx) }
     val tr = takes.tr.ifEmpty { focus.ref }
     var bestOnly by remember { mutableStateOf(false) }
@@ -106,7 +115,7 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
         ) {
             LiveTextButton(
                 "TAKE", { client.op("take.next", "tr" to tr) }, Modifier,
-                on = true, onColor = LiveColors.Rec, enabled = tr.isNotEmpty(), minHeight = 28.dp, minWidth = 56.dp,
+                on = true, onColor = LiveColors.Rec, enabled = tr.isNotEmpty(), minHeight = 32.dp, minWidth = 56.dp,
             )
             DBtn("Stop", { client.op("track.stop", "tr" to tr) }, enabled = tr.isNotEmpty())
             if (takes.supported) DBtn("+ Lane", { client.op("takes.create_lane", "tr" to tr) })
@@ -138,30 +147,37 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
                             stars = ratings.get(ratings.key(trackName, l.i, c.start)))
                     })
                 }
-                Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                    Row(Modifier.fillMaxWidth()) {
-                        Column(Modifier.width(GutterW)) {
-                            Spacer(Modifier.height(timelineRulerHeight()))
-                            for (l in takes.lanes) {
-                                Box(
-                                    Modifier.fillMaxWidth().height(LaneH).background(LiveColors.PanelHi)
-                                        .clickable { renameLane = l.i }.padding(horizontal = 4.dp),
-                                    contentAlignment = Alignment.CenterStart,
-                                ) { LiveText(l.name.ifEmpty { "Lane ${l.i + 1}" }, style = LiveType.Small) }
+                val vs = remember { TimelineVScroll() }
+                Row(Modifier.fillMaxWidth().weight(1f, fill = false).height(IntrinsicSize.Min)) {
+                    Column(Modifier.width(GutterW).fillMaxHeight()) {
+                        Spacer(Modifier.height(timelineRulerHeight()))
+                        // Lane labels scroll with the lanes (the ruler stays fixed).
+                        Box(Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
+                            Column(
+                                Modifier.fillMaxWidth().wrapContentHeight(align = Alignment.Top, unbounded = true)
+                                    .offset { IntOffset(0, -vs.clamped.roundToInt()) },
+                            ) {
+                                for (l in takes.lanes) {
+                                    Box(
+                                        Modifier.fillMaxWidth().height(LaneH).background(LiveColors.PanelHi)
+                                            .clickable { renameLane = l.i }.padding(horizontal = 4.dp),
+                                        contentAlignment = Alignment.CenterStart,
+                                    ) { LiveText(l.name.ifEmpty { "Lane ${l.i + 1}" }, style = LiveType.Small) }
+                                }
                             }
                         }
-                        Timeline(
-                            view = view, lanes = tlLanes, beatsPerBar = bpb, rt = store.rt,
-                            modifier = Modifier.weight(1f), laneHeight = LaneH,
-                            onRulerTap = { client.op("song.seek", "beats" to it) },
-                            onClipTap = { li, c ->
-                                val lane = shown.getOrNull(li) ?: return@Timeline
-                                val ci = c.key.substringAfter(':').toIntOrNull() ?: return@Timeline
-                                pick = Pick.Take(lane.i, ci)
-                            },
-                            onEmptyTap = { _, _ -> pick = null },
-                        )
                     }
+                    Timeline(
+                        view = view, lanes = tlLanes, beatsPerBar = bpb, rt = store.rt,
+                        modifier = Modifier.weight(1f), laneHeight = LaneH, vScroll = vs,
+                        onRulerTap = { client.op("song.seek", "beats" to it) },
+                        onClipTap = { li, c ->
+                            val lane = shown.getOrNull(li) ?: return@Timeline
+                            val ci = c.key.substringAfter(':').toIntOrNull() ?: return@Timeline
+                            pick = Pick.Take(lane.i, ci)
+                        },
+                        onEmptyTap = { _, _ -> pick = null },
+                    )
                 }
                 val p = pick
                 val lane = takes.lanes.firstOrNull { it.i == p?.lane }
@@ -184,6 +200,10 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
                                 client.op("clip.open", "loc" to Loc.take(tr, lane.i, clip.i))
                                 client.op("song.seek", "beats" to clip.start)
                                 client.op("song.play")
+                            })
+                            DBtn("Open in Clip", {
+                                client.op("clip.open", "loc" to Loc.take(tr, lane.i, clip.i))
+                                goTab(Tab.Clip)
                             })
                             DBtn("Promote", { client.op("takes.promote", "loc" to Loc.take(tr, lane.i, clip.i)) })
                             DBtn("Rename lane", { renameLane = lane.i })

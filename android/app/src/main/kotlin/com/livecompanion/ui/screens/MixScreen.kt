@@ -250,6 +250,17 @@ private fun ReturnsStrip(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 ColorChip(t.color)
                 LiveText(t.name, Modifier.weight(1f), LiveType.Small)
+                t.vol?.let { vp ->
+                    LiveFader(
+                        vp.v, { v ->
+                            store.patchTrack(t.ref) { it.copy(vol = vp.copy(v = v)) }
+                            client.opThrottled("mix:${t.ref}:vol", "track.set", "tr" to t.ref, "k" to "vol", "v" to v)
+                        },
+                        Modifier.width(64.dp).height(24.dp), valueRange = vp.min..vp.max.coerceAtLeast(vp.min + 1e-3f),
+                        defaultValue = 0.85f.coerceIn(vp.min, vp.max.coerceAtLeast(0.85f)), vertical = false,
+                        label = vp.str.ifEmpty { null },
+                    )
+                }
                 if (t.kind == "master") MeterBar({ rt.value.meters.masterL }, { rt.value.meters.masterR }, Modifier.width(48.dp).height(8.dp))
                 else {
                     DenseButton("M", { store.patchTrack(t.ref) { it.copy(mute = !t.mute) }; client.op("track.set", "tr" to t.ref, "k" to "mute", "v" to !t.mute) }, on = t.mute, onColor = LiveColors.MuteOn)

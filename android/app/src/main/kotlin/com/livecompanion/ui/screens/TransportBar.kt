@@ -43,7 +43,7 @@ import kotlin.math.floor
 
 /**
  * Fixed top transport bar: play/stop/rec/session-rec/overdub/loop/metronome, tempo, position, undo/redo.
- * Two rows below 520dp wide, one row above.
+ * Two 32dp rows below 440dp wide, one row above.
  */
 @Composable
 fun TransportBar(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier) {
@@ -76,7 +76,7 @@ fun TransportBar(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
         LiveButton(
             onClick = { tempoDialog = true },
             modifier = Modifier.weight(tempoWeight),
-            minWidth = 56.dp,
+            minWidth = 52.dp,
         ) { c -> LiveText(formatTempo(s.tempo), style = LiveType.Mono, color = c) }
         PositionReadout(store, Modifier.weight(posWeight))
     }
@@ -88,16 +88,16 @@ fun TransportBar(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
     }
 
     BoxWithConstraints(modifier.fillMaxWidth().background(LiveColors.Panel)) {
-        if (maxWidth >= 520.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) {
-            Row(Modifier.padding(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (maxWidth >= 440.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) {
+            Row(Modifier.padding(1.dp), horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
                 Buttons()
                 TempoPos(1.4f, 1.8f)
                 UndoRedo()
             }
         } else {
-            Column(Modifier.padding(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) { Buttons() }
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.padding(1.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) { Buttons() }
+                Row(horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
                     TempoPos(1.3f, 1.7f)
                     UndoRedo()
                 }
@@ -126,7 +126,7 @@ private fun RowScope.W(
     color: Color,
     enabled: Boolean = true,
     onClick: () -> Unit,
-) = LiveIconButton(icon, onClick, Modifier.weight(1f), on, color, enabled)
+) = LiveIconButton(icon, onClick, Modifier.weight(1f), on, color, enabled, minWidth = 30.dp)
 
 internal fun formatTempo(t: Float): String = String.format(java.util.Locale.US, "%.2f", t)
 
@@ -138,7 +138,7 @@ fun PositionReadout(store: LiveStore, modifier: Modifier = Modifier) {
     val pos = if (rt.playing || rt.pos != 0.0) rt.pos else s.pos
     Box(
         modifier
-            .heightIn(min = 40.dp)
+            .heightIn(min = 32.dp)
             .background(LiveColors.Bg, LiveShapes.Small)
             .padding(horizontal = 6.dp),
         contentAlignment = Alignment.Center,

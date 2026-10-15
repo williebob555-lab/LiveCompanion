@@ -1,0 +1,19 @@
+{
+ "d": {
+  "clips": [
+   {
+    "audio": false,
+    "color": 5538020,
+    "end": 32.0,
+    "i": 0,
+    "looping": true,
+    "muted": false,
+    "name": "Chords",
+    "start": 8.0
+   }
+  ],
+  "tr": "t2"
+ },
+ "s": "arr",
+ "t": "sec"
+}

@@ -80,7 +80,7 @@ fun LiveLabel(text: String, modifier: Modifier = Modifier) =
 
 /**
  * Live-style toggle/push button: flat 2dp rectangle, lit with [onColor] when [on].
- * Min touch target 40dp. [content] receives the right foreground color.
+ * Min touch target 32dp (dense). [content] receives the right foreground color.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -91,8 +91,8 @@ fun LiveButton(
     onColor: Color = LiveColors.Accent,
     enabled: Boolean = true,
     onLongClick: (() -> Unit)? = null,
-    minHeight: Dp = 40.dp,
-    minWidth: Dp = 40.dp,
+    minHeight: Dp = 32.dp,
+    minWidth: Dp = 32.dp,
     contentPadding: PaddingValues = PaddingValues(horizontal = 6.dp),
     offColor: Color = LiveColors.PanelHi,
     content: @Composable BoxScope.(contentColor: Color) -> Unit,
@@ -120,8 +120,8 @@ fun LiveTextButton(
     onColor: Color = LiveColors.Accent,
     enabled: Boolean = true,
     onLongClick: (() -> Unit)? = null,
-    minHeight: Dp = 40.dp,
-    minWidth: Dp = 40.dp,
+    minHeight: Dp = 32.dp,
+    minWidth: Dp = 32.dp,
 ) = LiveButton(onClick, modifier, on, onColor, enabled, onLongClick, minHeight, minWidth) { c ->
     LiveText(label, style = LiveType.Small, color = c, textAlign = TextAlign.Center)
 }
@@ -135,8 +135,8 @@ fun LiveIconButton(
     onColor: Color = LiveColors.Accent,
     enabled: Boolean = true,
     iconColor: Color? = null,
-    minHeight: Dp = 40.dp,
-    minWidth: Dp = 40.dp,
+    minHeight: Dp = 32.dp,
+    minWidth: Dp = 32.dp,
 ) = LiveButton(onClick, modifier, on, onColor, enabled, null, minHeight, minWidth) { c ->
     LiveIcon(icon, iconColor ?: c)
 }
@@ -151,7 +151,7 @@ enum class LiveIconKind { Play, Stop, Rec, SessionRec, Overdub, Loop, Metronome,
 
 /** Vector-drawn icons (no font glyph dependence). */
 @Composable
-fun LiveIcon(kind: LiveIconKind, color: Color, modifier: Modifier = Modifier, size: Dp = 18.dp) {
+fun LiveIcon(kind: LiveIconKind, color: Color, modifier: Modifier = Modifier, size: Dp = 14.dp) {
     Canvas(modifier.size(size)) { drawIcon(kind, color) }
 }
 
@@ -232,7 +232,7 @@ fun LiveTextField(
         decorationBox = { inner ->
             Box(
                 Modifier
-                    .heightIn(min = 40.dp)
+                    .heightIn(min = 32.dp)
                     .fillMaxWidth()
                     .background(LiveColors.Bg, LiveShapes.Small)
                     .border(1.dp, LiveColors.Line, LiveShapes.Small)

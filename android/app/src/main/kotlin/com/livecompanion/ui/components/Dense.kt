@@ -26,7 +26,7 @@ import com.livecompanion.ui.theme.LiveColors
 import com.livecompanion.ui.theme.LiveShapes
 import com.livecompanion.ui.theme.LiveType
 
-/** Dense (28dp) button for Ableton-like control rows. */
+/** Dense (32dp) button for Ableton-like control rows. */
 @Composable
 fun DenseButton(
     label: String,
@@ -35,7 +35,7 @@ fun DenseButton(
     on: Boolean = false,
     onColor: androidx.compose.ui.graphics.Color = LiveColors.Accent,
     enabled: Boolean = true,
-) = LiveTextButton(label, onClick, modifier, on, onColor, enabled, minHeight = 28.dp, minWidth = 28.dp)
+) = LiveTextButton(label, onClick, modifier, on, onColor, enabled, minHeight = 32.dp, minWidth = 32.dp)
 
 /** Dense single-line text field (30dp). */
 @Composable
@@ -56,7 +56,7 @@ fun DenseTextField(
         modifier = modifier,
         decorationBox = { inner ->
             Box(
-                Modifier.heightIn(min = 30.dp).fillMaxWidth()
+                Modifier.heightIn(min = 32.dp).fillMaxWidth()
                     .background(LiveColors.Bg, LiveShapes.Small)
                     .border(1.dp, LiveColors.Line, LiveShapes.Small)
                     .padding(horizontal = 8.dp),
@@ -69,7 +69,7 @@ fun DenseTextField(
     )
 }
 
-/** Dropdown-style selector: a 28dp field showing the current value; tapping opens a plain dialog list. */
+/** Dropdown-style selector: a 32dp field showing the current value; tapping opens a plain dialog list. */
 @Composable
 fun DenseSelect(
     title: String,
@@ -81,7 +81,7 @@ fun DenseSelect(
 ) {
     var open by remember { mutableStateOf(false) }
     Row(
-        modifier.heightIn(min = 28.dp)
+        modifier.heightIn(min = 32.dp)
             .clip(LiveShapes.Small)
             .background(LiveColors.PanelHi)
             .clickable(enabled = enabled && items.isNotEmpty()) { open = true }

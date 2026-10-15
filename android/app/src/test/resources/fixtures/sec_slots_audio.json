@@ -1,0 +1,79 @@
+{
+ "d": {
+  "slots": [
+   {
+    "clip": {
+     "audio": true,
+     "color": 15029152,
+     "len": 6.0,
+     "looping": true,
+     "muted": false,
+     "name": "Vox A"
+    },
+    "has_clip": true,
+    "has_stop": true,
+    "i": 0,
+    "status": "stopped"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 1,
+    "status": "empty"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 2,
+    "status": "empty"
+   },
+   {
+    "clip": {
+     "audio": true,
+     "color": 15029152,
+     "len": 6.0,
+     "looping": true,
+     "muted": false,
+     "name": "Vox B"
+    },
+    "has_clip": true,
+    "has_stop": true,
+    "i": 3,
+    "status": "stopped"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 4,
+    "status": "empty"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 5,
+    "status": "empty"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 6,
+    "status": "empty"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 7,
+    "status": "empty"
+   }
+  ],
+  "tr": "t3"
+ },
+ "s": "slots",
+ "t": "sec"
+}

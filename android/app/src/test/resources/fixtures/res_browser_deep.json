@@ -1,0 +1,31 @@
+{
+ "d": [
+  {
+   "folder": false,
+   "loadable": true,
+   "name": "Operator",
+   "uri": "query:Operator"
+  },
+  {
+   "folder": false,
+   "loadable": true,
+   "name": "Wavetable",
+   "uri": "query:Wavetable"
+  },
+  {
+   "folder": false,
+   "loadable": true,
+   "name": "Analog",
+   "uri": "query:Analog"
+  },
+  {
+   "folder": false,
+   "loadable": true,
+   "name": "Drift",
+   "uri": "query:Drift"
+  }
+ ],
+ "id": 22,
+ "ok": true,
+ "t": "res"
+}
