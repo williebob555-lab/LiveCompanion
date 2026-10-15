@@ -1,4 +1,4 @@
-"""Section serializers (PROTOCOL.md). Pure functions of (song, application, ...) -> JSON-able data.
+﻿"""Section serializers (PROTOCOL.md). Pure functions of (song, application, ...) -> JSON-able data.
 
 Defensive: every LOM attribute is read through g()/try so a missing API degrades instead of raising."""
 from .util import (g, num, intv, seq, resolve_track, resolve_clip, resolve_device, slots_of, lane_clips,
@@ -131,6 +131,11 @@ def ser_track(t, ref, group_ref=None):
     }
 
 
+def _with_vol(d, t):
+    d["vol"] = P(g(g(t, "mixer_device", None), "volume", None))
+    return d
+
+
 def tracks(song, app=None):
     tl = seq(g(song, "tracks", ()))
     out = []
@@ -143,12 +148,12 @@ def tracks(song, app=None):
                     gref = "t%d" % j
                     break
         out.append(ser_track(t, "t%d" % i, gref))
-    rets = [ser_track(t, "r%d" % i) for i, t in enumerate(seq(g(song, "return_tracks", ())))]
+    rets = [_with_vol(ser_track(t, "r%d" % i), t) for i, t in enumerate(seq(g(song, "return_tracks", ())))]
     master = g(song, "master_track", None)
     scenes = []
     for i, s in enumerate(seq(g(song, "scenes", ()))):
         scenes.append({"i": i, "name": _s(g(s, "name", "")), "color": intv(g(s, "color", 0))})
-    return {"tracks": out, "returns": rets, "master": ser_track(master, "m") if master is not None else None,
+    return {"tracks": out, "returns": rets, "master": _with_vol(ser_track(master, "m"), master) if master is not None else None,
             "scenes": scenes}
 
 

@@ -1,19 +1,182 @@
 package com.livecompanion.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.livecompanion.net.LiveClient
+import com.livecompanion.net.LiveException
+import com.livecompanion.net.jsonArgs
+import com.livecompanion.state.LiveJson
 import com.livecompanion.state.LiveStore
-import com.livecompanion.ui.components.PlaceholderScreen
+import com.livecompanion.ui.components.DenseButton
+import com.livecompanion.ui.components.DenseTextField
+import com.livecompanion.ui.components.LiveText
+import com.livecompanion.ui.theme.LiveColors
+import com.livecompanion.ui.theme.LiveShapes
+import com.livecompanion.ui.theme.LiveType
+import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+
+@Serializable
+data class BrowserItem(
+    val name: String = "",
+    val folder: Boolean = false,
+    val loadable: Boolean = false,
+    val uri: String? = null,
+)
+
+/** Browser state that survives tab switches: current path, per-path listing cache, preview. One per [LiveStore]. */
+private class BrowserModel {
+    var path by mutableStateOf(listOf<String>())
+    var roots by mutableStateOf<List<BrowserItem>?>(null)
+    val cache = HashMap<List<String>, List<BrowserItem>>()
+    var version by mutableStateOf(0)
+    var error by mutableStateOf<String?>(null)
+    var loading by mutableStateOf(false)
+    var previewing by mutableStateOf<List<String>?>(null)
+    var status by mutableStateOf<String?>(null)
+    var query by mutableStateOf("")
+}
+
+private val models = java.util.WeakHashMap<LiveStore, BrowserModel>()
+
+private suspend fun fetch(client: LiveClient, path: List<String>): List<BrowserItem> {
+    val d = client.request("browser.list", jsonArgs("path" to path))
+    return LiveJson.decodeFromJsonElement(ListSerializer(BrowserItem.serializer()), d)
+}
 
 /**
- * Browser tab. Browser roots -> folders -> items, load onto the focused track, preview.
- *
- * PLACEHOLDER: replace the body, keep the signature. Read state from `store` (one StateFlow per
- * section), send ops through `client` (`client.op("name", "k" to v)` / suspend `client.request`).
- * Do not edit shared files (MainShell etc.); this file is wired in already.
+ * Browser tab: root categories (fixed row), breadcrumb, filtered listing. Folders navigate; loadable
+ * items get Load (onto the focused track) and Preview. Listings are cached per path in memory.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BrowserScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier) {
-    PlaceholderScreen("Browser", "Browser roots -> folders -> items, load onto the focused track, preview.", modifier)
+    val m = remember(store) { models.getOrPut(store) { BrowserModel() } }
+    val focus by store.focus.collectAsState()
+    val hello by store.hello.collectAsState()
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(hello) {
+        if (hello != null && m.roots == null) {
+            try { m.roots = fetch(client, emptyList()).also { m.cache[emptyList()] = it } }
+            catch (e: LiveException) { m.error = e.message }
+        }
+    }
+    LaunchedEffect(m.path, m.version) {
+        if (m.path.isEmpty() || m.cache.containsKey(m.path)) { m.loading = false; return@LaunchedEffect }
+        m.loading = true; m.error = null
+        try { m.cache[m.path] = fetch(client, m.path) }
+        catch (e: LiveException) { m.error = e.message ?: "Listing failed" }
+        m.loading = false
+        m.version++
+    }
+
+    @Suppress("UNUSED_VARIABLE") val ver = m.version
+    val listing = m.cache[m.path].orEmpty()
+    val shown = remember(listing, m.query, ver) {
+        if (m.query.isBlank()) listing else listing.filter { it.name.contains(m.query.trim(), ignoreCase = true) }
+    }
+    val tr = focus.ref
+
+    Column(modifier.fillMaxSize().background(LiveColors.Bg).padding(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        FlowRow(
+            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            val roots = m.roots
+            if (roots == null) LiveText(m.error ?: "Loading categories...", color = LiveColors.TextDim, modifier = Modifier.padding(4.dp))
+            else for (r in roots) DenseButton(r.name, { m.path = listOf(r.name); m.query = "" }, on = m.path.firstOrNull() == r.name)
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            DenseButton("Up", { m.path = m.path.dropLast(1); m.query = "" }, enabled = m.path.isNotEmpty())
+            LiveText(
+                if (m.path.isEmpty()) "Pick a category" else m.path.joinToString("  /  "),
+                Modifier.weight(1f).padding(horizontal = 4.dp), LiveType.Small, color = LiveColors.TextDim,
+            )
+            DenseButton("Refresh", { m.cache.remove(m.path); m.version++ }, enabled = m.path.isNotEmpty())
+            if (m.previewing != null) DenseButton("Stop", { m.previewing = null; client.op("browser.preview_stop") }, on = true, onColor = LiveColors.Play)
+        }
+        DenseTextField(m.query, { m.query = it }, Modifier.fillMaxWidth(), placeholder = "Search this folder")
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            when {
+                m.path.isEmpty() -> Center("Pick a category above")
+                m.loading && listing.isEmpty() -> Center("Loading...")
+                m.error != null && listing.isEmpty() -> Center(m.error ?: "")
+                shown.isEmpty() -> Center(if (listing.isEmpty()) "Empty" else "No matches")
+                else -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    items(shown, key = { it.name + it.uri }) { item ->
+                        val full = m.path + item.name
+                        Row(
+                            Modifier.fillMaxWidth().height(32.dp).background(LiveColors.Panel, LiveShapes.Small)
+                                .then(if (item.folder) Modifier.clickable { m.path = full; m.query = "" } else Modifier)
+                                .padding(start = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Box(Modifier.size(8.dp).background(if (item.folder) LiveColors.Accent else LiveColors.TextDim, LiveShapes.Small))
+                            LiveText(item.name, Modifier.weight(1f), LiveType.Body)
+                            if (item.loadable) {
+                                val prev = m.previewing == full
+                                DenseButton("Preview", {
+                                    if (prev) { m.previewing = null; client.op("browser.preview_stop") }
+                                    else { m.previewing = full; client.op("browser.preview", "path" to full) }
+                                }, on = prev, onColor = LiveColors.Play)
+                                DenseButton("Load", {
+                                    scope.launch {
+                                        try {
+                                            client.request("browser.load", jsonArgs("tr" to tr, "path" to full))
+                                            m.status = "Loaded ${item.name}"
+                                        } catch (e: LiveException) {
+                                            m.status = "Load failed: ${e.message}"
+                                        }
+                                        m.status?.let { store.notice(it) }
+                                    }
+                                }, enabled = tr.isNotEmpty())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        m.status?.let { LiveText(it, Modifier.fillMaxWidth().background(LiveColors.Panel).padding(4.dp), LiveType.Small) }
+    }
+}
+
+@Composable
+private fun Center(text: String) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LiveText(text, color = LiveColors.TextDim) }
+}
+
+/** Test hook: preload the browser cache/roots/path for [store]. */
+internal fun seedBrowserForTest(store: LiveStore, roots: List<BrowserItem>, path: List<String>, listing: List<BrowserItem>) {
+    val m = models.getOrPut(store) { BrowserModel() }
+    m.roots = roots
+    m.cache[emptyList()] = roots
+    m.cache[path] = listing
+    m.path = path
 }

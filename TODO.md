@@ -8,6 +8,10 @@ Rule: update this file when starting/finishing anything. If interrupted, resume 
 - [~] screens agent A (sonnet): Arrange + Takes (+ ui/components/Timeline.kt)
 - [~] screens agent B (sonnet): Clip editor (props, piano roll, waveform via helper)
 - [~] screens agent C (sonnet): Devices + Browser + Mix
+- [x] screens agent C done (Devices/Browser/Mix, Dense.kt, ColorPalette.kt) — uncommitted until build green
+- [x] screens agent A done (Arrange/Takes, Timeline.kt) — uncommitted until build green
+- [ ] Shell hook to switch tabs (Arrange/Takes/Session "Open in Clip tab"); Takes ruler should stay fixed; arr clip drag-move
+- [ ] Protocol gap (server side DONE, vol on returns/master): tracks section T lacks vol for returns/master → add `vol:P` to T (server + Models + Mix return strip faders)
 - Next: density pass on Shell/Session (orchestrator noted rows/buttons ~48dp, too chunky vs "dense" pref),
   then emulator smoke against mock, then QA agent rounds.
 - Done this phase: android-core (a7447d5), helper+CI (90a6b45), AVDs lc_phone_small/lc_phone/lc_tablet created.
