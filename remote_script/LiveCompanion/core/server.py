@@ -9,6 +9,7 @@ from .beacon import Beacon
 from .listeners import Listeners
 from .ops import Ops
 from .peaks import PeaksWorker
+from .recenv import RecEnv
 from .util import Deferred, OpError, BadArgs, resolve_track, resolve_clip, resolve_device, loc_key, g
 from .ws import WSServer
 
@@ -57,6 +58,7 @@ class Core(object):
         self.ws = WSServer(bind_host, port, self.log)
         self.beacon = Beacon(port, helper_port, beacon_port, beacon_targets) if beacon else None
         self.peaks = PeaksWorker(disk_cache=peaks_disk_cache)
+        self.recenv = RecEnv()    # meter envelope of clips being recorded on focused tracks
         self.ops = Ops(self)
         self.clients = []
         self.dirty = set()
@@ -183,6 +185,11 @@ class Core(object):
                     self._rebuild = True
                     self.listeners_dirty = True
         self._send_deferred()
+        if self.clients:
+            try:
+                self.recenv.sample(self.song, set(c.focus for c in self.clients if c.focus))
+            except Exception:
+                self._err("recenv")
         if self.listeners_dirty:
             self._sync_listeners()        # attach before sending state so no change slips between the two
         if self.clients:
@@ -262,6 +269,8 @@ class Core(object):
             res["d"] = d
         except OpError as e:
             res = {"t": "res", "id": rid, "ok": False, "err": str(e)}
+            if getattr(e, "data", None) is not None:
+                res["d"] = e.data
         except AttributeError as e:      # LOM object lacks something we expected
             self._err("op " + str(op))
             res = {"t": "res", "id": rid, "ok": False, "err": "unsupported: %s" % (e,)}
@@ -275,10 +284,11 @@ class Core(object):
             except Exception:
                 self._err("after_op")
 
-    def defer_peaks(self, cl, path, n):
+    def defer_peaks(self, cl, path, n, sr=0, ek=None):
         d = Deferred()
         d.rid = self._cur_rid
-        self.peaks.submit(path, n, cl.id, d.rid)
+        job = self.peaks.submit(path, n, cl.id, d.rid, sr)
+        job.ek = ek
         return d
 
     def _send_deferred(self):
@@ -288,8 +298,22 @@ class Core(object):
                 continue
             if job.ok:
                 self._send(cl, {"t": "res", "id": job.rid, "ok": True, "d": job.data})
+            elif job.locked and job.ek and self._env_reply(cl, job):
+                pass
             else:
                 self._send(cl, {"t": "res", "id": job.rid, "ok": False, "err": job.data})
+
+    def _env_reply(self, cl, job):
+        """Locked wav, no .asd: answer with the coarse meter envelope recorded while the clip was recording."""
+        try:
+            d = self.recenv.approx_peaks(job.ek, job.n)
+        except Exception:
+            self._err("env_peaks")
+            return False
+        if d is None:
+            return False
+        self._send(cl, {"t": "res", "id": job.rid, "ok": True, "d": d})
+        return True
 
     def _after_op(self, cl, op, a):
         d = self.dirty
@@ -455,6 +479,9 @@ class Core(object):
             if js is None:
                 try:
                     d = S.rt(self.song, self.app, cl.focus, cl.clip)
+                    re_ = self.recenv.rt_payload(cl.focus)
+                    if re_ is not None:
+                        d["rec_env"] = re_
                     js = '{"t":"rt","d":%s}' % json.dumps(d, separators=(",", ":"))
                 except Exception:
                     self._err("rt")

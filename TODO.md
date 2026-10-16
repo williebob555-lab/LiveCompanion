@@ -11,6 +11,11 @@ Unverified on real Live: arr.move/trim, takes promote/demote/move, cue.move, cli
 slot swap → run tools/live_verify.py --mutate with the owner.
 
 ## NOW (2026-10-16, owner testing on phone)
+- [x] Track reorder (owner request): server `track.move_check` / `track.move` (rebuild-move, ops.py + fake LOM + pytest), app hold-drag grip + up/down buttons in picker and Tracks tab, loss-confirm dialog, "Moving...", DemoClient. Real-Live UNVERIFIED -> run `tools/live_verify.py --mutate` (new step "track.move"). Tap name = switch track, rename via pencil.
+- [x] Locked-recording waveforms (owner: Live holds new recordings exclusively): clip.peaks falls back wav -> `<wav>.asd` overview (core/asd.py, format in LOM_NOTES, tools/asd_probe.py) -> meter envelope (core/recenv.py, `approx`) -> clear error; `rt.rec_env` draws a growing waveform in the red region (app: RecEnvBuf, dim approx peaks). Needs owner re-test on real Live (restart Live to load the new script).
+- [x] Script-version check: sys.info `script_version` (core VERSION=2) + app REQUIRED_OPS -> outdated banner; unknown op -> "Needs script update".
+- [x] Seamless edges: bar/rail/strip backgrounds extend into the rounded-corner insets (shell_corners*, shell_arrange_corners*).
+- [x] Disconnect while reconnecting did nothing: the connection strip's touch blocker swallowed the button's taps; fixed + MinimalServerTest.disconnectDuringBackoffIsInstantAndFinal.
 - [x] Conformance review #1 fixes (see qa/CONFORMANCE.md fix pass) - uncommitted, gate green; needs reviewer re-check on emulator. New: clip.scrub/clip.stop_scrub ops (real-Live unverified), compact top bar + CompactSecondaryBar.
 - [x] Agent 1: Connect settings/updates, demo mode (DemoClient), editable track picker, zoom-out limits, 40dp top bar, rounded-corner insets (committed 2a7c643).
 - [x] Agent 2: waveforms without helper (clip.peaks in remote script, background thread) (committed 2a7c643; real-Live check of Wine paths / large AIFF still pending).

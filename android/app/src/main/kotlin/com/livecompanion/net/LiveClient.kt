@@ -57,7 +57,7 @@ data class ConnState(
 )
 
 /** A `res` with ok:false. */
-class LiveException(message: String) : Exception(message)
+class LiveException(message: String, val data: JsonElement? = null) : Exception(message)
 
 /**
  * WebSocket client for the LiveCompanion protocol (docs/PROTOCOL.md).
@@ -204,6 +204,7 @@ open class LiveClient(
                 socket = null
                 failPending("Connection lost")
             }
+            if (!currentCoroutineContext().isActive) return
             if (gotHello.get()) { attempt = 0; established = true }
             if (noHello.get()) reason = "No hello from host within ${helloTimeoutMs / 1000} s - is it LiveCompanion?"
             if (!established) {
@@ -242,6 +243,7 @@ open class LiveClient(
                 val cur = _state.value
                 _state.value = ConnState(ConnStatus.CONNECTED, cur.target, 0, null)
                 resync()
+                scope.launch { checkScript() }
             }
             "res" -> {
                 val id = msg["id"]?.jsonPrimitive?.intOrNull ?: return
@@ -280,6 +282,21 @@ open class LiveClient(
         store.clip.value.loc?.let { op("clip.open", "loc" to it) }
     }
 
+    /** After hello: compare Live's script (sys.info ops + script_version) with what this app needs. */
+    private suspend fun checkScript() {
+        try {
+            val d = request("sys.info", timeoutMs = 4000).jsonObject
+            val ops = (d["ops"] as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
+            store.setScript(com.livecompanion.state.evaluateScript(d["script_version"]?.jsonPrimitive?.intOrNull, ops))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: LiveException) {
+            // No sys.info at all = ancient script; a timeout or a minimal test server proves nothing.
+            if (e.message?.startsWith("Needs script update") == true) store.setScript(com.livecompanion.state.ScriptStatus(true, null, listOf("sys.info")))
+        } catch (_: Exception) {
+        }
+    }
+
     private fun failPending(why: String) {
         val it = pending.entries.iterator()
         while (it.hasNext()) {
@@ -314,7 +331,12 @@ open class LiveClient(
             throw e
         }
         val ok = res["ok"]?.jsonPrimitive?.booleanOrNull ?: false
-        if (!ok) throw LiveException(res["err"]?.jsonPrimitive?.contentOrNull ?: "Request failed: $op")
+        if (!ok) {
+            val err = res["err"]?.jsonPrimitive?.contentOrNull ?: "Request failed: $op"
+            // An older remote script in Live does not know newer ops: say so instead of a bare "unknown op".
+            if (err.startsWith("unknown op")) throw LiveException("Needs script update ($op) - reinstall the LiveCompanion script and restart Live")
+            throw LiveException(err, res["d"])
+        }
         return res["d"] ?: JsonNull
     }
 

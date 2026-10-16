@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +40,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.livecompanion.net.Peaks
+import com.livecompanion.state.RecEnvBuf
 import com.livecompanion.net.PeaksClient
 import com.livecompanion.net.PeaksResult
 import com.livecompanion.state.ClipState
@@ -160,6 +162,7 @@ fun AudioEditor(
     var dragWarp by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var sigDialog by remember { mutableStateOf(false) }
     val stepNow = if (seconds) 0.0 else gridStepFor(sub, v.ppu, axis.beatLen, axis.barLen)
+    LaunchedEffect(rt) { snapshotFlow { rt.value.recEnv }.collect { RecEnvBuf.shared.accept(it) } }
     val head = rememberPlayhead(rt, clip, tempo, seconds, rec) { h ->
         if (rec && v.width > 0f && v.xOf(h) > v.width * 0.9f) v.x0 = h - (v.width * 0.4f - v.leftW) / v.ppu.toDouble()
     }
@@ -196,7 +199,11 @@ fun AudioEditor(
                     if (clip.filePath.isBlank()) { err = "No file"; return@LaunchedEffect }
                     while (true) {
                         when (val r = peaksClient.get(host, clip.filePath, n, clip.loc)) {
-                            is PeaksResult.Ok -> { peaks = r.peaks; err = null; break }
+                            is PeaksResult.Ok -> {
+                                peaks = r.peaks; err = null
+                                if (!r.peaks.approx) break
+                                delay(5000)   // coarse meter envelope of a still-locked recording: look again for the real file
+                            }
                             is PeaksResult.Err -> { err = r.msg; delay(4000) }
                         }
                     }
@@ -279,6 +286,7 @@ fun AudioEditor(
                     val h = v.headFor(head()) ?: if (rec) clip.loopEnd else null
                     if (rec) {
                         drawRecRegion(v, 0.0, h ?: 0.0, v.topH, size.height)
+                        if (h != null) drawRecEnv(v, RecEnvBuf.shared, rt.value.pos, h, if (seconds) tempo / 60.0 else 1.0, v.topH, size.height)
                         drawText(tm, "RECORDING", Offset(v.leftW + 8f, v.topH + 6f), TextStyle(fontSize = lblSp, color = LiveColors.Rec))
                     }
                     if (h != null) drawPlayhead(v, h, if (rec) LiveColors.Rec else LiveColors.Playhead, v.braceH, size.height)
@@ -296,6 +304,20 @@ fun AudioEditor(
     }
     if (sigDialog) SigDialog(num, den, { sigDialog = false }) { n, d ->
         ops.set("sig_num", n.toDouble()); ops.set("sig_den", d.toDouble())
+    }
+}
+
+/** Growing meter-envelope shape inside the red recording region (clip-editor axis units; [beatsPerUnit] converts to song beats). */
+private fun DrawScope.drawRecEnv(v: ClipView, buf: RecEnvBuf, songNow: Double, headU: Double, beatsPerUnit: Double, top: Float, bottom: Float) {
+    val mid = (top + bottom) / 2f
+    val amp = (bottom - top) / 2f * 0.9f
+    var x = max(v.xOf(0.0), v.leftW)
+    val xEnd = min(v.xOf(headU), size.width)
+    val stepPx = 2f
+    while (x < xEnd) {
+        val e = buf.at(songNow - (headU - v.unitOf(x)) * beatsPerUnit)
+        if (e >= 0f) drawLine(Color.White.copy(alpha = 0.75f), Offset(x, mid - e * amp), Offset(x, mid + e * amp), stepPx)
+        x += stepPx
     }
 }
 
@@ -321,6 +343,7 @@ private fun DrawScope.drawWave(
             val span = cols / v.ppu.toDouble()
             val a0 = v.unitOf(v.leftW)
             val clipCol = Color(0xFFFF6A5F)
+            val waveCol = if (peaks.approx) color.copy(alpha = 0.55f) else color
             for (cx in 0 until cols) {
                 val s0 = map.secOf(a0 + cx.toDouble() / cols * span)
                 val s1 = map.secOf(a0 + (cx + 1.0) / cols * span)
@@ -328,7 +351,7 @@ private fun DrawScope.drawWave(
                 val y0 = mid - win.second * half
                 val y1 = mid - win.first * half
                 val hot = win.second >= 0.999f || win.first <= -0.999f
-                drawRect(if (hot) clipCol else color, Offset(c0 + cx.toFloat(), y0), Size(1f, max(1f, y1 - y0)))
+                drawRect(if (hot) clipCol else waveCol, Offset(c0 + cx.toFloat(), y0), Size(1f, max(1f, y1 - y0)))
             }
         }
         val ls = v.pvLs ?: clip.loopStart

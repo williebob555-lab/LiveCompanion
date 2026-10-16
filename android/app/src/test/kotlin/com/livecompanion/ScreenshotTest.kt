@@ -160,6 +160,29 @@ class ScreenshotTest(private val wDp: Int, private val hDp: Int, private val lan
         rule.onRoot().captureRoboImage(name("shell_arrange_corners"))
     }
 
+    @Test fun shellRoundedCornersCutoutRight() {
+        // Mirror landscape (cutout on the right): the same seamless edge surfaces.
+        val store = fakeStore()
+        val client = LiveClient(store, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
+        val c = 40.dp
+        launch {
+            MainShell(store, client, Modifier.fillMaxSize(), statusOverride = ConnStatus.CONNECTED, cutoutOverride = 0.dp to 44.dp,
+                cornersOverride = com.livecompanion.ui.screens.Corners(c, c, c, c))
+        }
+        rule.onRoot().captureRoboImage(name("shell_corners_right"))
+    }
+
+    @Test fun shellArrangeRoundedCornersCutoutRight() {
+        val store = fakeStore()
+        val client = LiveClient(store, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
+        val c = 48.dp
+        launch {
+            MainShell(store, client, Modifier.fillMaxSize(), statusOverride = ConnStatus.CONNECTED, cutoutOverride = 0.dp to 44.dp,
+                cornersOverride = com.livecompanion.ui.screens.Corners(c, c, c, c))
+        }
+        rule.onRoot().captureRoboImage(name("shell_arrange_corners_right"))
+    }
+
     @Test fun settingsOffline() {
         launch { com.livecompanion.ui.screens.SettingsScreen(onBack = {}) }
         rule.onRoot().captureRoboImage(name("settings_offline"))

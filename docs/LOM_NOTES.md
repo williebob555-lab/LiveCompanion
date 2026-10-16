@@ -16,8 +16,29 @@ Re-run: reload the control surface in Live; the file is rewritten. Unverified it
 - Device: parameters listener, `latency_in_ms`, view.is_collapsed. Application: average/peak process usage (CPU).
 - song.view: selected_chain, selected_parameter, draw_mode, follow_song, detail_clip.
 
+## Verified on Windows (2026-10-16, Live 12.4.2)
+- Audio recorded in the CURRENTLY OPEN set is locked by Live (no share-read): open() → Errno 13, even from the
+  script inside Live. Older/saved samples are readable. The sidecar "<file>.wav.asd" IS readable → waveform source
+  (decoded by core/asd.py, see next section). Last resort while a clip records: the meter envelope (core/recenv.py).
+
+## .asd overview format (reverse-engineered)
+**Confidence: HIGH for WAV recordings** - verified on 110+ owner files (mono/stereo, 44.1/48 kHz, 24/32-bit): header
+fields matched the wav in every pair; bins vs the true wav min/max: mean abs error 0.002, median ~0, p99 0.04 (outliers
+= a transient sitting in a 128-frame bin that straddles a bucket edge, max ~0.5 at n=256). Live 12.4.2 file version.
+Re-verify any time with `python tools/asd_probe.py [dir]` (read-only; prints mismatches). Layout (all little-endian):
+- `06 49 | u32 n | n x u32` = seek table into the preprocessed (warp) data. **Last entry == total sample frames.**
+  Then 4 unknown bytes, `u32 0`, `u32 100`, **`u32 2*channels`** (offset `6+4*(n+1)+8`), then a typed object stream
+  (type names are length-prefixed; strings UTF-16LE) with warp markers / onsets / tempo estimate. Sample rate is NOT stored.
+- Overview = 3 records `0x13 "SampleOverViewLevel"` + `u32 level` + `u32 count` + `count x float16`. (The same type name
+  also appears earlier as schema text with level=1,count=18 - skip until the first level==0 record.)
+- Level k holds **min,max pairs per bin, channels interleaved per bin** `[ch0 min, ch0 max, ch1 min, ch1 max, ...]`,
+  bins = ceil(frames / 128^(k+1))  -> level 0 = 128 frames/bin, level 1 = 16384, level 2 = 2097152 (whole file).
+  Values are IEEE half floats, already -1..1 (24-bit sources are normalised). No abs-peak-only data: true min AND max.
+- File is written when Live analyses the clip (present while the set is open even if the wav is locked). Unknown: files
+  from mp3/flac (not tested), very old Live versions. A missing/odd .asd -> `AsdError` -> next fallback.
+
 ## Verified ABSENT
-- No `move_track` / track reordering anywhere in the API. Track order cannot be changed remotely.
+- No `move_track` / track reordering anywhere in the API. `track.move` is therefore a REBUILD-MOVE (create track at index, `song.move_device`, clip copies, delete original) - **track.move = rebuild-move, unverified on real Live** (assumes `create_*_track(index)` returns/places the track at `index`, `Track.duplicate_clip_to_arrangement(clip_of_other_track, t)` works, `parameter.automation_state` exists, `Track.is_frozen`). Automation envelopes, group membership, frozen state and take lanes are NOT carried (server reports them as `losses`).
 
 ## Track view assumptions (unverified on real Live)
 - arr.trim sets end_marker (and loop_end when growing a looping clip) / start_marker and reads start_time/end_time back; if Live does not move the clip edge the change is reverted and an error returned.

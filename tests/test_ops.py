@@ -9,7 +9,7 @@ from conftest import Harness
 SLOT = lambda tr, i: {"w": "slot", "tr": tr, "i": i}
 PROTOCOL_OPS = """song.play song.stop song.continue song.tap_tempo song.undo song.redo song.capture_midi
 song.stop_all_clips song.re_enable_automation song.jump song.seek song.scrub song.cue cue.move song.set scene.fire scene.create
-track.create track.delete track.duplicate focus.set focus.follow view.select track.set track.stop slot.fire
+track.create track.delete track.duplicate track.move_check track.move focus.set focus.follow view.select track.set track.stop slot.fire
 slot.create slot.delete slot.duplicate slot.copy slot.move take.next clip.fire clip.stop clip.open clip.close clip.set
 clip.delete clip.duplicate_loop clip.crop clip.quantize clip.to_arr arr.create_midi arr.move arr.trim notes.add notes.modify
 notes.remove notes.clear notes.transpose notes.duplicate warp.add warp.move warp.remove takes.create_lane
@@ -648,9 +648,9 @@ def test_clip_peaks_does_not_block_ticks(h):
     gate = threading.Event()
     orig = h.core.peaks._compute
 
-    def slow(path, n):
+    def slow(path, n, sr=0):
         gate.wait(5)
-        return orig(path, n)
+        return orig(path, n, sr)
 
     h.core.peaks._compute = slow
     c = h.client()
@@ -713,3 +713,249 @@ def test_cue_move(c, h):
         assert abs(s["pos"] - 5) < 1e-6
     finally:
         FakeCue.locked = False
+
+
+def _names(h):
+    return [t.name for t in h.song.tracks]
+
+
+def test_track_move_down_and_up_keeps_everything(c, h):
+    song = h.song
+    keys = song.tracks[2]
+    devs = list(keys.devices)
+    clips = [(i, s.clip.name) for i, s in enumerate(keys.clip_slots) if s.has_clip]
+    keys.mixer_device.volume.value = 0.5
+    keys.mixer_device.panning.value = -0.25
+    keys.mixer_device.sends[1].value = 0.7
+    keys.mute = True
+    keys.color = 12
+    keys.arm = True
+    keys.current_monitoring_state = 2
+    arr = [(x.name, x.start_time) for x in keys.arrangement_clips]
+    n0 = len(song.tracks)
+    c.ok("focus.set", tr="t0")
+    chk = c.ok("track.move_check", tr="t2")
+    assert chk == {"ok_to_move": True, "losses": []}
+    # down: Keys (t2) -> final index 4
+    r = c.ok("track.move", tr="t2", to=4)
+    assert r["tr"] == "t4"
+    names = _names(h)
+    assert names[:5] == ["Drums", "Bass", "Vocals", "Guitar", "Keys"] and len(names) == n0
+    new = song.tracks[4]
+    assert new is not keys and new.name == "Keys" and new.color == 12 and new.mute is True
+    assert new.devices == devs and keys.devices == []                 # order preserved, moved not copied
+    assert [(i, s.clip.name) for i, s in enumerate(new.clip_slots) if s.has_clip] == clips
+    assert [(x.name, x.start_time) for x in new.arrangement_clips] == arr
+    assert new.mixer_device.volume.value == 0.5 and new.mixer_device.panning.value == -0.25
+    assert new.mixer_device.sends[1].value == 0.7
+    assert new.arm is True and new.current_monitoring_state == 2
+    assert new.input_routing_type == keys.input_routing_type
+    c.until("tracks", lambda d: [t["name"] for t in d["tracks"]][:5] == names[:5])
+    c.until("focus", lambda d: d["ref"] == "t4" and d["name"] == "Keys")
+    # up: back to index 1
+    r = c.ok("track.move", tr="t4", to=1)
+    assert r["tr"] == "t1"
+    assert _names(h)[:5] == ["Drums", "Keys", "Bass", "Vocals", "Guitar"]
+    assert song.tracks[1].devices == devs
+    c.until("focus", lambda d: d["ref"] == "t1")
+    # same index is a no-op
+    assert c.ok("track.move", tr="t1", to=1)["tr"] == "t1"
+    assert _names(h)[1] == "Keys"
+    # move to the very end and the very start
+    assert c.ok("track.move", tr="t1", to=n0 - 1)["tr"] == "t%d" % (n0 - 1)
+    assert _names(h)[-1] == "Keys"
+    assert c.ok("track.move", tr="t%d" % (n0 - 1), to=0)["tr"] == "t0"
+    assert _names(h)[0] == "Keys" and len(song.tracks) == n0
+
+
+def test_track_move_audio_track_and_devices_of_rack(c, h):
+    song = h.song
+    gtr = song.tracks[4]          # Guitar (audio)
+    assert c.ok("track.move_check", tr="t4")["losses"] == ["take lanes"]
+    gtr.take_lanes = []
+    devs = list(gtr.devices)
+    c.ok("track.move", tr="t4", to=0)
+    assert song.tracks[0].name == "Guitar" and song.tracks[0].has_audio_input
+    assert song.tracks[0].devices == devs
+    drums = song.tracks[1]
+    assert drums.name == "Drums" and drums.devices[0].name == "Drum Rack"
+
+
+def test_track_move_refusals(c, h):
+    song = h.song
+    for tr in ("r0", "m", "t5"):          # return, master, group
+        assert c.req("track.move_check", tr=tr)["ok"] is False
+        assert c.req("track.move", tr=tr, to=0, force=True)["ok"] is False
+    assert "group" in c.req("track.move", tr="t5", to=0)["err"]
+    assert c.req("track.move", tr="t0", to=99)["ok"] is False
+    assert c.req("track.move", tr="t0", to=-1)["ok"] is False
+    assert c.req("track.move", tr="t99", to=0)["ok"] is False
+    assert _names(h)[0] == "Drums"
+
+
+def test_track_move_needs_confirm_then_force(c, h):
+    song = h.song
+    child = song.tracks[6]                # FX Audio, member of the FX Group
+    child.mixer_device.volume.automation_state = 1
+    child.is_frozen = True
+    chk = c.ok("track.move_check", tr="t6")
+    assert chk["ok_to_move"] is False
+    assert set(chk["losses"]) == {"arrangement automation", "group membership", "frozen"}
+    before = _names(h)
+    r = c.req("track.move", tr="t6", to=0)
+    assert r["ok"] is False and r["err"] == "needs_confirm"
+    assert set(r["d"]["losses"]) == set(chk["losses"])
+    assert _names(h) == before            # nothing touched
+    r = c.ok("track.move", tr="t6", to=0, force=True)
+    assert r["tr"] == "t0" and _names(h)[0] == "FX Audio"
+    # take lanes with clips are a loss; an empty lane is not
+    t3 = song.tracks[4]                   # Vocals now at 4
+    assert t3.name == "Vocals"
+    chk = c.ok("track.move_check", tr="t4")
+    assert chk == {"ok_to_move": False, "losses": ["take lanes"]}
+
+
+def test_track_move_rolls_back_on_error(c, h):
+    song = h.song
+    keys = song.tracks[2]
+    devs = list(keys.devices)
+    n0, names = len(song.tracks), _names(h)
+    orig = keys.clip_slots[0].__class__.duplicate_clip_to
+
+    def boom(self, target):
+        raise RuntimeError("boom")
+    keys.clip_slots[0].__class__.duplicate_clip_to = boom
+    try:
+        r = c.req("track.move", tr="t2", to=4)
+    finally:
+        keys.clip_slots[0].__class__.duplicate_clip_to = orig
+    assert r["ok"] is False and "nothing changed" in r["err"]
+    assert _names(h) == names and len(song.tracks) == n0
+    assert song.tracks[2] is keys and keys.devices == devs      # devices moved back, order intact
+
+
+def test_track_move_remaps_other_clients_focus(h):
+    a = h.client()
+    b = h.client()
+    a.wait(lambda x: "tracks" in x.sections)
+    b.wait(lambda x: "tracks" in x.sections)
+    b.ok("focus.set", tr="t4")
+    b.until("focus", lambda d: d["ref"] == "t4")
+    a.ok("track.move", tr="t0", to=6)
+    b.until("focus", lambda d: d["ref"] == "t3" and d["name"] == "Guitar")
+    a.until("focus", lambda d: d["ref"] == "t6" and d["name"] == "Drums")
+
+
+def test_sys_info_has_script_version(c):
+    from LiveCompanion.core import VERSION
+    d = c.ok("sys.info")
+    assert d["script_version"] == VERSION and "track.move" in d["ops"]
+
+
+
+# ---------------------------------------------------------------- .asd overview + locked audio + meter envelope
+
+FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
+
+
+def _synthetic_asd(ch, bins, frames):
+    """Tiny hand-built .asd: seek table + header + 3 SampleOverViewLevel records (float16 min/max)."""
+    import struct
+    table = [0, frames // 2, frames]
+    d = bytearray(b"\x06I" + struct.pack("<I", len(table)) + b"".join(struct.pack("<I", x) for x in table))
+    d += b"\x00" * 4 + struct.pack("<III", 0, 100, 2 * ch) + b"\x00" * 40
+    d += b"\x13SampleOverViewLevel" + struct.pack("<II", 1, 18) + b"x" * 36      # schema mention (must be ignored)
+    lv0 = []
+    for b in range(bins):
+        for c in range(ch):
+            lv0 += [-0.5 + 0.25 * c - b * 0.0, 0.25 + 0.5 * (b % 2) + 0.125 * c]
+    for idx, vals in ((0, lv0), (1, lv0[:2 * ch]), (2, lv0[:2 * ch])):
+        d += b"\x13SampleOverViewLevel" + struct.pack("<II", idx, len(vals)) + struct.pack("<%de" % len(vals), *vals)
+    return bytes(d)
+
+
+def test_asd_parser_synthetic():
+    from LiveCompanion.core import asd
+    data = _synthetic_asd(2, 8, 1000)
+    a = asd.parse(data)
+    assert a["ch"] == 2 and a["frames"] == 1000 and [lv[0] for lv in a["levels"]] == [128, 16384, 2097152]
+    o = asd.overview(data, 4, sr=44100)
+    assert o["n"] == 4 and o["ch"] == 2 and o["sr"] == 44100 and o["frames"] == 1000
+    assert o["min"][0] == [-0.5] * 4 and o["min"][1] == [-0.25] * 4
+    assert o["max"][0] == [0.75] * 4 and o["max"][1] == [0.875] * 4
+    o16 = asd.overview(data, 16)                       # more buckets than bins: nearest bin repeated
+    assert len(o16["max"][0]) == 16
+    with pytest.raises(asd.AsdError):
+        asd.overview(b"nope" * 40, 8)
+
+
+def test_asd_parser_real_fixtures():
+    import json
+    from LiveCompanion.core import asd
+    exp = json.load(open(os.path.join(FIX, "asd_expected.json")))
+    for name in ("mono", "stereo"):
+        with open(os.path.join(FIX, name + ".wav.asd"), "rb") as f:
+            o = asd.overview(f.read(), 16)
+        e = exp[name]
+        assert o["ch"] == e["ch"] and o["frames"] == e["frames"]
+        errs = [abs(x - y) for key in ("min", "max") for c in range(e["ch"]) for x, y in zip(o[key][c], e[key][c])]
+        assert sum(errs) / len(errs) < (0.03 if name == "stereo" else 0.2), (name, errs)
+        if name == "stereo":
+            assert max(errs) < 0.3
+
+
+def _lock_wav(monkeypatch):
+    from LiveCompanion.core import peaks as P
+
+    def locked(path, n):
+        raise PermissionError(13, "Permission denied")
+    monkeypatch.setattr(P, "decode_peaks", locked)
+
+
+def test_clip_peaks_falls_back_to_asd_when_wav_locked(c, h, tmp_path, monkeypatch):
+    import shutil
+    clip = h.song.tracks[3].clip_slots[0].clip
+    old = clip.file_path
+    wav = tmp_path / "rec.wav"
+    wav.write_bytes(b"RIFF....WAVE")
+    shutil.copyfile(os.path.join(FIX, "stereo.wav.asd"), str(wav) + ".asd")
+    _lock_wav(monkeypatch)
+    try:
+        clip.file_path = str(wav)
+        d = c.ok("clip.peaks", loc=SLOT("t3", 0), n=32)
+        assert d["n"] == 32 and d["ch"] == 2 and d["frames"] == 211968 and d["src"] == "asd" and "approx" not in d
+        assert max(max(x) for x in d["max"]) > 0.05
+        os.remove(str(wav) + ".asd")                    # no overview either -> clear error
+        clip.file_path = str(tmp_path / "other.wav")
+        (tmp_path / "other.wav").write_bytes(b"RIFF....WAVE")
+        r = c.req("clip.peaks", loc=SLOT("t3", 0), n=32)
+        assert r["ok"] is False and "locked by Live" in r["err"]
+    finally:
+        clip.file_path = old
+
+
+def test_recording_streams_rec_env_and_approx_peaks(c, h, tmp_path, monkeypatch):
+    c.ok("focus.set", tr="t4")
+    c.ok("track.set", tr="t4", k="arm", v=True)
+    c.ok("slot.fire", tr="t4", i=0)
+    c.until("slots", lambda d: d["slots"][0]["status"] == "recording")
+    c.drain(0.1)
+    c.wait(lambda x: any(m.get("t") == "rt" and m["d"].get("rec_env") for m in x.msgs), timeout=5)
+    c.wait(lambda x: sum(1 for m in x.msgs if m.get("t") == "rt" and m["d"].get("rec_env")) > 12, timeout=8)
+    re_ = [m["d"]["rec_env"] for m in c.msgs if m.get("t") == "rt" and m["d"].get("rec_env")][-1]
+    assert re_["k"] == "s0" and re_["step"] == 0.25 and len(re_["v"]) >= 2 and max(re_["v"]) > 5
+    assert len(re_["v"]) <= 96 and all(0 <= v <= 100 for v in re_["v"])
+    c.ok("track.stop", tr="t4")
+    c.until("slots", lambda d: d["slots"][0]["status"] == "stopped")
+    clip = h.song.tracks[4].clip_slots[0].clip
+    f = tmp_path / "new.wav"
+    f.write_bytes(b"RIFF....WAVE")
+    clip.file_path = str(f)                              # recorded file, locked by Live, no .asd yet
+    _lock_wav(monkeypatch)
+    d = c.ok("clip.peaks", loc=SLOT("t4", 0), n=24)
+    assert d["approx"] is True and d["n"] == 24 and d["ch"] == 1
+    assert max(d["max"][0]) > 0.05 and min(d["min"][0]) < -0.05 and d["frames"] > 0
+    # no rec_env after the recording ended
+    c.drain(0.3)
+    c.wait(lambda x: any(m.get("t") == "rt" for m in x.msgs))
+    assert not any(m["d"].get("rec_env") for m in c.msgs if m.get("t") == "rt")

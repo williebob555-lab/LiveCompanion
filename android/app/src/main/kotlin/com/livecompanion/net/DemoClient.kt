@@ -229,6 +229,8 @@ class DemoClient(
             "track.create" -> trackCreate(a)
             "track.delete" -> S(a, "tr")?.let { trackDelete(it) }
             "track.duplicate" -> S(a, "tr")?.let { trackDuplicate(it) }
+            "track.move_check" -> return trackMoveCheck(a)
+            "track.move" -> return trackMove(a)
             "slot.fire" -> { val tr = S(a, "tr"); val i = I(a, "i"); if (tr != null && i != null) fireSlot(tr, i) }
             "scene.fire" -> I(a, "i")?.let { i -> store.tracks.value.tracks.forEach { fireSlot(it.ref, i) } }
             "slot.delete" -> {
@@ -412,6 +414,40 @@ class DemoClient(
         push("tracks", TracksState.serializer(), st.copy(tracks = st.tracks.filter { it.ref != ref }, returns = st.returns.filter { it.ref != ref }))
         slotsBy.remove(ref); arrBy.remove(ref); devicesBy.remove(ref); takesBy.remove(ref); focusBy.remove(ref)
         if (ref == focusRef) store.tracks.value.all.firstOrNull()?.let { focus(it.ref) }
+    }
+
+    /** Demo of the server's rebuild-move: only plain audio/MIDI tracks; group members need a confirm (they leave the group). */
+    private fun movableTrack(a: JsonObject): TrackInfo {
+        val ref = S(a, "tr") ?: throw LiveException("missing arg: tr")
+        val st = store.tracks.value
+        val t = st.tracks.firstOrNull { it.ref == ref }
+            ?: throw LiveException(if (st.returns.any { it.ref == ref }) "return tracks can't be moved" else if (st.master?.ref == ref) "the master track can't be moved" else "no such track: $ref")
+        if (t.kind == "group" || t.foldable) throw LiveException("group tracks can't be moved")
+        return t
+    }
+
+    private fun moveLosses(t: TrackInfo): List<String> = if (t.group != null) listOf("group membership") else emptyList()
+
+    private fun trackMoveCheck(a: JsonObject): JsonElement {
+        val l = moveLosses(movableTrack(a))
+        return buildJsonObject { put("ok_to_move", l.isEmpty()); put("losses", JsonArray(l.map { JsonPrimitive(it) })) }
+    }
+
+    private fun trackMove(a: JsonObject): JsonElement {
+        val t = movableTrack(a)
+        val st = store.tracks.value
+        val to = I(a, "to") ?: throw LiveException("missing arg: to")
+        if (to < 0 || to >= st.tracks.size) throw LiveException("index out of range")
+        val losses = moveLosses(t)
+        if (losses.isNotEmpty() && B(a, "force") != true) {
+            throw LiveException("needs_confirm", buildJsonObject { put("losses", JsonArray(losses.map { JsonPrimitive(it) })) })
+        }
+        val list = st.tracks.toMutableList()
+        list.remove(t)
+        list.add(to, if (losses.isNotEmpty()) t.copy(group = null) else t)
+        push("tracks", TracksState.serializer(), st.copy(tracks = list))
+        focus(t.ref)
+        return buildJsonObject { put("tr", t.ref) }
     }
 
     private fun trackDuplicate(ref: String) {

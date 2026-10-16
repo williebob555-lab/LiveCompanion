@@ -21,7 +21,8 @@ import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
 /** Waveform summary (remote script `clip.peaks`, or the helper), channels merged (min of mins, max of maxes). Values -1..1. */
-class Peaks(val sr: Int, val ch: Int, val frames: Long, val n: Int, val min: FloatArray, val max: FloatArray) {
+/** [approx] = coarse meter envelope of a clip whose file Live still holds locked (drawn dimmer, re-fetched later). */
+class Peaks(val sr: Int, val ch: Int, val frames: Long, val n: Int, val min: FloatArray, val max: FloatArray, val approx: Boolean = false) {
     val seconds: Double get() = if (sr > 0) frames.toDouble() / sr else 0.0
 }
 
@@ -54,6 +55,7 @@ fun parsePeaks(json: String): Peaks {
         ch = o["ch"]?.jsonPrimitive?.intOrNull ?: mins.size,
         frames = o["frames"]?.jsonPrimitive?.longOrNull ?: 0L,
         n = n, min = lo, max = hi,
+        approx = o["approx"]?.jsonPrimitive?.contentOrNull == "true",
     )
 }
 
@@ -95,7 +97,7 @@ class PeaksClient(
             try {
                 val d = lc.request("clip.peaks", buildJsonObject { put("loc", loc); put("n", n) }, timeoutMs = 60000)
                 val p = parsePeaks(d.toString())
-                synchronized(this) { cache["$path|$n"] = p }
+                if (!p.approx) synchronized(this) { cache["$path|$n"] = p }
                 return PeaksResult.Ok(p)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e

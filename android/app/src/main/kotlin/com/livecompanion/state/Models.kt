@@ -336,7 +336,13 @@ data class RtFrame(
     @SerialName("slot_pos") val slotPos: Map<String, Double> = emptyMap(),
     /** Live CPU load 0..1; null when the server predates the field. */
     val cpu: Float? = null,
+    /** Meter envelope of the clip being recorded on the focused track (newest points); null when not recording. */
+    @SerialName("rec_env") val recEnv: RecEnvFrame? = null,
 )
+
+/** `rt.rec_env`: key "s<slot>" | "arr", [step] beats per point, [f] index of the first point, [i] index of v[0], v = 0..100. */
+@Serializable
+data class RecEnvFrame(val k: String = "", val step: Double = 0.25, val f: Long = 0, val i: Long = 0, val v: List<Int> = emptyList())
 
 // ------------------------------------------------------------------ locators
 object Loc {

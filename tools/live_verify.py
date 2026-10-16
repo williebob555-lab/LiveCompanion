@@ -144,6 +144,24 @@ def run_mutations(c):
     step(c, "device.move 0 -> 2", "device.move", tr="t0", path="0", to=2)
     step(c, "device.duplicate", "device.duplicate", tr="t0", path="0")
     step(c, "device.param", "device.param", tr="t0", path="0", i=1, v=0.5)
+    # track.move (rebuild-move): the MIDI track made above has devices, a clip and a name - they must survive the move.
+    pre = sec(c, "tracks") or {}
+    n_tr = len(pre.get("tracks", []))
+    if n_tr >= 2:
+        before_dev = [d["name"] for d in (sec(c, "devices") or {}).get("devices", [])]
+        step(c, "track.move_check", "track.move_check", tr="t0")
+        step(c, "track.move t0 -> 1", "track.move", tr="t0", to=1, force=True)
+        c.drain(1.0)
+        step(c, "focus moved track", "focus.set", tr="t1")
+        after = c.until("devices", lambda d: d.get("tr") == "t1", 4) or {}
+        after_dev = [d["name"] for d in after.get("devices", [])]
+        slots = c.until("slots", lambda d: d.get("tr") == "t1", 4) or {}
+        ok = (after_dev == before_dev and slots.get("slots") and slots["slots"][0].get("has_clip"))
+        print("  track.move survived (devices %s -> %s, clip in slot 0: %s) -> %s" % (
+            before_dev, after_dev, bool(slots.get("slots") and slots["slots"][0].get("has_clip")), "OK" if ok else "CHECK MANUALLY"))
+        step(c, "track.move back t1 -> 0", "track.move", tr="t1", to=0, force=True)
+        c.drain(1.0)
+        step(c, "focus t0 again", "focus.set", tr="t0")
     step(c, "song.scrub", "song.scrub", beats=1.0)
     step(c, "song.seek", "song.seek", beats=4.0)
     step(c, "song.set tempo", "song.set", k="tempo", v=97.0)

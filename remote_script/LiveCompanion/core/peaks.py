@@ -30,6 +30,10 @@ class PeaksError(Exception):
     """File problem (missing / malformed); message goes to the client."""
 
 
+class LockedAudio(Exception):
+    """The wav cannot be opened (Live holds new recordings exclusively) and its .asd overview is unusable."""
+
+
 class UnsupportedFormat(Exception):
     """Not WAV/AIFF PCM; the phone falls back to the helper."""
 
@@ -296,8 +300,11 @@ def _cache_dir() -> str:
 
 
 class PeaksJob(object):
-    def __init__(self, key, path, n, owner, rid):
+    def __init__(self, key, path, n, owner, rid, sr=0):
         self.key, self.path, self.n, self.owner, self.rid = key, path, n, owner, rid
+        self.sr = sr           # sample-rate hint for .asd overviews (the .asd does not store it)
+        self.ek = None         # clip descriptor for the meter-envelope fallback (set by Core)
+        self.locked = False    # wav unreadable (Live's exclusive lock) and no usable .asd
         self.cancelled = False
         self.ok = False
         self.data = None       # result dict or error string
@@ -316,8 +323,8 @@ class PeaksWorker(object):
         self.thread = None
         self.lock = threading.Lock()
 
-    def submit(self, path, n, owner, rid):
-        job = PeaksJob((path, n), path, n, owner, rid)
+    def submit(self, path, n, owner, rid, sr=0):
+        job = PeaksJob((path, n), path, n, owner, rid, sr)
         with self.lock:
             prev = self.latest.get((owner, path))
             if prev is not None:
@@ -360,8 +367,11 @@ class PeaksWorker(object):
             if job.cancelled:
                 continue
             try:
-                job.data = self._compute(job.path, job.n)
+                job.data = self._compute(job.path, job.n, job.sr)
                 job.ok = True
+            except LockedAudio as e:
+                job.locked = True
+                job.data = str(e)
             except UnsupportedFormat as e:
                 job.data = str(e) or "unsupported format"
             except (PeaksError, OSError, struct.error, ValueError, MemoryError) as e:
@@ -370,8 +380,13 @@ class PeaksWorker(object):
                 job.data = "error: %s: %s" % (type(e).__name__, e)
             self.done.put(job)
 
-    def _compute(self, path, n):
-        mtime = os.stat(path).st_mtime_ns
+    def _compute(self, path, n, sr=0):
+        try:
+            mtime = os.stat(path).st_mtime_ns
+        except FileNotFoundError:
+            raise
+        except OSError:
+            mtime = 0
         key = (path, mtime, n)
         hit = self.mem.get(key)
         if hit is not None:
@@ -386,7 +401,16 @@ class PeaksWorker(object):
                 return res
             except (OSError, ValueError):
                 pass
-        res = decode_peaks(path, n)
+        try:
+            res = decode_peaks(path, n)
+        except FileNotFoundError:
+            raise
+        except PeaksError as e:        # Live creates the wav as a 0-byte file while it starts recording
+            if os.path.getsize(path) == 0:
+                return self._from_asd(path, n, sr, e)
+            raise
+        except OSError as e:           # PermissionError / sharing violation: Live's exclusive lock on new recordings
+            return self._from_asd(path, n, sr, e)
         self._remember(key, res)
         if self.disk:
             try:
@@ -397,6 +421,22 @@ class PeaksWorker(object):
                 os.replace(tmp, cp)
             except OSError:
                 pass
+        return res
+
+    def _from_asd(self, path, n, sr, cause):
+        """Wav unreadable: use Live's analysis file (<wav>.asd) overview; else LockedAudio."""
+        from . import asd
+        try:
+            amt = os.stat(path + ".asd").st_mtime_ns
+            key = ("asd", path, amt, n, sr)
+            hit = self.mem.get(key)
+            if hit is not None:
+                return hit
+            res = asd.read_overview(path, n, sr=sr)
+        except (OSError, asd.AsdError, struct.error, ValueError):
+            raise LockedAudio("audio file locked by Live (save the set to unlock)")
+        res["src"] = "asd"
+        self._remember(key, res)
         return res
 
     def _remember(self, key, res):

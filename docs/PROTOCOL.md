@@ -73,7 +73,12 @@ Song/transport: `song.play`, `song.stop`, `song.continue`, `song.tap_tempo`, `so
 `song.set {k,v}` k ∈ tempo, sig, metronome, loop, loop_start, loop_len, punch_in, punch_out, rec, session_rec,
 overdub, count_in, quant, rec_quant, auto_arm, back_to_arr, view.
 Scenes/tracks: `scene.fire {i}`, `scene.create {i}`, `track.create {kind:"audio"|"midi"|"return", i}`, `track.delete {tr}`,
-`track.duplicate {tr}`.
+`track.duplicate {tr}`,
+`track.move_check {tr}` -> `{ok_to_move, losses:[str]}` (losses ⊂ "arrangement automation" | "group membership" | "frozen" | "take lanes"; refuses groups / returns / master with `err`),
+`track.move {tr, to, force?}` (REBUILD-MOVE, `to` = FINAL index in the track list, returns `{tr}` = the track's new ref; focus of the caller follows it, other clients' focus is remapped):
+if `track_move_check` has losses and `force` is not true -> `ok:false, err:"needs_confirm", d:{losses:[...]}` and nothing is touched. Otherwise: create a same-type track at the target position, `song.move_device` every device across in order,
+`ClipSlot.duplicate_clip_to` every session clip, `duplicate_clip_to_arrangement` every arrangement clip, copy name/colour/mute/solo/arm/monitoring, volume/pan/sends and routing (by display name), delete the original. One tick; on any error the new
+track is deleted again (devices moved back) and `err:"move failed, nothing changed: ..."`. Open clips of all clients are closed (indices shift). UNVERIFIED on real Live.
 Focus: `focus.set {tr}`, `focus.follow {on}`, `view.select {tr}` (select track in Live).
 Track: `track.set {tr,k,v}` k ∈ name,color,arm,mute,solo,monitor,folded,vol,pan,send(+`i`),in_type,in_ch,out_type;
 `track.stop {tr}`.
@@ -101,7 +106,11 @@ Devices: `device.open {tr,path}` / `device.close`, `device.toggle {tr,path}`, `d
 `chain.select {tr,path,i}`.
 Browser: `browser.list {path:[str]}` → `[{name,folder,loadable,uri?}]` (path `[]` = roots), `browser.load {tr,path}`,
 `browser.preview {path}`, `browser.preview_stop`.
-Meta: `sys.info` → `{live, proto, host, ops:[str]}`.
+Meta: `sys.info` → `{live, proto, host, script_version:int, ops:[str]}`.
+`script_version` (core `VERSION`, bumped whenever ops change; now 2) + `ops` let the phone detect an OLD script still loaded in Live: after `hello` the app sends `sys.info` and compares `ops` with its `REQUIRED_OPS`
+(clip.peaks, track.move, track.move_check, cue.move, takes.demote, takes.move, arr.move, arr.trim, clip.scrub, device.move) and `script_version` with `MIN_SCRIPT_VERSION`. If outdated it shows a compact banner in the shell
+("LiveCompanion script in Live is outdated - run the installer (or tools/install) and restart Live"); an op unknown to the script (`err:"unknown op: x"`) is shown as "Needs script update (x)" instead of a bare error (e.g. in place of a waveform).
+An error `res` may carry `d` (e.g. `needs_confirm` losses).
 
 ## Clarifications (binding)
 - `track.set` monitor value is int 0=In,1=Auto,2=Off. vol/pan/send `v` are raw parameter values.
@@ -124,6 +133,20 @@ never the LOM), the `res` is sent by a later tick. Newer request for the same cl
 (superseded/disconnected jobs are skipped, no reply). Cached in memory (LRU 32, path+mtime+n) and on disk in
 `<tmp>/LiveCompanion/peaks`. WAV/AIFF only; errors `ok:false`: `not an audio clip`, `no audio file`, `unsupported format`
 (mp3/flac/ogg -> app falls back to the helper), `cannot read audio file: ...`, bad loc/n.
+**Locked recordings (Live 12.4.2 Windows):** audio recorded in the open set can't be read (exclusive lock). Order tried:
+1. the wav; 2. on PermissionError/OSError the analysis file `<path>.asd` (`core/asd.py`, exact min/max at 128-frame
+resolution; reply has `"src":"asd"`, `sr` = the clip's `sample_rate` when the LOM reports it else 0);
+3. the meter envelope recorded while the clip was recording (`core/recenv.py`): coarse, reply `"approx": true`
+(`sr:1000, ch:1, frames` = clip milliseconds, `min` = -max); 4. `err: "audio file locked by Live (save the set to unlock)"`.
+The app re-asks every ~5 s while it only has an `approx` result and never caches it.
+
+## rt.rec_env (growing waveform while recording)
+While a clip records on the FOCUSED track, `rt` frames carry `rec_env: {"k":"s<slot>"|"arr","step":0.25,"f":F,"i":I,"v":[0..100]}`:
+meter peaks (max of output/input meters, sampled once per ~100 ms tick) on an absolute song-time grid, `step` beats per
+point, point index = floor(song_beat/step). `f` = index of the first point of this recording (a change of `k` or `f`
+= new recording, reset), `i` = index of `v[0]`, `v` = newest <= 96 points. Absent when nothing records. Arrangement
+recording key is `arr` (needs `record_mode` + armed track + playing). The app merges frames (`RecEnvBuf`) and draws the shape
+inside the red region (clip editor: axis unit -> song beat via the current playhead; track view: beat = song time).
 
 ## Helper HTTP (:9012) (optional: exotic-format peaks via ffmpeg, launch Live, sets)
 - `GET /health` → `{ok:true,version}`

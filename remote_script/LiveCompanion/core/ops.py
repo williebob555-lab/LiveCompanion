@@ -2,7 +2,7 @@
 
 Missing LOM API -> Unsupported("..."). Core wraps every call so a bad op can never break the tick."""
 from . import sections as S
-from .util import (OpError, BadArgs, Unsupported, g, num, intv, seq, need, need_num, need_int, is_int,
+from .util import (OpError, NeedsConfirm, BadArgs, Unsupported, g, num, intv, seq, need, need_num, need_int, is_int,
                    resolve_track, resolve_slot, resolve_clip, resolve_device, slots_of, lane_clips,
                    track_ref, parse_ref)
 
@@ -120,6 +120,8 @@ class Ops(object):
         t["track.create"] = self.track_create
         t["track.delete"] = self.track_delete
         t["track.duplicate"] = self.track_duplicate
+        t["track.move_check"] = self.track_move_check
+        t["track.move"] = self.track_move
         t["focus.set"] = self.focus_set
         t["focus.follow"] = self.focus_follow
         t["view.select"] = self.view_select
@@ -408,6 +410,202 @@ class Ops(object):
     def track_duplicate(self, c, a):
         k, i = self._track_index(need(a, "tr", str), False)
         _call(self.song, "duplicate_track", i)
+
+    # ------------------------------------------------------------ track.move (rebuild-move; UNVERIFIED on real Live)
+    def _move_src(self, a):
+        """-> (index, track). Only plain audio/MIDI tracks can be rebuilt; returns, master and groups are refused."""
+        tr = need(a, "tr", str)
+        k, i = parse_ref(tr)
+        if k == "m":
+            raise BadArgs("the master track can't be moved")
+        if k == "r":
+            raise BadArgs("return tracks can't be moved")
+        t = resolve_track(self.song, tr)
+        if g(t, "is_foldable", False):
+            raise BadArgs("group tracks can't be moved")
+        return i, t
+
+    @staticmethod
+    def _automated(t):
+        """True when any mixer / device parameter of `t` has automation (automation_state != 0)."""
+        params = []
+        mixer = g(t, "mixer_device", None)
+        for n in ("volume", "panning"):
+            params.append(g(mixer, n, None))
+        params.extend(seq(g(mixer, "sends", ())))
+
+        def walk(devs):
+            for d in devs:
+                params.extend(seq(g(d, "parameters", ())))
+                for ch in seq(g(d, "chains", ())):
+                    walk(seq(g(ch, "devices", ())))
+        walk(seq(g(t, "devices", ())))
+        for p in params:
+            if p is not None and intv(g(p, "automation_state", 0)) != 0:
+                return True
+        return False
+
+    def _move_losses(self, t):
+        losses = []
+        if self._automated(t):
+            losses.append("arrangement automation")
+        if g(t, "group_track", None) is not None:
+            losses.append("group membership")
+        if g(t, "is_frozen", False):
+            losses.append("frozen")
+        if any(lane_clips(l) for l in seq(g(t, "take_lanes", ()))):
+            losses.append("take lanes")
+        return losses
+
+    def track_move_check(self, c, a):
+        _, t = self._move_src(a)
+        losses = self._move_losses(t)
+        return {"ok_to_move": not losses, "losses": losses}
+
+    def track_move(self, c, a):
+        """track.move {tr,to,force?}: `to` = final index in the track list. Builds a same-type track at the target
+        position, moves devices (song.move_device), copies clips / mixer / routing / flags, deletes the original.
+        All in one tick; on any error the new track is removed again (devices moved back) and an error returned."""
+        song = self.song
+        src_i, src = self._move_src(a)
+        n = len(seq(g(song, "tracks", ())))
+        to = _i(need(a, "to"), "to", 0)
+        if to >= n:
+            raise BadArgs("index out of range")
+        losses = self._move_losses(src)
+        if losses and a.get("force") is not True:
+            raise NeedsConfirm(losses)
+        if to == src_i:
+            return {"tr": "t%d" % src_i}
+        midi = bool(g(src, "has_midi_input", False))
+        mk = "create_midi_track" if midi else "create_audio_track"
+        if not hasattr(song, mk) or not hasattr(song, "move_device") or not hasattr(song, "delete_track"):
+            raise Unsupported("moving tracks")
+        # Remember what each connected client looks at (indices shift) and the song's selected track.
+        others = []
+        for cl in self.core.clients:
+            if cl.focus and cl.focus[:1] == "t":
+                try:
+                    others.append((cl, resolve_track(song, cl.focus)))
+                except Exception:
+                    pass
+        view = g(song, "view", None)
+        was_selected = g(view, "selected_track", None) is src
+        ins = to + 1 if to > src_i else to
+        before = seq(g(song, "tracks", ()))
+        _call(song, mk, ins)
+        after = seq(g(song, "tracks", ()))
+        if len(after) != len(before) + 1 or after[ins] in before:
+            raise OpError("could not create the new track")
+        new = after[ins]
+        moved = []
+        try:
+            self._rebuild_into(src, new, moved)
+            cur = seq(g(song, "tracks", ()))
+            oi = next((k for k, x in enumerate(cur) if x is src), None)
+            if oi is None:
+                raise OpError("original track vanished")
+            _call(song, "delete_track", oi)
+        except Exception as e:
+            self._move_rollback(src, new, moved)
+            if isinstance(e, OpError):
+                raise OpError("move failed, nothing changed: %s" % (e,))
+            raise OpError("move failed, nothing changed: %s: %s" % (type(e).__name__, e))
+        ref = track_ref(song, new) or "t%d" % to
+        if was_selected:
+            try:
+                view.selected_track = new
+            except Exception:
+                pass
+        for cl, obj in others:
+            if cl is c:
+                continue
+            r = track_ref(song, obj)
+            if r is None:
+                cl.focus = None
+            elif r != cl.focus:
+                self.core.set_focus(cl, r)
+        self.core.set_focus(c, ref)
+        for cl in self.core.clients:
+            if cl.clip:
+                cl.clip = None            # indices shifted: the open clip's track ref may now be another track
+                cl.pending.add("clip")
+        self.core.dirty.update((("session",), ("tracks",)))
+        self.core.mark_devices(ref)
+        return {"tr": ref}
+
+    def _move_rollback(self, src, new, moved):
+        """Best effort: put the devices back (in their original order) and delete the half-built track."""
+        song = self.song
+        for k, d in enumerate(moved):
+            try:
+                _call(song, "move_device", d, src, k)
+            except Exception:
+                pass
+        try:
+            cur = seq(g(song, "tracks", ()))
+            ni = next((k for k, x in enumerate(cur) if x is new), None)
+            if ni is not None:
+                _call(song, "delete_track", ni)
+        except Exception:
+            pass
+
+    def _rebuild_into(self, src, new, moved):
+        song = self.song
+        # devices first (in order), so clips land on a fully set-up track
+        for d in list(seq(g(src, "devices", ()))):
+            _call(song, "move_device", d, new, len(seq(g(new, "devices", ()))))
+            moved.append(d)
+        # session clips slot by slot
+        ss, ns = slots_of(src), slots_of(new)
+        for k, s in enumerate(ss):
+            if g(s, "has_clip", False) and k < len(ns):
+                _call(s, "duplicate_clip_to", ns[k])
+        # arrangement clips
+        for cl in list(seq(g(src, "arrangement_clips", ()))):
+            _call(new, "duplicate_clip_to_arrangement", cl, num(g(cl, "start_time", 0.0)))
+        # identity + mixer + routing (best effort per property: a missing/refused one never aborts the move)
+        for k in ("name", "color", "mute", "solo"):
+            self._try_put(new, k, g(src, k, None))
+        if g(src, "can_be_armed", False):
+            self._try_put(new, "current_monitoring_state", g(src, "current_monitoring_state", None))
+            if g(src, "arm", False):
+                self._try_put(new, "arm", True)
+        sm, nm = g(src, "mixer_device", None), g(new, "mixer_device", None)
+        for pn in ("volume", "panning"):
+            self._copy_param(g(sm, pn, None), g(nm, pn, None))
+        for sp, np_ in zip(seq(g(sm, "sends", ())), seq(g(nm, "sends", ()))):
+            self._copy_param(sp, np_)
+        for cur, avail in (("input_routing_type", "available_input_routing_types"),
+                           ("input_routing_channel", "available_input_routing_channels"),
+                           ("output_routing_type", "available_output_routing_types"),
+                           ("output_routing_channel", "available_output_routing_channels")):
+            c0 = g(src, cur, None)
+            if c0 is None:
+                continue
+            nm_ = S.display_name(c0)
+            for x in seq(g(new, avail, ())):
+                if S.display_name(x) == nm_:
+                    self._try_put(new, cur, x)
+                    break
+
+    @staticmethod
+    def _try_put(obj, attr, val):
+        if val is None:
+            return
+        try:
+            setattr(obj, attr, val)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _copy_param(sp, np_):
+        if sp is None or np_ is None:
+            return
+        try:
+            np_.value = sp.value
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ focus
     def focus_set(self, c, a):
@@ -718,7 +916,21 @@ class Ops(object):
         path = g(cr.clip, "file_path", "")
         if not isinstance(path, str) or not path:
             raise OpError("no audio file")
-        return self.core.defer_peaks(c, path, n)
+        sr = g(cr.clip, "sample_rate", 0)
+        sr = int(sr) if isinstance(sr, (int, float)) and not isinstance(sr, bool) and sr > 0 else 0
+        return self.core.defer_peaks(c, path, n, sr, self._env_key(cr))
+
+    def _env_key(self, cr):
+        """Describes the clip for the meter-envelope fallback (see recenv.approx_peaks)."""
+        try:
+            tr = track_ref(self.song, cr.track)
+            t0 = float(g(cr.clip, "start_time", 0.0) or 0.0)
+            ln = float(g(cr.clip, "length", 0.0) or 0.0)
+            tempo = float(g(self.song, "tempo", 120.0) or 120.0)
+            ek = {"w": cr.kind, "tr": tr, "i": cr.index, "t0": t0, "t1": t0 + ln, "secs": ln * 60.0 / max(tempo, 1.0)}
+            return ek if cr.kind in ("slot", "arr") and tr else None
+        except Exception:
+            return None
 
     def clip_to_arr(self, c, a):
         cr = self._clip(a)
@@ -1236,7 +1448,8 @@ class Ops(object):
 
     # ------------------------------------------------------------ meta
     def sys_info(self, c, a):
-        return {"live": self.core.live_version, "proto": 1, "host": self.core.host, "ops": sorted(self.table)}
+        from . import VERSION
+        return {"live": self.core.live_version, "proto": 1, "script_version": VERSION, "host": self.core.host, "ops": sorted(self.table)}
 
     def sys_probe(self, c, a):
         return self.core.run_probe()

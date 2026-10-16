@@ -29,6 +29,7 @@ class LiveStore {
     private val _params = MutableStateFlow(ParamsState())
     private val _clip = MutableStateFlow(ClipState())
     private val _rt = MutableStateFlow(RtFrame())
+    private val _script = MutableStateFlow(ScriptStatus())
 
     // Optimistic edits that must survive a stale server echo for ~600 ms (see SectionGuard).
     private val sessionGuard = SectionGuard<SessionState>()
@@ -48,6 +49,10 @@ class LiveStore {
     val devices: StateFlow<DevicesState> = _devices.asStateFlow()
     val params: StateFlow<ParamsState> = _params.asStateFlow()
     val clip: StateFlow<ClipState> = _clip.asStateFlow()
+
+    /** Live's remote-script version/ops vs. what this app needs (see ScriptCheck.kt). */
+    val script: StateFlow<ScriptStatus> = _script.asStateFlow()
+    fun setScript(s: ScriptStatus) { _script.value = s }
 
     /** Realtime frame (meters, playhead). Collect only in leaf composables / draw lambdas. */
     val rt: StateFlow<RtFrame> = _rt.asStateFlow()
@@ -128,6 +133,7 @@ class LiveStore {
         _params.value = ParamsState()
         _clip.value = ClipState()
         _rt.value = RtFrame()
+        _script.value = ScriptStatus()
         sessionGuard.clear(); clipGuard.clear(); slotsGuard.clear(); arrGuard.clear(); takesGuard.clear()
     }
 

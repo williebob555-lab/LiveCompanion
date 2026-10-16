@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.assertCountEquals
 import androidx.test.core.app.ActivityScenario
 import com.livecompanion.net.LiveClient
 import com.livecompanion.ui.screens.TracksScreen
@@ -71,13 +72,32 @@ class TrackOpsTest {
 
     @Test fun renameSendsTrackSetName() {
         val c = setup()
-        rule.onNodeWithText("1 Drums").performClick()
+        rule.onAllNodesWithText("✎").onFirst().performClick()
         rule.onNode(hasSetTextAction()).performTextReplacement("Kick")
         rule.onNodeWithText("OK").performClick()
         val a = c.find("track.set")!!
         assertEquals("t0", a["tr"]!!.jsonPrimitive.content)
         assertEquals("name", a["k"]!!.jsonPrimitive.content)
         assertEquals("Kick", a["v"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun tappingTheNameSwitchesTrackAndNeverRenames() {
+        val c = setup()
+        rule.onNodeWithText("1 Drums", useUnmergedTree = true).performClick()
+        assertEquals("t0", c.find("focus.set")!!["tr"]!!.jsonPrimitive.content)
+        assertTrue(c.find("track.set") == null)
+        rule.onAllNodes(hasSetTextAction()).assertCountEquals(0)
+    }
+
+    @Test fun moveButtonsCheckThenMove() {
+        val c = setup()          // t1 is focused: the down button moves it below "3 Keys" (index 2)
+        rule.onNodeWithText("▼").performClick()
+        rule.waitForIdle()
+        assertEquals("t1", c.find("track.move_check")!!["tr"]!!.jsonPrimitive.content)
+        val m = c.find("track.move")!!
+        assertEquals("t1", m["tr"]!!.jsonPrimitive.content)
+        assertEquals(2, m["to"]!!.jsonPrimitive.content.toInt())
+        assertEquals("false", m["force"]!!.jsonPrimitive.content)
     }
 
     @Test fun duplicateAndDeleteSendOps() {

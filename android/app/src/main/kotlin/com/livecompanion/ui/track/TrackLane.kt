@@ -110,6 +110,8 @@ class RecState {
     var punchOut by mutableStateOf(false)
     var loopStart by mutableDoubleStateOf(0.0)
     var loopEnd by mutableDoubleStateOf(0.0)
+    /** Meter envelope of the take being recorded (draws a waveform shape inside the red region); null = plain red. */
+    var env: com.livecompanion.state.RecEnvBuf? = null
 }
 
 /** In-flight clip edit shown while dragging / until the server section catches up. */
@@ -903,7 +905,7 @@ private fun DrawScope.drawClip(
             val mid = bodyTop + bodyH / 2f
             val amp = bodyH / 2f * 0.92f
             val stepPx = max(1f, 1.5f * dens)
-            val wf = onColor(body).copy(alpha = if (c.muted) 0.35f else 0.8f)
+            val wf = onColor(body).copy(alpha = if (c.muted) 0.35f else if (pk.approx) 0.5f else 0.8f)
             var x = max(sx, 0f)
             val xEnd = min(ex, w)
             while (x < xEnd) {
@@ -998,16 +1000,16 @@ private fun DrawScope.drawRec(
     if (rec.punchOut) to = min(to, rec.loopEnd)
     if (to < from && rec.loopEnd > rec.loopStart + 1e-6) {
         // the playhead wrapped round the loop: the recorded region is [start..loop end] + [loop start..playhead]
-        drawRecSpan(view, from, rec.loopEnd, scrubPx, rulerPx, mainH, tm, dens)
-        drawRecSpan(view, rec.loopStart, ph, scrubPx, rulerPx, mainH, tm, dens)
+        drawRecSpan(view, from, rec.loopEnd, scrubPx, rulerPx, mainH, tm, dens, rec.env)
+        drawRecSpan(view, rec.loopStart, ph, scrubPx, rulerPx, mainH, tm, dens, rec.env)
         return
     }
-    drawRecSpan(view, from, to, scrubPx, rulerPx, mainH, tm, dens)
+    drawRecSpan(view, from, to, scrubPx, rulerPx, mainH, tm, dens, rec.env)
 }
 
 private fun DrawScope.drawRecSpan(
     view: TimelineView, from: Double, to: Double, scrubPx: Float, rulerPx: Float, mainH: Float,
-    tm: TextMeasurer, dens: Float,
+    tm: TextMeasurer, dens: Float, env: com.livecompanion.state.RecEnvBuf? = null,
 ) {
     if (to <= from) return
     val x0 = max(view.xOf(from), 0f)
@@ -1017,6 +1019,18 @@ private fun DrawScope.drawRecSpan(
     drawRect(LiveColors.Rec.copy(alpha = 0.38f), Offset(x0, rulerPx), Size(x1 - x0, mainH))
     drawRect(LiveColors.Rec, Offset(x0, rulerPx), Size(x1 - x0, 3f * dens))
     drawRect(LiveColors.Rec, Offset(x0, scrubPx - 3f * dens), Size(x1 - x0, 3f * dens))
+    env?.let { b ->
+        // meter envelope of the take so far, mirrored around the lane middle
+        val mid = rulerPx + mainH / 2f
+        val amp = mainH / 2f * 0.9f
+        var x = x0
+        val stepPx = max(1f, 1.5f * dens)
+        while (x < x1) {
+            val e = b.at(view.start + x / view.ppb.toDouble())
+            if (e >= 0f) drawLine(Color.White.copy(alpha = 0.75f), Offset(x, mid - e * amp), Offset(x, mid + e * amp), stepPx)
+            x += stepPx
+        }
+    }
     if (x1 - x0 > 40f * dens) {
         val l = tm.measure("REC", BeatText.copy(color = Color.White), maxLines = 1)
         drawText(l, topLeft = Offset(x0 + 4f * dens, rulerPx + mainH - l.size.height - 4f * dens))

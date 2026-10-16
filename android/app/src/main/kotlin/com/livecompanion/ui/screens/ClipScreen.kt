@@ -185,7 +185,7 @@ private fun ClipEditor(clip: ClipState, store: LiveStore, client: LiveClient, mo
             // Thin always-visible handle: tap to expand/collapse the properties. Inset so its ends clear the rounded corners.
             val bc = LocalBodyCorners.current
             Row(
-                Modifier.fillMaxWidth().height(26.dp).padding(start = bc.bottomStart, end = bc.bottomEnd).background(LiveColors.PanelHi),
+                Modifier.fillMaxWidth().height(26.dp).background(LiveColors.PanelHi).padding(start = bc.bottomStart, end = bc.bottomEnd),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Row(

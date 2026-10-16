@@ -96,6 +96,7 @@ class FakeParam(Observable):
         self.is_quantized = quantized
         self.value_items = tuple(items) if items else ()
         self._fmt = fmt
+        self.automation_state = 0      # Live: 0 none, 1 active, 2 overridden
         self.value = value
 
     def str_for_value(self, v):
@@ -628,6 +629,7 @@ class FakeTrack(_DeviceListMixin, Observable):
         self.is_foldable = kind == "group"
         self.group_track = None
         self.is_grouped = False
+        self.is_frozen = False
         if self.can_be_armed:
             self.arm = False
             self.current_monitoring_state = 1
@@ -1072,6 +1074,8 @@ class FakeSong(Observable):
         ph = self.current_song_time
         for i, t in enumerate(self.tracks + self.return_tracks + [self.master_track]):
             active = self.is_playing and (t is self.master_track or t.kind == "return" or t.playing_slot_index >= 0)
+            recording = any(sl.clip is not None and sl.clip.is_recording for sl in getattr(t, "clip_slots", ()))
+            active = active or (self.is_playing and recording)     # input is audible on the meters while recording
             lvl = (0.25 + 0.2 * abs(math.sin(ph * 2.0 + i))) if active else 0.0
             t.output_meter_left = lvl * t.mixer_device.volume.value
             t.output_meter_right = lvl * 0.9 * t.mixer_device.volume.value

@@ -11,6 +11,9 @@ owner gives new feedback.
 - [ ] Demo mode lets every tab be explored without Live.
 - [ ] Waveforms appear with NO helper running (WAV/AIFF).
 - [ ] Windows setup is one double-click; Live needs only the one-time control-surface pick.
+- [ ] App warns when Live's script is older than the app (banner after connect; features needing a missing op say "Needs script update").
+
+- [ ] Disconnect/Cancel works instantly in every connection state (incl. while reconnecting).
 
 ## Feel (principle 3)
 - [ ] Every drag (loop brace, markers, clips, trim, notes, velocity, faders, knobs, params, scrub) tracks the finger
@@ -26,6 +29,7 @@ owner gives new feedback.
 
 ## Visibility (principle 4)
 - [ ] Nothing under the camera cutout or ROUNDED CORNERS (all four corners) in landscape and portrait.
+- [ ] Edges/corners: no differently colored blocks - surfaces extend seamlessly to the screen edge (top bar, rail, info strip, bottom strips; only content is inset). Check shell_corners, shell_corners_right, shell_arrange_corners(_right) in portrait + both landscapes.
 - [ ] No clipped/truncated important text at font 1.0 and 1.3; no overlap at every size in docs/UI.md.
 - [ ] Every collapsible/hidden element has an obvious labeled affordance.
 
@@ -35,8 +39,9 @@ owner gives new feedback.
 - [ ] Zoom out: whole song in ~1/4 width (track view), clip in ~1/4 width (clip editor); zoom in deep.
 
 ## Tracks (principle 7)
-- [ ] Track list wherever it appears (top-bar picker AND Tracks tab): rename, color, add, delete, duplicate;
-      reorder limitation explained (no fake handles).
+- [ ] Track list wherever it appears (top-bar picker AND Tracks tab): rename (pencil), color, add, delete, duplicate.
+- [ ] Track lists: tap row/name = switch to track; rename only via the pencil, never by tapping the name.
+- [ ] Track reorder by hold-drag in picker + Tracks tab, with loss warning (one dialog listing what is lost; no dialog when nothing is lost); up/down buttons on the focused row; groups/returns/master have no grip and explain on tap.
 
 ## Clip editor hard minimums (owner, "ultra specific")
 - [ ] Subdivision (adaptive + fixed + triplets) · time signature editable · waveform graphics · recording in RED.

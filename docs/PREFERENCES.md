@@ -57,6 +57,18 @@ Every release must pass qa/CONFORMANCE.md (a reviewer agent audits each screen a
   take lane = DEMOTE; drag between take lanes = move. (Owner request; real-Live API for take-lane clip creation
   unverified — implement best-effort with clear errors.)
   Top-bar buttons should be a bit BIGGER (owner accepts losing some clip-view height for it) — ~40dp row.
+- 2026-10-16 (owner): "I still can't move the tracks order" → APPROVED rebuild-move with safety checks: hold-drag
+  tracks in every track list; server `track.move {tr,to}` creates a same-type track at the target index, moves all
+  devices (song.move_device), copies session + arrangement clips, name/color/mixer/sends/routing/mute/solo/arm/
+  monitor, deletes the original. Before moving, warn if the track has arrangement automation, group membership,
+  is frozen, or has take lanes (those can't be carried); tracks without them move silently.
+- 2026-10-16 (owner): still no waveform — cause: Live (now 12.4.2) was running the script loaded before the update.
+  Rule: the app must DETECT an outdated script (sys.info ops/script_version) and tell the owner to restart Live /
+  reinstall — never fail silently.
+- 2026-10-16 (owner): corner/cutout inset areas must NOT be a different color — surfaces extend seamlessly to the
+  screen edge; only content is inset.
+- 2026-10-16 (owner): in track lists, TAP (row or name) = switch to that track. Rename only via an explicit ✎ button.
+  General rule: the primary tap on a list item selects/opens it; editing is always an explicit control.
 - Release tags: builds ≤ v0.1.0-test10 compare pre-release text lexically ("test10" < "test9"), so from now on
   bump the base version instead of growing the test number past 9 (v0.1.1-test1, v0.1.1-test2 … v0.1.2-test1).
   Natural ordering is fixed from v0.1.1-test1 on.

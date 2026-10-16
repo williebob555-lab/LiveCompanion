@@ -10,6 +10,13 @@ class Deferred(object):
     """Returned by an op whose `res` is sent later (from a tick) by Core; the worker finishes off-thread."""
 
 
+class NeedsConfirm(OpError):
+    """Refusal the user can override (re-send with force:true); `data` is sent back in the error `res`."""
+    def __init__(self, losses):
+        OpError.__init__(self, "needs_confirm")
+        self.data = {"losses": list(losses)}
+
+
 class BadArgs(OpError):
     pass
 

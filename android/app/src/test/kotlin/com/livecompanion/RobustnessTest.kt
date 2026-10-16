@@ -171,6 +171,35 @@ class MinimalServerTest {
         }
     }
 
+    /** Owner bug: Disconnect did nothing while reconnecting. disconnect() must end the backoff loop at once. */
+    @Test fun disconnectDuringBackoffIsInstantAndFinal() = runBlocking {
+        val server = minimalServer()
+        val port = server.port
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val client = newClient(scope, LiveStore())
+        try {
+            client.connect(server.hostName, port)
+            withTimeout(5000) { client.state.first { it.status == ConnStatus.CONNECTED } }
+            server.shutdown()                                       // host goes away -> retry loop with backoff
+            withTimeout(8000) { client.state.first { it.status == ConnStatus.RECONNECTING } }
+            val t0 = System.nanoTime()
+            client.disconnect()
+            assertEquals(ConnStatus.IDLE, client.state.value.status)
+            assertTrue((System.nanoTime() - t0) / 1_000_000 < 100)
+            // Something listens on the old port now: any further attempt would be an accepted connection.
+            val attempts = java.util.concurrent.atomic.AtomicInteger()
+            val ss = ServerSocket(port)
+            val acceptor = Thread { try { while (true) { ss.accept().close(); attempts.incrementAndGet() } } catch (_: Exception) {} }
+            acceptor.isDaemon = true; acceptor.start()
+            delay(6000)                                              // longer than three backoff steps
+            ss.close()
+            assertEquals(0, attempts.get())
+            assertEquals(ConnStatus.IDLE, client.state.value.status)
+        } finally {
+            client.disconnect(); scope.cancel()
+        }
+    }
+
     @Test fun unreachablePortFailsOnceAndStaysIdle() = runBlocking {
         val port = ServerSocket(0).use { it.localPort } // free port, nothing listening
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

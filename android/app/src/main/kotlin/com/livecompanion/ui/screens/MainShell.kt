@@ -111,7 +111,15 @@ fun MainShell(
     }
 
     val demo = client is com.livecompanion.net.DemoClient
+    val script by store.script.collectAsState()
     val noticeBar: @Composable () -> Unit = {
+        if (script.outdated && !demo) {
+            LiveText(
+                com.livecompanion.state.SCRIPT_OUTDATED_TEXT,
+                Modifier.fillMaxWidth().background(LiveColors.Panel).padding(horizontal = 8.dp, vertical = 2.dp),
+                LiveType.Small.copy(fontSize = 10.sp, lineHeight = 12.sp), LiveColors.Warn, maxLines = 2,
+            )
+        }
         if (notice == null && demo) {
             LiveText(
                 "DEMO - built-in sample set, nothing is sent to Live",
@@ -158,7 +166,7 @@ fun MainShell(
         val botEnd = (corners.br - rightOcc).coerceAtLeast(0.dp)
         SideEffect { if (bodyCorners.bottomStart != botStart || bodyCorners.bottomEnd != botEnd) bodyCorners = BodyCorners(botStart, botEnd) }
         Row(Modifier.fillMaxSize()) {
-            if (stripL > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripL).fillMaxHeight().padding(top = corners.tl, bottom = corners.bl))
+            if (stripL > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripL).fillMaxHeight().background(LiveColors.Panel).padding(top = corners.tl, bottom = corners.bl))
             Box(Modifier.width(padL))
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 // Back: any non-home tab returns to Arrange first; only home asks to disconnect (MainActivity).
@@ -167,18 +175,18 @@ fun MainShell(
                     val fs = LocalDensity.current.fontScale.coerceAtLeast(1f)
                     val railW = (52.dp * fs).coerceIn(52.dp, 80.dp)
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-                        TabRail(Tab.entries, selected, Modifier.width(railW).fillMaxHeight().padding(top = if (stripL > 0.dp) 0.dp else corners.tl, bottom = if (stripL > 0.dp) 0.dp else corners.bl)) { selected = it }
+                        TabRail(Tab.entries, selected, Modifier.width(railW).fillMaxHeight().background(LiveColors.Panel).padding(top = if (stripL > 0.dp) 0.dp else corners.tl, bottom = if (stripL > 0.dp) 0.dp else corners.bl)) { selected = it }
                         Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                            Box(Modifier.padding(start = insStart, end = insEnd)) { TopChrome(live, client) { CompactTopBar(store, client, onSecondary = { secondaryBar = it }) } }
+                            Box(Modifier.background(LiveColors.Panel).padding(start = insStart, end = insEnd)) { TopChrome(live, client) { CompactTopBar(store, client, onSecondary = { secondaryBar = it }) } }
                             Gated(live, Modifier.fillMaxWidth().weight(1f)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
                             // Small phones: the controls that do not fit the single 40dp top row live in a bottom strip.
-                            if (secondaryBar && live) Box(Modifier.padding(start = botStart, end = botEnd)) { CompactSecondaryBar(store, client) }
-                            Box(Modifier.padding(start = botStart, end = botEnd)) { noticeBar() }
+                            if (secondaryBar && live) Box(Modifier.background(LiveColors.Panel).padding(start = botStart, end = botEnd)) { CompactSecondaryBar(store, client) }
+                            Box(Modifier.background(LiveColors.Panel).padding(start = botStart, end = botEnd)) { noticeBar() }
                         }
                     }
                 } else {
                     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Box(Modifier.padding(start = insStart, end = insEnd)) { TopChrome(live, client) {
+                        Box(Modifier.background(LiveColors.Panel).padding(start = insStart, end = insEnd)) { TopChrome(live, client) {
                             if (contentW >= 340.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) PortraitTopBar(store, client)
                             else Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                 TransportBar(store, client)
@@ -187,12 +195,12 @@ fun MainShell(
                         } }
                         TabRow(Tab.entries, selected) { selected = it }
                         Gated(live, Modifier.fillMaxWidth().weight(1f)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
-                        Box(Modifier.padding(start = botStart, end = botEnd)) { noticeBar() }
+                        Box(Modifier.background(LiveColors.Panel).padding(start = botStart, end = botEnd)) { noticeBar() }
                     }
                 }
             }
             Box(Modifier.width(padR))
-            if (stripR > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripR).fillMaxHeight().padding(top = corners.tr, bottom = corners.br))
+            if (stripR > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripR).fillMaxHeight().background(LiveColors.Panel).padding(top = corners.tr, bottom = corners.br))
         }
     }
     }
@@ -265,16 +273,20 @@ private fun ConnectionStrip(client: LiveClient, modifier: Modifier) {
         ConnStatus.IDLE -> conn.lastError ?: "Not connected"
         ConnStatus.CONNECTED -> ""
     }
-    Row(
-        modifier.background(LiveColors.Panel.copy(alpha = 0.92f)).blockTouches().padding(start = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        LiveText(text, Modifier.weight(1f), LiveType.Small, LiveColors.Warn, maxLines = 2)
-        LiveTextButton(
-            if (conn.status == ConnStatus.CONNECTING) "Cancel" else "Disconnect",
-            actions.disconnect, minWidth = 88.dp, minHeight = 32.dp,
-        )
+    Box(modifier.background(LiveColors.Panel.copy(alpha = 0.92f))) {
+        // The touch blocker is a SIBLING under the row: a consuming parent would starve the Disconnect button of events.
+        Box(Modifier.matchParentSize().blockTouches())
+        Row(
+            Modifier.fillMaxSize().padding(start = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            LiveText(text, Modifier.weight(1f), LiveType.Small, LiveColors.Warn, maxLines = 2)
+            LiveTextButton(
+                if (conn.status == ConnStatus.CONNECTING) "Cancel" else "Disconnect",
+                actions.disconnect, minWidth = 88.dp, minHeight = 32.dp,
+            )
+        }
     }
 }
 

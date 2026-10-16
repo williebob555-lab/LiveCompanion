@@ -117,7 +117,7 @@ fun ArrangeScreen(
     val tr = arr.tr.ifEmpty { focus.ref }
     val view = remember { TimelineView() }
     val clock = remember { PlayheadClock() }
-    val rec = remember { RecState() }
+    val rec = remember { RecState().also { it.env = com.livecompanion.state.RecEnvBuf.shared } }
     var follow by remember { mutableStateOf(false) }
     var sel by remember { mutableIntStateOf(initialSel) }
     var selTake by remember { mutableStateOf<Pair<Int, Int>?>(null) }
@@ -147,7 +147,7 @@ fun ArrangeScreen(
     SideEffect { clock.setSong(session.tempo.toDouble(), session.loop, session.loopStart, session.loopLen) }
     LaunchedEffect(store) {
         clock.onFrame(session.pos, session.playing, System.nanoTime())
-        store.rt.collect { f -> clock.onFrame(f.pos, f.playing, System.nanoTime()) }
+        store.rt.collect { f -> clock.onFrame(f.pos, f.playing, System.nanoTime()); com.livecompanion.state.RecEnvBuf.shared.accept(f.recEnv) }
     }
     val recActive = session.rec && session.playing && focus.armable && focus.arm
     SideEffect {
@@ -166,12 +166,16 @@ fun ArrangeScreen(
     val peakSrc = clips.filter { it.audio && it.filePath.isNotBlank() }.distinctBy { it.filePath }
         .map { it.filePath to buildJsonObject { put("w", "arr"); put("tr", tr); put("i", it.i) } }
     LaunchedEffect(peakSrc, host) {
-        for ((p, loc) in peakSrc) {
-            if (p in peaks) continue
-            val cached = PeaksClient.shared.cached(p, PEAK_N)
-            if (cached != null) { peaks[p] = cached; continue }
-            val r = PeaksClient.shared.get(host, p, PEAK_N, loc)
-            if (r is PeaksResult.Ok) peaks[p] = r.peaks
+        while (true) {
+            for ((p, loc) in peakSrc) {
+                if (peaks[p]?.approx == false) continue
+                val cached = PeaksClient.shared.cached(p, PEAK_N)
+                if (cached != null) { peaks[p] = cached; continue }
+                val r = PeaksClient.shared.get(host, p, PEAK_N, loc)
+                if (r is PeaksResult.Ok) peaks[p] = r.peaks
+            }
+            if (peaks.values.none { it.approx }) break
+            kotlinx.coroutines.delay(5000)   // meter-envelope waveform of a still-locked recording: look again for the real one
         }
     }
 
@@ -291,8 +295,7 @@ fun ArrangeScreen(
 
         // ---- ONE slim control row: locate, step, snap (tap cycles), follow, punch, fit, takes
         FlowRow(
-            Modifier.fillMaxWidth().padding(start = bodyCorners.bottomStart, end = bodyCorners.bottomEnd)
-                .background(LiveColors.Panel).padding(horizontal = 2.dp, vertical = 1.dp),
+            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(start = bodyCorners.bottomStart, end = bodyCorners.bottomEnd).padding(horizontal = 2.dp, vertical = 1.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
             itemVerticalAlignment = Alignment.CenterVertically,
@@ -320,8 +323,7 @@ fun ArrangeScreen(
         val showTip = tipFirstTime && !tipGone && selClip == null && selTake == null
         LaunchedEffect(tipFirstTime) { if (tipFirstTime) prefs.arrangeTipSeen = true }
         if (showTip) Row(
-            Modifier.fillMaxWidth().padding(start = bodyCorners.bottomStart, end = bodyCorners.bottomEnd)
-                .background(LiveColors.Panel).padding(horizontal = 4.dp, vertical = 1.dp),
+            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(start = bodyCorners.bottomStart, end = bodyCorners.bottomEnd).padding(horizontal = 4.dp, vertical = 1.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             LiveText(ARRANGE_HELP, Modifier.weight(1f), LiveType.Small, color = LiveColors.TextDim, maxLines = 2)
@@ -330,8 +332,7 @@ fun ArrangeScreen(
 
         // ---- selection strip (visible buttons, no menus); absent when nothing is selected
         if (selClip != null || selTake != null) Column(
-            Modifier.fillMaxWidth().padding(start = bodyCorners.bottomStart, end = bodyCorners.bottomEnd)
-                .background(LiveColors.Panel).padding(horizontal = 2.dp, vertical = 1.dp),
+            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(start = bodyCorners.bottomStart, end = bodyCorners.bottomEnd).padding(horizontal = 2.dp, vertical = 1.dp),
             verticalArrangement = Arrangement.Center,
         ) {
             val st = selTake
