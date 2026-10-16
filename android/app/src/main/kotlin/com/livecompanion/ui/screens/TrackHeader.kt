@@ -43,7 +43,7 @@ import com.livecompanion.ui.components.MeterBar
 import com.livecompanion.ui.theme.LiveColors
 import com.livecompanion.ui.theme.LiveType
 
-private val MONITOR_LABELS = listOf("IN", "AUTO", "OFF")
+private val MONITOR_LABELS = listOf("Mon IN", "Mon AUTO", "Mon OFF")
 
 /**
  * Fixed track header for the focused track (portrait / narrow layouts): prev/next, name (opens a simple
@@ -123,7 +123,7 @@ internal fun RowScope.TrackToggles(store: LiveStore, client: LiveClient, h: Dp =
                 val nxt = (mon + 1) % 3
                 set("monitor", nxt, { it.copy(monitor = nxt) }, { it.copy(monitor = nxt) })
             },
-            m, mon == 0, LiveColors.Accent, minHeight = h, minWidth = 40.dp,
+            m, mon == 0, LiveColors.Accent, minHeight = h, minWidth = 62.dp,
         )
     }
 }

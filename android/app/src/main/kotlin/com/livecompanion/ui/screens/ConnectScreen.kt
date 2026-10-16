@@ -68,6 +68,8 @@ fun ConnectScreen(
     val parsed = parseHostPort(manual)
     val inputError = hostPortError(manual)
     val busy = connecting != null
+    // a failed-attempt message belongs to what was typed then: hide it as soon as the field changes
+    var errFresh by remember(error) { mutableStateOf(true) }
     val go: (HostTarget) -> Unit = { if (!busy) onConnect(it) }
 
     BoxWithConstraints(modifier.fillMaxSize().background(LiveColors.Bg).imePadding()) {
@@ -81,7 +83,7 @@ fun ConnectScreen(
                     LiveText("Connecting to ${connecting.label}...", Modifier.weight(1f), LiveType.Small, LiveColors.Accent, maxLines = 2)
                     LiveTextButton("Cancel", onCancel, minWidth = 72.dp)
                 }
-            } else if (error != null) {
+            } else if (error != null && errFresh && inputError == null) {
                 LiveText(error, Modifier.fillMaxWidth().background(LiveColors.Panel, LiveShapes.Small).padding(8.dp), LiveType.Small, LiveColors.Rec, maxLines = 4)
             }
         }
@@ -89,7 +91,7 @@ fun ConnectScreen(
             Column(m, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 LiveLabel("Manual")
                 LiveTextField(
-                    manual, { manual = it },
+                    manual, { manual = it; errFresh = false },
                     placeholder = "host or host:port (default 9010)",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                     onDone = { parsed?.let(go) },
@@ -97,7 +99,7 @@ fun ConnectScreen(
                 if (inputError != null) LiveText(inputError, style = LiveType.Small, color = LiveColors.Rec, maxLines = 2)
                 LiveTextButton("Connect", { parsed?.let(go) }, Modifier.fillMaxWidth(), on = parsed != null && !busy, enabled = parsed != null && !busy)
                 LiveTextButton(
-                    "localhost 10.0.2.2:9010 (mock)",
+                    "This PC from the emulator (10.0.2.2:9010)",
                     { go(HostTarget("10.0.2.2", 9010)) },
                     Modifier.fillMaxWidth(), enabled = !busy,
                 )

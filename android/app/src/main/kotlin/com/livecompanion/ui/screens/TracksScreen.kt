@@ -204,16 +204,16 @@ private fun TrackRow(
                 }
                 LiveText(
                     when (t.kind) { "midi" -> "MIDI"; "audio" -> "AUDIO"; "group" -> "GROUP"; "return" -> "RET"; else -> "MAIN" },
-                    style = LiveType.Label,
+                    Modifier.width(40.dp), style = LiveType.Label, color = LiveColors.Text, maxLines = 1,
                 )
                 if (t.armable) {
                     LiveIconButton(LiveIconKind.Rec, { onToggle("arm", !t.arm) }, Modifier, t.arm, LiveColors.Rec, minHeight = 32.dp, minWidth = 32.dp)
                 }
                 if (!master) {
-                    LiveTextButton("M", { onToggle("mute", !t.mute) }, on = t.mute, onColor = LiveColors.MuteOn)
-                    LiveTextButton("S", { onToggle("solo", !t.solo) }, on = t.solo, onColor = LiveColors.Solo)
+                    LiveTextButton("M", { onToggle("mute", !t.mute) }, on = t.mute, onColor = LiveColors.MuteOn, minHeight = 32.dp, minWidth = 32.dp)
+                    LiveTextButton("S", { onToggle("solo", !t.solo) }, on = t.solo, onColor = LiveColors.Solo, minHeight = 32.dp, minWidth = 32.dp)
                 }
-                LiveTextButton(if (open) "Edit ▴" else "Edit ▾", onToggleOpen, on = open, minWidth = 56.dp)
+                LiveTextButton(if (open) "Edit ▴" else "Edit ▾", onToggleOpen, on = open, minHeight = 32.dp, minWidth = 56.dp)
             }
             Box(Modifier.width(2.dp))
         }

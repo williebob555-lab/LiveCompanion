@@ -220,7 +220,7 @@ class LiveClient(
         val r = raw ?: "no response"
         val why = when {
             r.startsWith("No hello") -> r
-            r.contains("refused", true) -> "connection refused (is Live running with the LiveCompanion control surface?)"
+            r.contains("refused", true) || r.contains("Failed to connect", true) || r.contains("ECONNREFUSED", true) -> "connection refused (is Live running with the LiveCompanion control surface?)"
             r.contains("Unable to resolve host", true) || r.contains("UnknownHost", true) || r.contains("No address associated", true) ->
                 "unknown host name"
             r.contains("timeout", true) || r.contains("timed out", true) -> "timed out"

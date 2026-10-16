@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -104,26 +107,41 @@ fun BrowserScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
         if (m.query.isBlank()) listing else listing.filter { it.name.contains(m.query.trim(), ignoreCase = true) }
     }
     val tr = focus.ref
+    // the status bar clears itself (was stuck on screen forever)
+    LaunchedEffect(m.status) { if (m.status != null) { kotlinx.coroutines.delay(3500); m.status = null } }
 
     Column(modifier.fillMaxSize().background(LiveColors.Bg).padding(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        FlowRow(
-            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(2.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp),
+        // ONE scrolling category row (no second full-width row of chips)
+        Row(
+            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(2.dp).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically,
         ) {
             val roots = m.roots
             if (roots == null) LiveText(m.error ?: "Loading categories...", color = LiveColors.TextDim, modifier = Modifier.padding(4.dp))
             else for (r in roots) DenseButton(r.name, { m.path = listOf(r.name); m.query = "" }, on = m.path.firstOrNull() == r.name)
         }
+        // breadcrumb (every segment taps back to that level) + compact search on the same row
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             DenseButton("Up", { m.path = m.path.dropLast(1); m.query = "" }, enabled = m.path.isNotEmpty())
-            LiveText(
-                if (m.path.isEmpty()) "Pick a category" else m.path.joinToString("  /  "),
-                Modifier.weight(1f).padding(horizontal = 4.dp), LiveType.Small, color = LiveColors.TextDim,
-            )
+            Row(
+                Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(horizontal = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (m.path.isEmpty()) LiveText("Pick a category", style = LiveType.Small, color = LiveColors.TextDim)
+                m.path.forEachIndexed { idx, seg ->
+                    if (idx > 0) LiveText("/", Modifier.padding(horizontal = 2.dp), LiveType.Small, color = LiveColors.TextDim)
+                    val last = idx == m.path.lastIndex
+                    LiveText(
+                        seg,
+                        Modifier.clickable(enabled = !last) { m.path = m.path.take(idx + 1); m.query = "" }.padding(horizontal = 3.dp, vertical = 6.dp),
+                        LiveType.Small, color = if (last) LiveColors.Text else LiveColors.Accent, maxLines = 1,
+                    )
+                }
+            }
+            DenseTextField(m.query, { m.query = it }, Modifier.widthIn(min = 90.dp, max = 180.dp), placeholder = "Search")
             DenseButton("Refresh", { m.cache.remove(m.path); m.version++ }, enabled = m.path.isNotEmpty())
             if (m.previewing != null) DenseButton("Stop", { m.previewing = null; client.op("browser.preview_stop") }, on = true, onColor = LiveColors.Play)
         }
-        DenseTextField(m.query, { m.query = it }, Modifier.fillMaxWidth(), placeholder = "Search this folder")
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
                 m.path.isEmpty() -> Center("Pick a category above")
@@ -163,7 +181,7 @@ fun BrowserScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                                         }
                                         m.status?.let { store.notice(it) }
                                     }
-                                }, enabled = tr.isNotEmpty())
+                                }, on = true, enabled = tr.isNotEmpty())
                             }
                         }
                     }

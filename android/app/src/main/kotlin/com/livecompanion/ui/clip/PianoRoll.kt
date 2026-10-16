@@ -122,21 +122,27 @@ fun PianoRoll(
     }
 
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val twoRows = maxWidth < 500.dp
+        val twoRows = maxWidth < 400.dp
+        val compact = maxWidth < 640.dp
         val toolbarGrid: @Composable () -> Unit = {
             GridControls(sub, { sub = it }, snap, { snap = it }, "$num/$den", { sigDialog = true }, stepLabel(stepNow))
         }
         val toolbarTools: @Composable () -> Unit = {
             ToolSep()
-            ToolIcon(com.livecompanion.ui.components.LiveIconKind.Draw, "Draw notes", { mode = RollMode.Draw }, on = mode == RollMode.Draw, label = "Draw")
-            ToolIcon(com.livecompanion.ui.components.LiveIconKind.Select, "Select and move notes", { mode = RollMode.Select }, on = mode == RollMode.Select, label = "Select")
+            ToolIcon(com.livecompanion.ui.components.LiveIconKind.Draw, "Draw notes", { mode = RollMode.Draw }, on = mode == RollMode.Draw, label = if (compact) null else "Draw")
+            ToolIcon(com.livecompanion.ui.components.LiveIconKind.Select, "Select and move notes", { mode = RollMode.Select }, on = mode == RollMode.Select, label = if (compact) null else "Select")
             ToolSep()
             ToolBtn("Fold", { view.fold = !view.fold; view.topRow = 0f }, on = view.fold, enabled = used.isNotEmpty(), minWidth = 36.dp)
             if (scale != null) ToolBtn(scaleLabel(scale), { showScale = !showScale }, on = showScale, minWidth = 40.dp)
             ToolSep()
             // lane switch: one joined pair
-            ToolBtn("Vel", { lane = Lane.Vel }, on = lane == Lane.Vel, minWidth = 34.dp)
-            ToolBtn("Prob", { lane = Lane.Prob }, on = lane == Lane.Prob, minWidth = 36.dp)
+            if (compact) {
+                // one cycling lane button (Vel <-> Prob) saves a button's width on narrow panes
+                ToolBtn(if (lane == Lane.Vel) "Vel" else "Prob", { lane = if (lane == Lane.Vel) Lane.Prob else Lane.Vel }, on = true, minWidth = 40.dp)
+            } else {
+                ToolBtn("Vel", { lane = Lane.Vel }, on = lane == Lane.Vel, minWidth = 34.dp)
+                ToolBtn("Prob", { lane = Lane.Prob }, on = lane == Lane.Prob, minWidth = 36.dp)
+            }
             ToolSep()
             ToolIcon(com.livecompanion.ui.components.LiveIconKind.SelAll, "Select all notes", { ed.selectAll() })
             ToolIcon(com.livecompanion.ui.components.LiveIconKind.Dup, "Duplicate selected notes", { ed.duplicateSelected() }, enabled = ed.sel.isNotEmpty())

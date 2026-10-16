@@ -164,7 +164,7 @@ fun AudioEditor(
     }
 
     BoxWithConstraints(modifier.fillMaxSize().background(LiveColors.Bg)) {
-        val twoRows = maxWidth < 500.dp
+        val twoRows = maxWidth < 400.dp
         val gridTools: @Composable () -> Unit = {
             GridControls(sub, { sub = it }, snap, { snap = it }, "$num/$den", { sigDialog = true }, stepLabel(stepNow), showSub = !seconds)
         }
@@ -222,7 +222,7 @@ fun AudioEditor(
                             // nearest warp marker
                             var target: Double? = null
                             if (c0.warping && down.position.x >= v.leftW) {
-                                var bestD = hitPx
+                                var bestD = max(hitPx, with(density) { 24.dp.toPx() })   // generous finger target for warp markers
                                 for (wm in c0.warpMarkers) {
                                     val d = abs(v.xOf(wm.beat) - down.position.x)
                                     if (d <= bestD) { bestD = d; target = wm.beat }
@@ -350,10 +350,17 @@ private fun DrawScope.drawWave(
                 if (x < v.leftW - 10f || x > w + 10f) continue
                 val sel = selWarp != null && (abs(selWarp - wm.beat) < 1e-9 || (dragWarp != null && abs(dragWarp.second - b) < 1e-9))
                 val c = if (sel) Color.White else wc
-                drawLine(c, Offset(x, top), Offset(x, h), if (sel) 2f else 1f)
-                val r = if (sel) 8f else 6f
-                val p = Path().apply { moveTo(x - r, top); lineTo(x + r, top); lineTo(x, top + r * 1.5f); close() }
-                drawPath(p, c)
+                val d = density
+                drawLine(c, Offset(x, top), Offset(x, h), (if (sel) 2f else 1.5f) * d)
+                // visible grip handle: a pill with two grip lines at the top and a smaller one at the bottom (hit zone is wider than the pill)
+                val gw = (if (sel) 16f else 13f) * d
+                val gh = (if (sel) 22f else 18f) * d
+                for (yy in listOf(top, h - gh * 0.7f)) {
+                    val hh = if (yy == top) gh else gh * 0.7f
+                    drawRoundRect(c, Offset(x - gw / 2f, yy), Size(gw, hh), androidx.compose.ui.geometry.CornerRadius(3f * d))
+                    drawLine(Color.Black.copy(alpha = 0.6f), Offset(x - 2f * d, yy + hh * 0.25f), Offset(x - 2f * d, yy + hh * 0.75f), 1f * d)
+                    drawLine(Color.Black.copy(alpha = 0.6f), Offset(x + 2f * d, yy + hh * 0.25f), Offset(x + 2f * d, yy + hh * 0.75f), 1f * d)
+                }
             }
         }
     }

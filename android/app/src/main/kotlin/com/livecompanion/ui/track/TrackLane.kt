@@ -115,8 +115,10 @@ private const val TAKE_H_DP = 24f
 private const val BRACE_H_DP = 9f
 /** Scrub (bar number) row height. */
 private const val SCRUB_H_DP = 16f
-/** Live-like: a clip block is at most this tall (top aligned); the rest of a tall lane stays empty. */
-private const val CLIP_MAX_DP = 120f
+
+/** Height of one take lane: [TAKE_H_DP] unless the take lanes would take more than ~35% of the space under the ruler. */
+private fun takeHFor(totalH: Float, rulerPx: Float, n: Int, base: Float): Float =
+    if (n <= 0) base else min(base, max(0.35f * (totalH - rulerPx) / n, 10f))
 /** Visible trim handle width == edge grab zone (selected clip only). */
 private const val EDGE_DP = 14f
 /** No clip may be trimmed shorter than 1/16 beat (also enforced by the server). */
@@ -144,7 +146,7 @@ fun TrackLane(
     val scrubPx = with(density) { maxOf(SCRUB_H_DP.dp, 10.sp.toDp() + 5.dp).toPx() }
     val bracePx = BRACE_H_DP * dens
     val rulerPx = scrubPx + bracePx
-    val takeH = TAKE_H_DP * dens
+    val takeH0 = TAKE_H_DP * dens
     val edgeHit = 22f * dens
     val clipEdge = EDGE_DP * dens
     val tapPad = 4f * dens
@@ -182,9 +184,16 @@ fun TrackLane(
         }
     }
 
+    // Take lanes share at most ~35% of the space under the ruler; the main lane (clips) keeps the rest.
+    fun takeH(): Float {
+        val m = curM
+        val n = if (m.showTakes) min(m.takes.size, 4) else 0
+        return takeHFor(heightPx, rulerPx, n, takeH0)
+    }
+
     fun mainH(): Float {
         val m = curM
-        val takesTotal = if (m.showTakes) min(m.takes.size, 4) * takeH else 0f
+        val takesTotal = if (m.showTakes) min(m.takes.size, 4) * takeH() else 0f
         return max(heightPx - rulerPx - takesTotal, 40f * dens)
     }
 
@@ -194,7 +203,7 @@ fun TrackLane(
             y < scrubPx -> Zone.Scrub
             y < rulerPx -> Zone.Brace
             y < rulerPx + mainH() -> Zone.Main
-            m.showTakes && y < rulerPx + mainH() + min(m.takes.size, 4) * takeH -> Zone.Take
+            m.showTakes && y < rulerPx + mainH() + min(m.takes.size, 4) * takeH() -> Zone.Take
             else -> Zone.None
         }
     }
@@ -205,7 +214,7 @@ fun TrackLane(
         return if (d != null && d.i == i) d.start to d.end else c.start to c.end
     }
 
-    fun clipBottom(): Float = rulerPx + 2f * dens + min(mainH() - 4f * dens, CLIP_MAX_DP * dens)
+    fun clipBottom(): Float = rulerPx + 2f * dens + (mainH() - 4f * dens)
 
     fun hitMain(x: Float, y: Float): ArrClip? {
         if (y > clipBottom() + tapPad) return null
@@ -223,7 +232,7 @@ fun TrackLane(
     }
 
     fun hitTake(x: Float, y: Float): Pair<Int, Int>? {
-        val li = ((y - rulerPx - mainH()) / takeH).toInt()
+        val li = ((y - rulerPx - mainH()) / takeH()).toInt()
         val lane = curM.takes.getOrNull(li) ?: return null
         for (c in lane.clips) {
             val sx = view.xOf(c.start); val ex = view.xOf(c.end)
@@ -461,6 +470,7 @@ fun TrackLane(
         Canvas(Modifier.fillMaxSize()) {
             if (!view.fitted) return@Canvas
             val takesN = if (model.showTakes) min(model.takes.size, 4) else 0
+            val takeH = takeHFor(size.height, rulerPx, takesN, takeH0)
             val mh = max(size.height - rulerPx - takesN * takeH, 40f * dens)
             drawBase(view, model, drag, peaks, scrubPx, rulerPx, mh, takeH, tm, dens)
         }
@@ -468,6 +478,7 @@ fun TrackLane(
         Canvas(Modifier.fillMaxSize()) {
             if (!view.fitted) return@Canvas
             val takesN = if (model.showTakes) min(model.takes.size, 4) else 0
+            val takeH = takeHFor(size.height, rulerPx, takesN, takeH0)
             val mh = max(size.height - rulerPx - takesN * takeH, 40f * dens)
             val ph = clock.shown
             if (rec.active) drawRec(view, rec, ph, scrubPx, rulerPx, mh, tm, dens)
@@ -652,7 +663,7 @@ private fun DrawScope.drawBase(
 
     // ---- main lane clips
     val top = rulerPx + 2f * dens
-    val h = min(mainH - 4f * dens, CLIP_MAX_DP * dens)
+    val h = mainH - 4f * dens
     // the clip being dragged is drawn last (on top); anything it would overwrite is flagged in red
     val ordered = if (drag == null) m.clips else m.clips.filter { it.i != drag.i } + m.clips.filter { it.i == drag.i }
     for (c in ordered) {
@@ -763,19 +774,21 @@ private fun DrawScope.drawClip(
                 x += stepPx
             }
         } else if (!c.audio && c.pn.isNotEmpty() && bodyH > 6f * dens) {
-            // Live-style mini piano roll: thin note lines spread over the clip's own pitch range (not a fixed 4-row grid).
+            // Live-style mini piano roll: thin horizontal note lines spread over the clip's own pitch range
+            // (at least an octave so a 2-note clip does not stretch to the full height), filling the clip body.
             var lo = 127; var hi = 0
             for (n in c.pn) { if (n.size >= 3) { val p = n[2].toInt(); if (p < lo) lo = p; if (p > hi) hi = p } }
-            val pad = 4f * dens
-            val range = (hi - lo).coerceAtLeast(0)
-            val nh = ((bodyH - 2 * pad) / (range + 1)).coerceIn(1.5f * dens, 3.5f * dens)
-            val usable = (bodyH - 2 * pad - nh).coerceAtLeast(0f)
+            if (hi - lo < 11) { val mid = (hi + lo) / 2; lo = mid - 5; hi = lo + 11 }
+            val pad = 5f * dens
+            val rows = hi - lo + 1
+            val rowH = ((bodyH - 2 * pad) / rows).coerceAtLeast(1f)
+            val nh = (rowH * 0.45f).coerceIn(1.5f * dens, 4f * dens).coerceAtMost(rowH)
             val nc = onColor(body).copy(alpha = if (c.muted) 0.35f else 0.9f)
             placeNotes(c, clipLen) { rel, dur, pitch ->
                 val nx = view.xOf(s + rel)
-                val nw = max((dur * view.ppb).toFloat() - 0.5f * dens, 1.5f)
+                val nw = max((dur * view.ppb).toFloat() - 0.5f * dens, 3f * dens)
                 if (nx + nw >= 0f && nx <= w) {
-                    val ny = bodyTop + pad + if (range == 0) usable / 2f else (hi - pitch).toFloat() / range * usable
+                    val ny = bodyTop + pad + (hi - pitch) * rowH + (rowH - nh) / 2f
                     drawRect(nc, Offset(nx, ny), Size(nw, nh))
                 }
             }

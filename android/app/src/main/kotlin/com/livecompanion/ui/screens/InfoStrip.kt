@@ -26,7 +26,7 @@ import com.livecompanion.ui.components.MeterBar
 import com.livecompanion.ui.theme.LiveColors
 import com.livecompanion.ui.theme.LiveType
 
-private val StripText = LiveType.Mono.copy(fontSize = 9.sp, lineHeight = 11.sp)
+private val StripText = LiveType.Mono.copy(fontSize = 10.sp, lineHeight = 12.sp, color = LiveColors.Text)
 private val StripLabel = LiveType.Label.copy(fontSize = 8.sp, lineHeight = 9.sp, letterSpacing = 0.3.sp)
 
 /**
