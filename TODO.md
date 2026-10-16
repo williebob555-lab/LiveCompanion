@@ -4,6 +4,9 @@ Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (wh
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
 ## In progress
+- [~] QA agent (sonnet) rounds R1–R4 on emulators vs mock → qa/REVIEW_LOG.md (started after 06145ff/df1f485).
+  Orchestrator: check REVIEW_LOG after each round; push if shallow, rein in if wasteful.
+- [!] Real-Live probe blocked on owner selecting LiveCompanion control surface in Live.
 - [~] M1.1 python-core agent (sonnet) — remote script, core, fake LOM, mock, tests
 - [~] screens agent A (sonnet): Arrange + Takes (+ ui/components/Timeline.kt)
 - [~] screens agent B (sonnet): Clip editor (props, piano roll, waveform via helper)
@@ -53,6 +56,8 @@ Rule: update this file when starting/finishing anything. If interrupted, resume 
 - Take ratings sync to Live clip names? (decide after owner QA)
 
 ## QA follow-ups
+- [x] R1 Q1-1..Q1-10 fixed (not committed): landscape/wide shell = left tab rail + one compact top bar (CompactTopBar.kt), props side column/toggle in Clip, symmetric safe insets, vel/prob lane >=40dp, note dedupe on move/draw, clip.set gain_db (server+PROTOCOL), take.next names "Take N" + TAKE state/count/elapsed bars, Takes tab explains workflows + "To arr", Mix horizontal faders + aligned returns/master + Delete separated, device Delete moved + confirm.
+- [x] R2 Q2-1 (null clip/params sections + fixtures + ContractTest), Q2-2 TAKE disabled when not armable, Q2-3 scene column scales with font, Q2-4 waveform snap + gesture exclusion, Q2-5 auto-reconnect (Cancel on banner) + Back confirm, Q2-6 mock exclusive arm.
 - [ ] S1 auto-focus a track on connect (qa/REVIEW_LOG R0)
 - [ ] S2 pan readout overlaps center line
 

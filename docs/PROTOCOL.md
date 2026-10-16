@@ -76,8 +76,9 @@ Track: `track.set {tr,k,v}` k ∈ name,color,arm,mute,solo,monitor,folded,vol,pa
 Slots: `slot.fire {tr,i}`, `slot.create {tr,i,len}`, `slot.delete {tr,i}`, `slot.duplicate {tr,i}` (to next slot),
 `slot.copy {tr,i,to_tr,to_i}`, `slot.move {tr,i,to_tr,to_i}`,
 `take.next {tr}` — take loop: arms track, fires first empty slot at/after last recorded one (creates scene if none).
+Names the new clip "Take N" (N = highest existing "Take n" on the track + 1; a newly created scene gets the same name). Returns `{i, name}`.
 Clips: `clip.fire {loc}`, `clip.stop {loc}`, `clip.open {loc}`, `clip.close`, `clip.set {loc,k,v}`
-k ∈ name,color,looping,loop_start,loop_end,start_marker,end_marker,gain,pitch_coarse,pitch_fine,warping,warp_mode,
+k ∈ name,color,looping,loop_start,loop_end,start_marker,end_marker,gain,gain_db (dB in displayed units; server converts and refines against gain_display_string),pitch_coarse,pitch_fine,warping,warp_mode,
 launch_mode,launch_quant,legato,muted; `clip.delete {loc}`, `clip.duplicate_loop {loc}`, `clip.crop {loc}`,
 `clip.quantize {loc,grid,amount}`, `clip.to_arr {loc,time}`, `arr.create_midi {tr,start,len}`,
 `arr.move {loc,start}` (re-create based; may be unsupported).

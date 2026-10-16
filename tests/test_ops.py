@@ -174,12 +174,13 @@ def test_track_create_delete_duplicate(c):
 def test_take_next_records_new_clip(c, h):
     c.ok("focus.set", tr="t0")
     r = c.ok("take.next", tr="t0")
-    assert r == {"i": 6}
+    assert r["i"] == 6 and r["name"] == "Take 1"
     s = c.until("slots", lambda d: d["slots"][6]["status"] == "recording")
+    c.until("slots", lambda d: d["slots"][6]["clip"]["name"] == "Take 1")
     c.until("focus", lambda d: d["arm"] is True)
     c.until("slots", lambda d: d["slots"][6]["clip"] is not None and d["slots"][6]["clip"]["len"] > 0.2)
     r2 = c.ok("take.next", tr="t0")
-    assert r2 == {"i": 7}
+    assert r2["i"] == 7 and r2["name"] == "Take 2"
     c.until("slots", lambda d: d["slots"][6]["status"] != "recording" and d["slots"][7]["status"] == "recording")
     c.ok("take.next", tr="t0")           # no free slot -> creates a scene
     c.until("tracks", lambda d: len(d["scenes"]) == 9)
@@ -286,6 +287,10 @@ def test_audio_clip_and_warp(c):
                       ("warping", False, "warping"), ("warp_mode", "Complex", "warp_mode")]:
         c.ok("clip.set", loc=loc, k=k, v=v)
         c.until("clip", lambda d, key=key, v=v: d[key] == v)
+    c.ok("clip.set", loc=loc, k="gain_db", v=-6.0)
+    d = c.until("clip", lambda d: d["gain_str"] == "-6.0 dB")
+    assert abs(d["gain"] - 0.2005) < 0.01
+    assert c.req("clip.set", loc=loc, k="gain_db", v=99)["ok"] is False
     assert c.req("clip.set", loc=loc, k="warp_mode", v="Nope")["ok"] is False
     assert c.req("clip.set", loc=loc, k="pitch_coarse", v=99)["ok"] is False
     c.ok("warp.add", beat=3.0)

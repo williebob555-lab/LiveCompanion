@@ -136,7 +136,8 @@ fun PianoRoll(clip: ClipState, ed: NoteEditor, rt: State<RtFrame>, modifier: Mod
             Btn("Del", { ed.deleteSelected() }, enabled = ed.sel.isNotEmpty())
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            val laneH = (maxHeight * 0.22f).coerceIn(34.dp, 64.dp)
+            // Velocity / probability lane: bottom strip, ~20% of the editor, never below 40dp.
+            val laneH = (maxHeight * 0.2f).coerceIn(40.dp, 96.dp)
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().background(LiveColors.Bg).onSizeChanged { gridSize = it }) {
                     NotesCanvas(clip, ed, view, tm, bb, grid, snap, mode)

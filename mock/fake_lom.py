@@ -539,6 +539,16 @@ class FakeTrack(Observable):
                  "playing_slot_index", "fired_slot_index", "devices", "arrangement_clips", "take_lanes",
                  "input_routing_type", "input_routing_channel", "output_routing_type")
 
+    def __setattr__(self, name, value):
+        Observable.__setattr__(self, name, value)
+        # Exclusive arm, like Live: arming one track disarms the others.
+        if name == "arm" and value is True:
+            song = self.__dict__.get("_song")
+            if song is not None and getattr(song, "exclusive_arm", False):
+                for t in list(song.tracks):
+                    if t is not self and t.__dict__.get("arm") is True:
+                        t.arm = False
+
     def __init__(self, song, name, kind, color, n_scenes=0, n_sends=2):
         Observable.__init__(self)
         self._song = song

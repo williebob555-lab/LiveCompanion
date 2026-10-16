@@ -104,6 +104,13 @@ def dump(out_dir=OUT):
         c.ok("device.open", tr="t0", path="0")
         c.wait(lambda x: x.sections.get("params"))
         save("sec_params_rack", {"t": "sec", "s": "params", "d": c.sections["params"]})
+        # null sections: the server signals "closed / gone" with d:null (device.close, clip.close)
+        c.ok("device.close")
+        c.wait(lambda x: "params" in x.sections and x.sections["params"] is None)
+        save("null_sec_params", {"t": "sec", "s": "params", "d": None})
+        c.ok("clip.close")
+        c.wait(lambda x: "clip" in x.sections and x.sections["clip"] is None)
+        save("null_sec_clip", {"t": "sec", "s": "clip", "d": None})
 
         c.ok("song.play")
         c.ok("scene.fire", i=0)

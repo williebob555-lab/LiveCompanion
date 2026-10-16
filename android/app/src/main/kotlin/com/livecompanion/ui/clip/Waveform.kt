@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -103,7 +104,7 @@ fun audioExtent(clip: ClipState, map: AudioMap, fileSec: Double): Pair<Double, D
         val f = map.axisOf(fileSec)
         if (f.isFinite() && f < hi * 4) hi = max(hi, f)
     }
-    return lo to hi * 1.02
+    return (if (lo < 0) lo * 1.05 else lo) to hi * 1.06
 }
 
 /** Number of peak buckets to request for a view: ~1 per pixel of the visible part, rounded up to a power of two. */
@@ -159,7 +160,7 @@ fun AudioEditor(clip: ClipState, host: String, rt: State<RtFrame>, ops: AudioOps
         val color = liveColor(clip.color)
 
         Canvas(
-            Modifier.fillMaxSize().pointerInput(Unit) {
+            Modifier.fillMaxSize().systemGestureExclusion().pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val w = size.width.toFloat()
@@ -192,7 +193,14 @@ fun AudioEditor(clip: ClipState, host: String, rt: State<RtFrame>, ops: AudioOps
                         }
                         @Suppress("UNREACHABLE_CODE") "up"
                     }
-                    val snapStep = if (c0.warping) gridStep(((w) / (v1 - v0)).toFloat(), 8f) / 2 else 0.0
+                    // Snap: whole beats by default, subdividing as you zoom in (and bars when zoomed far out); seconds otherwise.
+                    val ppu0 = (w / (v1 - v0)).toFloat()
+                    val snapStep = if (c0.warping) {
+                        var st = 1.0
+                        while (ppu0 * st > 90f && st > 1.0 / 64) st /= 2
+                        while (ppu0 * st < 16f && st < 64) st *= 2
+                        st
+                    } else niceSecStep(ppu0) / 2
                     fun snapV(a: Double) = if (snapStep > 0) Math.rint(a / snapStep) * snapStep else a
 
                     if (outcome == null) { // long press

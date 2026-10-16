@@ -99,6 +99,7 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
     val ratings = remember { TakeRatings(ctx) }
     val tr = takes.tr.ifEmpty { focus.ref }
     var bestOnly by remember { mutableStateOf(false) }
+    var showSlots by remember { mutableStateOf(false) }
     var pick by remember { mutableStateOf<Pick.Take?>(null) }
     var renameLane by remember { mutableIntStateOf(-1) }
     val view = remember { TimelineView() }
@@ -115,16 +116,27 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
         ) {
             LiveTextButton(
                 "TAKE", { client.op("take.next", "tr" to tr) }, Modifier,
-                on = true, onColor = LiveColors.Rec, enabled = tr.isNotEmpty(), minHeight = 32.dp, minWidth = 56.dp,
+                on = true, onColor = LiveColors.Rec, enabled = tr.isNotEmpty() && focus.armable, minHeight = 32.dp, minWidth = 56.dp,
             )
             DBtn("Stop", { client.op("track.stop", "tr" to tr) }, enabled = tr.isNotEmpty())
-            if (takes.supported) DBtn("+ Lane", { client.op("takes.create_lane", "tr" to tr) })
+            if (takes.supported) {
+                DBtn("Lanes", { showSlots = false }, on = !showSlots)
+                DBtn("Session takes", { showSlots = true }, on = showSlots)
+            }
+            if (takes.supported && !showSlots) DBtn("+ Lane", { client.op("takes.create_lane", "tr" to tr) })
             DBtn("Best only", { bestOnly = !bestOnly }, on = bestOnly)
-            if (takes.supported) DBtn("Fit", { fitTakes(view, takes.lanes.flatMap { l -> l.clips.map { it.start to it.end } }, bpb) })
+            if (takes.supported && !showSlots) DBtn("Fit", { fitTakes(view, takes.lanes.flatMap { l -> l.clips.map { it.start to it.end } }, bpb) })
         }
 
-        if (!takes.supported) {
-            UnsupportedTakes(slotsState.slots, trackName, bestOnly, ratings) { i -> client.op("slot.fire", "tr" to tr, "i" to i) }
+        if (!takes.supported || showSlots) {
+            UnsupportedTakes(
+                slotsState.slots, trackName, bestOnly, ratings, lanesSupported = takes.supported,
+                onFire = { i -> client.op("slot.fire", "tr" to tr, "i" to i) },
+                onToArr = { i ->
+                    val t = floor(session.pos / bpb).coerceAtLeast(0.0) * bpb
+                    client.op("clip.to_arr", "loc" to Loc.slot(tr, i), "time" to t)
+                },
+            )
         } else {
             val spans = takes.lanes.flatMap { l -> l.clips.map { it.start to it.end } }
             LaunchedEffect(tr, spans.size, view.widthPx) {
@@ -235,15 +247,22 @@ private fun UnsupportedTakes(
     trackName: String,
     bestOnly: Boolean,
     ratings: TakeRatings,
+    lanesSupported: Boolean,
     onFire: (Int) -> Unit,
+    onToArr: (Int) -> Unit,
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Column(Modifier.fillMaxWidth().background(LiveColors.Panel).padding(6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            LiveText("Take lanes are not available on this Live version", style = LiveType.Title, maxLines = 3)
+            LiveText("Two ways to take", style = LiveType.Title, maxLines = 2)
             LiveText(
-                "Live's API does not expose take lanes here. Use the session-slot workflow: press TAKE to arm this track and record into " +
-                    "the next empty slot, name the clips Take 1, Take 2, ... and audition them below by tapping. Rate them with the stars (stored on this phone).",
-                style = LiveType.Small, color = LiveColors.TextDim, maxLines = 8,
+                "Session takes: TAKE arms this track and records into the next empty slot as Take 1, Take 2, ... " +
+                    "Tap a take to audition it, rate it with the stars (stored on this phone), and use To arr to copy it to the arrangement at the playhead bar.",
+                style = LiveType.Small, color = LiveColors.TextDim, maxLines = 6,
+            )
+            LiveText(
+                if (lanesSupported) "Take lanes: Live's arrangement comping lanes. Recording in the arrangement (Rec button + play) fills them; switch to Lanes above to audition and promote."
+                else "Take lanes (arrangement comping) are not exposed by this Live version, so only session takes are available here.",
+                style = LiveType.Small, color = LiveColors.TextDim, maxLines = 5,
             )
         }
         var list = slots.filter { it.hasClip && it.clip?.name?.startsWith("Take", ignoreCase = true) == true }
@@ -268,6 +287,7 @@ private fun UnsupportedTakes(
                     LiveText(c.name, Modifier.weight(1f), LiveType.Body, onColor(bg))
                     if (c.len > 0) LiveText("${fmtBars(c.len)}b", style = LiveType.Small, color = onColor(bg).copy(alpha = 0.7f))
                 }
+                DBtn("To arr", { onToArr(s.i) })
                 StarRow(ratings.get(k)) { ratings.set(k, it) }
             }
         }

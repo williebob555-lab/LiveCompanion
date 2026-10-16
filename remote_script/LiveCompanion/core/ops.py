@@ -61,6 +61,17 @@ def _s(v, name="value"):
     return v
 
 
+def _parse_db(s):
+    """'-6.0 dB' -> -6.0; None if the string is not a dB value."""
+    try:
+        s = str(s).strip()
+        if not s.lower().endswith("db"):
+            return None
+        return float(s[:-2].strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
 def _put(obj, attr, val):
     if obj is None or not hasattr(obj, attr):
         raise Unsupported(attr)
@@ -436,15 +447,37 @@ class Ops(object):
             if not g(sl[i], "has_clip", False):
                 idx = i
                 break
+        new_scene = False
         if idx is None:
             n = len(seq(g(self.song, "scenes", ())))
             _call(self.song, "create_scene", n)
             sl = slots_of(t)
             idx = len(sl) - 1
+            new_scene = True
+        # "Take N": one more than the highest existing "Take <n>" clip name on this track.
+        top = 0
+        for s_ in sl:
+            if g(s_, "has_clip", False):
+                nm = _s(g(g(s_, "clip", None), "name", ""), "name")
+                if nm.startswith("Take ") and nm[5:].isdigit():
+                    top = max(top, int(nm[5:]))
+        label = "Take %d" % (top + 1)
         _put(t, "arm", True)
         sl[idx].fire()
+        if g(sl[idx], "has_clip", False):
+            try:
+                _put(g(sl[idx], "clip", None), "name", label)
+            except Exception:
+                pass
+        if new_scene:
+            try:
+                scenes = seq(g(self.song, "scenes", ()))
+                if scenes and not g(scenes[-1], "name", ""):
+                    _put(scenes[-1], "name", label)
+            except Exception:
+                pass
         self.last_take[tr] = idx
-        return {"i": idx}
+        return {"i": idx, "name": label}
 
     # ------------------------------------------------------------ clips
     def clip_fire(self, c, a):
@@ -477,7 +510,7 @@ class Ops(object):
         v = need(a, "v")
         clip = cr.clip
         audio = bool(g(clip, "is_audio_clip", False))
-        if k in ("gain", "pitch_coarse", "pitch_fine", "warping", "warp_mode") and not audio:
+        if k in ("gain", "gain_db", "pitch_coarse", "pitch_fine", "warping", "warp_mode") and not audio:
             raise BadArgs("%s is for audio clips" % k)
         if k == "name":
             _put(clip, "name", _s(v, k))
@@ -499,6 +532,17 @@ class Ops(object):
             _put(clip, k, float(_n(v, k)))
         elif k == "gain":
             _put(clip, "gain", float(_n(v, k, 0.0, 1.0)))
+        elif k == "gain_db":
+            # Edit in displayed units. Start from the linear guess (raw 0.4 == 0 dB), then refine against
+            # the clip's own gain_display_string, since Live's raw->dB curve is not linear.
+            db = float(_n(v, k, -70.0, 24.0))
+            raw = min(1.0, max(0.0, 0.4 * 10 ** (db / 20.0)))
+            for _ in range(6):
+                _put(clip, "gain", raw)
+                shown = _parse_db(g(clip, "gain_display_string", ""))
+                if shown is None or abs(shown - db) < 0.05:
+                    break
+                raw = min(1.0, max(0.0, raw * 10 ** ((db - shown) / 20.0)))
         elif k == "pitch_coarse":
             _put(clip, "pitch_coarse", _i(v, k, -48, 48))
         elif k == "pitch_fine":

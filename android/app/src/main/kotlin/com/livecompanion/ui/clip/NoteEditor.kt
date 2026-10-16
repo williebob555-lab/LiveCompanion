@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.livecompanion.net.LiveClient
 import com.livecompanion.state.Note
+import kotlin.math.abs
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -44,8 +45,23 @@ class NoteEditor(initial: List<Note>, private val client: LiveClient?) {
     fun add(list: List<Note>) {
         if (list.isEmpty()) return
         val withIds = list.map { it.copy(id = tempId--) }
+        // Like Live: a note drawn onto an identical pitch+start replaces the existing one (no duplicates).
+        val gone = collisions(withIds.map { it.id }.toSet(), withIds)
+        if (gone.isNotEmpty()) dropLocally(gone)
         notes = notes + withIds
+        if (gone.isNotEmpty()) client?.op("notes.remove", "ids" to gone.filter { it >= 0 }.toList())
         client?.op("notes.add", "notes" to JsonArray(list.map { noteJson(it, withId = false) }))
+    }
+
+    /** Ids of notes NOT in [moved] that sit on the same pitch and start as any of [targets]. */
+    private fun collisions(moved: Set<Int>, targets: List<Note>): Set<Int> {
+        if (targets.isEmpty()) return emptySet()
+        return notes.filter { n -> n.id !in moved && targets.any { it.p == n.p && abs(it.t - n.t) < 1e-6 } }.mapTo(HashSet()) { it.id }
+    }
+
+    private fun dropLocally(ids: Set<Int>) {
+        notes = notes.filter { it.id !in ids }
+        sel = sel - ids
     }
 
     fun remove(ids: Set<Int>) {
@@ -63,6 +79,14 @@ class NoteEditor(initial: List<Note>, private val client: LiveClient?) {
             n.copy(p = e.p ?: n.p, t = e.t ?: n.t, d = e.d ?: n.d, v = e.v ?: n.v, prob = e.prob ?: n.prob)
         }
         if (!send) return
+        if (edits.any { it.p != null || it.t != null }) {
+            val moved = byId.keys
+            val gone = collisions(moved, notes.filter { it.id in moved })
+            if (gone.isNotEmpty()) {
+                dropLocally(gone)
+                client?.op("notes.remove", "ids" to gone.filter { it >= 0 }.toList())
+            }
+        }
         val arr = edits.filter { it.id >= 0 }.map { e ->
             buildJsonObject {
                 put("id", e.id)

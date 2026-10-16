@@ -12,8 +12,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -75,29 +83,7 @@ fun MainShell(store: LiveStore, client: LiveClient, modifier: Modifier = Modifie
         }
     }
 
-    CompositionLocalProvider(LocalTabNavigator provides { t: Tab -> selected = t }) {
-    Column(modifier.fillMaxSize().background(LiveColors.Bg), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-        if (conn.status != ConnStatus.CONNECTED) ConnectionBanner(client)
-        TransportBar(store, client)
-        TrackHeader(store, client)
-        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-            val availW = maxWidth
-            if (availW >= TWO_PANE_MIN_WIDTH) {
-                val tab = if (selected == Tab.Session) Tab.Clip else selected
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-                    SessionScreen(store, client, Modifier.width((availW * 0.38f).coerceIn(260.dp, 380.dp)).fillMaxHeight())
-                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        TabRow(Tab.entries.filter { it != Tab.Session }, tab) { selected = it }
-                        TabBody(tab, store, client, Modifier.weight(1f).fillMaxWidth())
-                    }
-                }
-            } else {
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    TabRow(Tab.entries, selected) { selected = it }
-                    TabBody(selected, store, client, Modifier.weight(1f).fillMaxWidth())
-                }
-            }
-        }
+    val noticeBar: @Composable () -> Unit = {
         notice?.let { n ->
             LiveText(
                 n,
@@ -107,6 +93,81 @@ fun MainShell(store: LiveStore, client: LiveClient, modifier: Modifier = Modifie
             )
         }
     }
+
+    CompositionLocalProvider(LocalTabNavigator provides { t: Tab -> selected = t }) {
+    BoxWithConstraints(modifier.fillMaxSize().background(LiveColors.Bg)) {
+        // Landscape phones and anything >= 600dp wide: tab rail on the left, one top bar, everything else editor.
+        val rail = maxWidth >= TWO_PANE_MIN_WIDTH || maxWidth > maxHeight
+        if (rail) {
+            val fs = LocalDensity.current.fontScale.coerceAtLeast(1f)
+            val railW = (56.dp * fs).coerceIn(56.dp, 76.dp)
+            val bodyW = maxWidth - railW - 1.dp
+            val two = bodyW >= TWO_PANE_MIN_WIDTH
+            val tab = if (two && selected == Tab.Session) Tab.Clip else selected
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                TabRail(Tab.entries.filter { !(two && it == Tab.Session) }, tab, Modifier.width(railW).fillMaxHeight()) { selected = it }
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    if (conn.status != ConnStatus.CONNECTED) ConnectionBanner(client)
+                    CompactTopBar(store, client)
+                    if (two) {
+                        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                            SessionScreen(store, client, Modifier.width((bodyW * 0.38f).coerceIn(240.dp, 380.dp)).fillMaxHeight())
+                            TabBody(tab, store, client, Modifier.weight(1f).fillMaxHeight())
+                        }
+                    } else {
+                        TabBody(tab, store, client, Modifier.weight(1f).fillMaxWidth())
+                    }
+                    noticeBar()
+                }
+            }
+        } else {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                if (conn.status != ConnStatus.CONNECTED) ConnectionBanner(client)
+                TransportBar(store, client)
+                TrackHeader(store, client)
+                TabRow(Tab.entries, selected) { selected = it }
+                TabBody(selected, store, client, Modifier.weight(1f).fillMaxWidth())
+                noticeBar()
+            }
+        }
+    }
+    }
+}
+
+/**
+ * Safe-area padding that is symmetric left/right (the larger of the two cutout/nav insets, min 4dp) so a one-sided
+ * display cutout does not leave the other side flush to the screen edge; top/bottom use the system insets.
+ */
+@Composable
+fun Modifier.symmetricSafePadding(): Modifier {
+    val ins = WindowInsets.safeDrawing
+    val d = LocalDensity.current
+    val side = with(d) { maxOf(ins.getLeft(d, LayoutDirection.Ltr), ins.getRight(d, LayoutDirection.Ltr)).toDp() }.coerceAtLeast(4.dp)
+    return this.windowInsetsPadding(ins.only(WindowInsetsSides.Vertical)).padding(horizontal = side)
+}
+
+/** Narrow vertical tab rail for landscape / wide layouts: full labels, no abbreviations. */
+@Composable
+fun TabRail(tabs: List<Tab>, selected: Tab, modifier: Modifier = Modifier, onSelect: (Tab) -> Unit) {
+    BoxWithConstraints(modifier.background(LiveColors.Panel)) {
+        val itemH = (maxHeight / tabs.size).coerceAtLeast(34.dp)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            for (t in tabs) {
+                val on = t == selected
+                Box(
+                    Modifier.fillMaxWidth().height(itemH)
+                        .background(if (on) LiveColors.PanelHi else LiveColors.Panel)
+                        .clickable { onSelect(t) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    LiveText(
+                        t.label, Modifier.padding(horizontal = 2.dp), LiveType.Small,
+                        if (on) LiveColors.Accent else LiveColors.Text, textAlign = TextAlign.Center,
+                    )
+                    if (on) Box(Modifier.align(Alignment.CenterStart).width(3.dp).fillMaxHeight(0.6f).background(LiveColors.Accent))
+                }
+            }
+        }
     }
 }
 
@@ -124,37 +185,37 @@ private fun TabBody(tab: Tab, store: LiveStore, client: LiveClient, modifier: Mo
     }
 }
 
-private val Tab.short: String
-    get() = when (this) {
-        Tab.Session -> "Sess"; Tab.Arrange -> "Arr"; Tab.Takes -> "Take"; Tab.Clip -> "Clip"
-        Tab.Devices -> "Dev"; Tab.Browser -> "Brws"; Tab.Mix -> "Mix"; Tab.More -> "More"
-    }
-
-/** Fixed single-line tab row (32dp). Labels are abbreviated when full names would not fit at the current font scale. */
+/**
+ * Portrait tab row, 32dp per line, full labels always: one line when all tabs fit at the current font scale,
+ * otherwise two balanced lines (never abbreviated).
+ */
 @Composable
 fun TabRow(tabs: List<Tab>, selected: Tab, modifier: Modifier = Modifier, onSelect: (Tab) -> Unit) {
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     BoxWithConstraints(modifier.fillMaxWidth().background(LiveColors.Panel)) {
-        val full = maxWidth >= 56.dp * fontScale * tabs.size
-        Row(Modifier.fillMaxWidth()) {
-            for (t in tabs) {
-                val on = t == selected
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .height(32.dp)
-                        .background(if (on) LiveColors.PanelHi else LiveColors.Panel)
-                        .clickable { onSelect(t) }
-                        .padding(horizontal = 1.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    LiveText(
-                        if (full) t.label else t.short,
-                        style = LiveType.Small,
-                        color = if (on) LiveColors.Accent else LiveColors.Text,
-                        textAlign = TextAlign.Center,
-                    )
-                    if (on) Box(Modifier.align(Alignment.BottomCenter).width(24.dp).height(2.dp).background(LiveColors.Accent))
+        val oneLine = maxWidth >= 64.dp * fontScale * tabs.size
+        val lines = if (oneLine) listOf(tabs) else tabs.chunked((tabs.size + 1) / 2)
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            for (line in lines) Row(Modifier.fillMaxWidth()) {
+                for (t in line) {
+                    val on = t == selected
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(32.dp)
+                            .background(if (on) LiveColors.PanelHi else LiveColors.Panel)
+                            .clickable { onSelect(t) }
+                            .padding(horizontal = 1.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        LiveText(
+                            t.label,
+                            style = LiveType.Small,
+                            color = if (on) LiveColors.Accent else LiveColors.Text,
+                            textAlign = TextAlign.Center,
+                        )
+                        if (on) Box(Modifier.align(Alignment.BottomCenter).width(24.dp).height(2.dp).background(LiveColors.Accent))
+                    }
                 }
             }
         }
@@ -177,6 +238,9 @@ private fun ConnectionBanner(client: LiveClient) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         LiveText(text, Modifier.weight(1f), LiveType.Small, LiveColors.Accent)
-        LiveTextButton("Disconnect", actions.disconnect, minWidth = 88.dp, minHeight = 32.dp)
+        LiveTextButton(
+            if (conn.status == ConnStatus.CONNECTING) "Cancel" else "Disconnect",
+            actions.disconnect, minWidth = 88.dp, minHeight = 32.dp,
+        )
     }
 }

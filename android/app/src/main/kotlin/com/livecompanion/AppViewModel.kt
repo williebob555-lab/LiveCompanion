@@ -34,9 +34,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         client.followPref = if (prefs.followLive) true else null
+        // Auto-reconnect to the last host; the shell banner shows "Connecting..." with a Cancel button.
+        prefs.lastHost?.let { connect(it) }
     }
 
     fun connect(t: HostTarget) {
+        prefs.lastHost = t
         prefs.addRecent(t)
         _recents.value = prefs.recents()
         _active.value = t
@@ -44,6 +47,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun disconnect() {
+        prefs.lastHost = null
         client.disconnect()
         _active.value = null
     }

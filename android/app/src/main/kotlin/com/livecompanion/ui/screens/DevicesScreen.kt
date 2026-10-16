@@ -148,11 +148,13 @@ private fun DeviceCard(
             Box(Modifier.border(1.dp, LiveColors.Line, LiveShapes.Small).padding(horizontal = 4.dp, vertical = 1.dp)) {
                 LiveText(typeBadge(d.type), style = LiveType.Label)
             }
+            // Destructive action: far from Params/Select, confirmed by a dialog.
+            Box(Modifier.width(12.dp))
+            DenseButton("Delete", { confirmDelete = true }, onColor = LiveColors.Rec)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             DenseButton("Params", { onOpen(d.path) }, Modifier.weight(1f), on = isOpen)
             DenseButton("Select", { client.op("device.select", "tr" to tr, "path" to d.path) }, Modifier.weight(1f))
-            DenseButton("Del", { confirmDelete = true }, Modifier.weight(0.7f))
         }
         val macros = d.macros.orEmpty()
         if (macros.isNotEmpty()) {

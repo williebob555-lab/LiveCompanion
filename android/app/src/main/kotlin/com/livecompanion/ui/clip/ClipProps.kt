@@ -40,6 +40,13 @@ private val LAUNCH_MODES = listOf("Trigger", "Gate", "Toggle", "Repeat")
 private val LAUNCH_QUANTS = listOf("Global", "None", "8 Bars", "4 Bars", "2 Bars", "1 Bar", "1/2", "1/2T", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T")
 private val Q_GRIDS = listOf("1/4" to 1, "1/8" to 2, "1/8T" to 3, "1/16" to 5, "1/16T" to 6, "1/32" to 8)
 
+/** "-6.0 dB" -> -6.0; null when the string is not a dB readout. */
+internal fun parseDb(s: String): Double? {
+    val t = s.trim()
+    if (!t.endsWith("dB", ignoreCase = true)) return null
+    return t.dropLast(2).trim().replace(',', '.').toDoubleOrNull()
+}
+
 /** Sends clip.* ops for the opened clip with optimistic store updates. */
 class ClipOps(private val store: LiveStore, private val client: LiveClient) {
     private fun loc() = store.clip.value.loc
@@ -134,10 +141,21 @@ fun ClipProps(
             }
             if (clip.audio) {
                 Cells(cols) {
+                    // Edited in dB (the displayed unit); the server maps dB -> Live's raw gain (clip.set gain_db).
+                    val curDb = parseDb(clip.gainStr)
                     StepField(
-                        "Gain", clip.gainStr.ifBlank { "%.2f".format(clip.gain) }, Modifier.weight(1f), pxPerStep = 3f, typedInit = "%.3f".format(clip.gain),
-                        onStep = { s -> val v = (clip.gain + s * 0.005f).coerceIn(0f, 1f); ops.set("gain", v) { it.copy(gain = v) } },
-                        onTyped = { t -> t.trim().replace(',', '.').toFloatOrNull()?.let { v -> ops.set("gain", v.coerceIn(0f, 1f)) { it.copy(gain = v.coerceIn(0f, 1f)) } } },
+                        "Gain dB", clip.gainStr.ifBlank { "%.2f".format(clip.gain) }, Modifier.weight(1f), pxPerStep = 3f,
+                        typedInit = curDb?.let { "%.1f".format(java.util.Locale.US, it) } ?: "0.0",
+                        onStep = { s ->
+                            val db = ((curDb ?: 0.0) + s * 0.1).coerceIn(-70.0, 24.0)
+                            ops.set("gain_db", db) { it.copy(gainStr = "%.1f dB".format(java.util.Locale.US, db)) }
+                        },
+                        onTyped = { t ->
+                            t.trim().replace(',', '.').removeSuffix("dB").removeSuffix("db").trim().toDoubleOrNull()?.let { v ->
+                                val db = v.coerceIn(-70.0, 24.0)
+                                ops.set("gain_db", db) { it.copy(gainStr = "%.1f dB".format(java.util.Locale.US, db)) }
+                            }
+                        },
                     )
                     StepField(
                         "Semi", "${clip.pitchCoarse}", Modifier.weight(1f), pxPerStep = 10f,

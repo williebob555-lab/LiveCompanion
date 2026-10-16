@@ -126,6 +126,17 @@ class ContractTest {
         assertTrue(p.params.isNotEmpty() && p.name.isNotEmpty() && p.params.any { it.max > it.min })
     }
 
+    @Test fun nullSectionsClearEditorState() {
+        val s = fakeStore()
+        val msg = { n: String -> LiveJson.parseToJsonElement(File(dir, "null_sec_$n.json").readText(Charsets.UTF_8)).jsonObject["d"]!! }
+        s.handleSection("clip", load("sec_clip_midi_slot"))
+        s.handleSection("params", load("sec_params_rack"))
+        assertTrue(s.clip.value.loc != null && s.params.value.params.isNotEmpty())
+        s.handleSection("clip", msg("clip"))
+        s.handleSection("params", msg("params"))
+        assertTrue(s.clip.value.loc == null && s.params.value.params.isEmpty())
+    }
+
     @Test fun clips() {
         for (n in names("sec_clip_")) {
             val c = check(n, ClipState.serializer())

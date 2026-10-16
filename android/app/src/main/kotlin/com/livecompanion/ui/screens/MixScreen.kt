@@ -103,7 +103,7 @@ fun MixScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifie
 
     BoxWithConstraints(modifier.fillMaxSize().background(LiveColors.Bg)) {
         val wide = maxWidth >= 520.dp
-        val faderH = (maxHeight * 0.5f).coerceIn(120.dp, 240.dp)
+        val faderH = 34.dp
         val strip: @Composable () -> Unit = { VolPanStrip(f, rt, faderH, store, client, ref) }
         val rest: @Composable () -> Unit = {
             SendsAndRouting(f, store, client, ref, set = ::set)
@@ -146,35 +146,35 @@ private fun VolPanStrip(
     f: FocusState, rt: androidx.compose.runtime.State<com.livecompanion.state.RtFrame>,
     faderH: androidx.compose.ui.unit.Dp, store: LiveStore, client: LiveClient, ref: String,
 ) {
-    Row(
+    // Horizontal faders: sensible proportions at any size, no big empty block beside a tall fader.
+    Column(
         Modifier.fillMaxWidth().background(LiveColors.Panel, LiveShapes.Small).padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            LiveLabel("Vol")
-            Row(Modifier.height(faderH), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                LiveFader(
-                    f.vol.v, { v ->
-                        store.updateFocus { it.copy(vol = it.vol.copy(v = v)) }
-                        client.opThrottled("mix:$ref:vol", "track.set", "tr" to ref, "k" to "vol", "v" to v)
-                    },
-                    Modifier.width(56.dp).height(faderH),
-                    valueRange = f.vol.min..f.vol.max.coerceAtLeast(f.vol.min + 1e-3f), defaultValue = 0.85f.coerceIn(f.vol.min, f.vol.max.coerceAtLeast(0.85f)),
-                    label = f.vol.str.ifEmpty { null },
-                )
-                MeterBar({ rt.value.meters.focusL }, { rt.value.meters.focusR }, Modifier.width(12.dp).height(faderH), vertical = true)
-            }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            LiveLabel("Vol", Modifier.width(30.dp))
+            LiveFader(
+                f.vol.v, { v ->
+                    store.updateFocus { it.copy(vol = it.vol.copy(v = v)) }
+                    client.opThrottled("mix:$ref:vol", "track.set", "tr" to ref, "k" to "vol", "v" to v)
+                },
+                Modifier.weight(1f).height(faderH),
+                valueRange = f.vol.min..f.vol.max.coerceAtLeast(f.vol.min + 1e-3f), defaultValue = 0.85f.coerceIn(f.vol.min, f.vol.max.coerceAtLeast(0.85f)),
+                vertical = false, label = f.vol.str.ifEmpty { null },
+            )
+            MeterBar({ rt.value.meters.focusL }, { rt.value.meters.focusR }, Modifier.width(48.dp).height(faderH), vertical = false)
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            LiveLabel("Pan")
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            LiveLabel("Pan", Modifier.width(30.dp))
             LiveFader(
                 f.pan.v, { v ->
                     store.updateFocus { it.copy(pan = it.pan.copy(v = v)) }
                     client.opThrottled("mix:$ref:pan", "track.set", "tr" to ref, "k" to "pan", "v" to v)
                 },
-                Modifier.fillMaxWidth().height(28.dp), valueRange = f.pan.min..f.pan.max.coerceAtLeast(f.pan.min + 1e-3f),
+                Modifier.weight(1f).height(faderH), valueRange = f.pan.min..f.pan.max.coerceAtLeast(f.pan.min + 1e-3f),
                 defaultValue = 0f, vertical = false, bipolar = true, label = f.pan.str.ifEmpty { null },
             )
+            Box(Modifier.width(48.dp))
         }
     }
 }
@@ -231,9 +231,12 @@ private fun TrackActions(f: FocusState, trackCount: Int, ref: String, client: Li
         LiveLabel("Track")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             DenseButton("Duplicate", { client.op("track.duplicate", "tr" to ref) }, enabled = f.kind != "master")
-            DenseButton("Delete", onDelete, enabled = f.kind != "master")
             DenseButton("+ Audio", { client.op("track.create", "kind" to "audio", "i" to at) })
             DenseButton("+ MIDI", { client.op("track.create", "kind" to "midi", "i" to at) })
+        }
+        // Destructive: own row, right-aligned, away from Duplicate (confirm dialog follows).
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            DenseButton("Delete track", onDelete, enabled = f.kind != "master", onColor = LiveColors.Rec)
         }
     }
 }
@@ -256,17 +259,19 @@ private fun ReturnsStrip(
                             store.patchTrack(t.ref) { it.copy(vol = vp.copy(v = v)) }
                             client.opThrottled("mix:${t.ref}:vol", "track.set", "tr" to t.ref, "k" to "vol", "v" to v)
                         },
-                        Modifier.width(64.dp).height(24.dp), valueRange = vp.min..vp.max.coerceAtLeast(vp.min + 1e-3f),
+                        Modifier.width(96.dp).height(24.dp), valueRange = vp.min..vp.max.coerceAtLeast(vp.min + 1e-3f),
                         defaultValue = 0.85f.coerceIn(vp.min, vp.max.coerceAtLeast(0.85f)), vertical = false,
                         label = vp.str.ifEmpty { null },
                     )
                 }
-                if (t.kind == "master") MeterBar({ rt.value.meters.masterL }, { rt.value.meters.masterR }, Modifier.width(48.dp).height(8.dp))
-                else {
-                    DenseButton("M", { store.patchTrack(t.ref) { it.copy(mute = !t.mute) }; client.op("track.set", "tr" to t.ref, "k" to "mute", "v" to !t.mute) }, on = t.mute, onColor = LiveColors.MuteOn)
-                    DenseButton("S", { store.patchTrack(t.ref) { it.copy(solo = !t.solo) }; client.op("track.set", "tr" to t.ref, "k" to "solo", "v" to !t.solo) }, on = t.solo, onColor = LiveColors.Solo)
+                // Same columns for returns and master: fader | M | S | Edit (master shows its meter in the M/S spacer).
+                if (t.kind == "master") Box(Modifier.width(67.dp).height(32.dp).padding(vertical = 12.dp)) {
+                    MeterBar({ rt.value.meters.masterL }, { rt.value.meters.masterR }, Modifier.fillMaxWidth().height(8.dp))
+                } else {
+                    DenseButton("M", { store.patchTrack(t.ref) { it.copy(mute = !t.mute) }; client.op("track.set", "tr" to t.ref, "k" to "mute", "v" to !t.mute) }, Modifier.width(32.dp), on = t.mute, onColor = LiveColors.MuteOn)
+                    DenseButton("S", { store.patchTrack(t.ref) { it.copy(solo = !t.solo) }; client.op("track.set", "tr" to t.ref, "k" to "solo", "v" to !t.solo) }, Modifier.width(32.dp), on = t.solo, onColor = LiveColors.Solo)
                 }
-                DenseButton("Edit", { client.op("focus.set", "tr" to t.ref) }, on = t.ref == focusRef)
+                DenseButton("Edit", { client.op("focus.set", "tr" to t.ref) }, Modifier.width(44.dp), on = t.ref == focusRef)
             }
         }
     }

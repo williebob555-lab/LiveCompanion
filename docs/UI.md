@@ -23,6 +23,7 @@ Phone landscape (~360–411dp tall) is the primary target: minimize vertical chr
 ## Layout rules (hard requirements)
 - Every screen must render with NO overlap/clipping at: 320x568dp (small phone), 360x800, 412x915,
   600x960 (small tablet/foldable), 840x1280 tablet, plus all of them in landscape, and fontScale 1.0 and 1.3.
+- Landscape (width > height) or width >= 600dp: narrow left TAB RAIL (full labels) + ONE compact top bar (transport + focused track; vol/pan only when >= 900dp, two 30dp rows below 700dp). Portrait compact: transport + track header + tab row (two lines, never abbreviated).
 - Size classes: Compact width → single pane + fixed tab row. Medium/Expanded → two panes
   (left: track list/clip list; right: editor). Never rely on horizontal page scrolling except inside editors
   (piano roll, arrangement lane, waveform), which pan/zoom within their own bounds.

@@ -76,6 +76,9 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
     val tr = slotsState.tr.ifEmpty { focus.ref }
     val goTab = LocalTabNavigator.current
 
+    val recording = slotsState.slots.any { it.status == SlotStatus.RECORDING && it.hasClip }
+    val takeCount = slotsState.slots.count { it.hasClip && it.clip?.name?.startsWith("Take ") == true }
+
     Column(modifier.fillMaxSize().background(LiveColors.Bg)) {
         Row(
             Modifier.fillMaxWidth().background(LiveColors.Panel).padding(1.dp),
@@ -88,12 +91,14 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                 minHeight = 32.dp,
                 onColor = LiveColors.Rec,
                 offColor = LiveColors.Rec.copy(alpha = 0.85f),
-                enabled = tr.isNotEmpty(),
+                enabled = tr.isNotEmpty() && focus.armable, // group / return / master tracks cannot record
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     LiveIcon(LiveIconKind.Rec, Color.White, size = 12.dp)
-                    LiveText("TAKE", style = LiveType.Title, color = Color.White)
+                    LiveText(if (recording) "NEXT" else "TAKE", style = LiveType.Title, color = Color.White)
                     LiveIcon(LiveIconKind.Play, Color.White, size = 11.dp)
+                    if (recording) LiveText("REC", style = LiveType.Label, color = Color.White)
+                    if (takeCount > 0) LiveText("$takeCount", style = LiveType.Label, color = Color.White.copy(alpha = 0.8f))
                 }
             }
             LiveTextButton("Stop", { client.op("track.stop", "tr" to tr) }, Modifier.weight(0.8f), minHeight = 32.dp, enabled = tr.isNotEmpty())
@@ -215,7 +220,8 @@ private fun SlotRow(
     val fg = if (!slot.hasClip) LiveColors.TextDim else onColor(cellBg)
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = 32.dp), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
         if (showScene) {
-            LiveButton(onSceneFire, Modifier.width(44.dp).fillMaxHeight(), minHeight = 32.dp, minWidth = 44.dp, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp)) { c ->
+            val sceneW = 58.dp * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)
+            LiveButton(onSceneFire, Modifier.width(sceneW).fillMaxHeight(), minHeight = 32.dp, minWidth = sceneW, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp)) { c ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     LiveIcon(LiveIconKind.Play, c, size = 9.dp)
                     LiveText(sceneLabel, style = LiveType.Small, color = c)
@@ -263,6 +269,11 @@ private fun SlotRow(
                     LiveType.Small,
                     fg,
                 )
+                if (status == SlotStatus.RECORDING) {
+                    // Elapsed recording length in bars (4/4 assumed for the label), from rt or the clip length.
+                    val beats = slotPos() ?: clip?.len ?: 0.0
+                    LiveText("%.1f bars".format(java.util.Locale.US, beats / 4.0), style = LiveType.Label, color = fg)
+                }
             }
         }
         LiveIconButton(

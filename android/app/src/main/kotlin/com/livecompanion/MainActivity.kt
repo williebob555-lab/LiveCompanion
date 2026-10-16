@@ -13,12 +13,16 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.livecompanion.ui.components.ConfirmDialog
 import androidx.compose.ui.Modifier
 import com.livecompanion.net.ConnStatus
 import com.livecompanion.ui.screens.AppActions
 import com.livecompanion.ui.screens.ConnectScreen
 import com.livecompanion.ui.screens.LocalAppActions
 import com.livecompanion.ui.screens.MainShell
+import com.livecompanion.ui.screens.symmetricSafePadding
 import com.livecompanion.ui.theme.LiveTheme
 
 /** Applies the orientation setting: "land" (default), "port" or "auto". */
@@ -55,8 +59,13 @@ class MainActivity : ComponentActivity() {
                             error = conn.lastError?.takeIf { conn.status == ConnStatus.IDLE },
                         )
                     } else {
-                        BackHandler { vm.disconnect() }
-                        MainShell(vm.store, vm.client, Modifier.safeDrawingPadding())
+                        var confirmBack by remember { mutableStateOf(false) }
+                        BackHandler { confirmBack = true }
+                        if (confirmBack) {
+                            ConfirmDialog("Disconnect", "Disconnect from Live and return to the host list?", "Disconnect",
+                                { confirmBack = false; vm.disconnect() }, { confirmBack = false })
+                        }
+                        MainShell(vm.store, vm.client, Modifier.symmetricSafePadding())
                     }
                 }
             }

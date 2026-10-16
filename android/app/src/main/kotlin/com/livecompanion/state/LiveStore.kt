@@ -60,6 +60,14 @@ class LiveStore {
     /** Full replacement of one section. Unknown section names are ignored (forward compatible). */
     fun handleSection(name: String, d: JsonElement) {
         try {
+            if (d is kotlinx.serialization.json.JsonNull) {
+                // d:null = "closed / gone" (clip.close, deleted clip, focus change, device.close): clear the editor state.
+                when (name) {
+                    "clip" -> _clip.value = ClipState()
+                    "params" -> _params.value = ParamsState()
+                }
+                return
+            }
             when (name) {
                 "session" -> _session.value = LiveJson.decodeFromJsonElement(SessionState.serializer(), d)
                 "tracks" -> _tracks.value = LiveJson.decodeFromJsonElement(TracksState.serializer(), d)

@@ -74,11 +74,11 @@ private fun ClipPicker(store: LiveStore, client: LiveClient, modifier: Modifier)
             if (slotClips.isNotEmpty()) item { LiveLabel("Session slots") }
             items(slotClips, key = { "s${it.i}" }) { s ->
                 val c = s.clip!!
-                PickRow(c.name.ifBlank { "Clip" }, "Slot ${s.i + 1}", c.color, c.audio) { client.op("clip.open", "loc" to Loc.slot(slots.tr.ifBlank { focus.ref }, s.i)) }
+                PickRow(c.name.ifBlank { if (c.audio) "Audio" else "MIDI" }, "Slot ${s.i + 1}", c.color, c.audio) { client.op("clip.open", "loc" to Loc.slot(slots.tr.ifBlank { focus.ref }, s.i)) }
             }
             if (arr.clips.isNotEmpty()) item { LiveLabel("Arrangement") }
             items(arr.clips, key = { "a${it.i}" }) { a ->
-                PickRow(a.name.ifBlank { "Clip" }, "Bar ${(a.start / 4).toInt() + 1}", a.color, a.audio) { client.op("clip.open", "loc" to Loc.arr(arr.tr.ifBlank { focus.ref }, a.i)) }
+                PickRow(a.name.ifBlank { if (a.audio) "Audio" else "MIDI" }, "Bar ${(a.start / 4).toInt() + 1}", a.color, a.audio) { client.op("clip.open", "loc" to Loc.arr(arr.tr.ifBlank { focus.ref }, a.i)) }
             }
         }
     }
@@ -113,21 +113,42 @@ private fun ClipEditor(clip: ClipState, store: LiveStore, client: LiveClient, mo
             if (clip.audio) AudioEditor(clip, host, rt, audioOps, m)
             else PianoRoll(clip, ed, rt, m)
         }
-        if (maxWidth >= 600.dp) {
+        val landShort = maxHeight < 480.dp && maxWidth > maxHeight
+        val sideW = if (maxHeight < 480.dp) 232.dp else 272.dp
+        if (maxWidth >= 720.dp || (maxWidth >= 600.dp && !landShort)) {
+            // Properties in a side column; the editor keeps the full height.
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                Column(Modifier.width(272.dp).fillMaxHeight().background(LiveColors.Panel).verticalScroll(rememberScrollState()).padding(4.dp)) {
+                Column(Modifier.width(sideW).fillMaxHeight().background(LiveColors.Panel).verticalScroll(rememberScrollState()).padding(4.dp)) {
                     ClipProps(clip, ed.takeIf { !clip.audio }, ops, client, close)
                 }
                 editor(Modifier.weight(1f).fillMaxHeight())
             }
+        } else if (landShort) {
+            // Short landscape: editor full height; properties collapsed by default, toggled into a side column.
+            var open by remember { mutableStateOf(false) }
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (open) {
+                    Column(Modifier.width(sideW).fillMaxHeight().background(LiveColors.Panel).verticalScroll(rememberScrollState()).padding(4.dp)) {
+                        ClipProps(clip, ed.takeIf { !clip.audio }, ops, client, close)
+                    }
+                }
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth().height(DenseH).background(LiveColors.Panel).padding(start = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        ColorChip(clip.color)
+                        LiveText(clip.name.ifBlank { if (clip.audio) "Audio" else "MIDI" }, Modifier.weight(1f), style = LiveType.Small)
+                        Btn("Props", { open = !open }, on = open)
+                        Btn("Close", { close() })
+                    }
+                    editor(Modifier.weight(1f).fillMaxWidth())
+                }
+            }
         } else {
             val mh = maxHeight
             var open by remember(maxHeight > 420.dp) { mutableStateOf(maxHeight > 420.dp) }
-            val short = maxHeight < 360.dp
-            Column(
-                Modifier.fillMaxSize().then(if (short) Modifier.verticalScroll(rememberScrollState()) else Modifier),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(
                     Modifier.fillMaxWidth().height(DenseH).background(LiveColors.Panel).padding(start = 6.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -145,7 +166,7 @@ private fun ClipEditor(clip: ClipState, store: LiveStore, client: LiveClient, mo
                             .verticalScroll(rememberScrollState()).padding(4.dp),
                     ) { ClipProps(clip, ed.takeIf { !clip.audio }, ops, client, null) }
                 }
-                editor(if (short) Modifier.fillMaxWidth().height(280.dp) else Modifier.weight(1f).fillMaxWidth())
+                editor(Modifier.weight(1f).fillMaxWidth())
             }
         }
     }

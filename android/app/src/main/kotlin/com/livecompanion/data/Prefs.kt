@@ -20,6 +20,11 @@ class Prefs(context: Context) {
         sp.edit().putString(K_RECENTS, list.joinToString("\n") { it.label }).apply()
     }
 
+    /** Host connected when the app was last used; cleared by an explicit disconnect. Drives auto-reconnect on launch. */
+    var lastHost: HostTarget?
+        get() = parseHostPort(sp.getString(K_LAST_HOST, "") ?: "")
+        set(v) { sp.edit().putString(K_LAST_HOST, v?.label ?: "").apply() }
+
     var followLive: Boolean
         get() = sp.getBoolean(K_FOLLOW, false)
         set(v) { sp.edit().putBoolean(K_FOLLOW, v).apply() }
@@ -36,6 +41,7 @@ class Prefs(context: Context) {
     private companion object {
         const val K_ORIENTATION = "orientation"
         const val K_RECENTS = "recents"
+        const val K_LAST_HOST = "last_host"
         const val K_FOLLOW = "follow_live"
         const val K_TEST_CHANNEL = "test_channel"
         const val MAX_RECENTS = 8
