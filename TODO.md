@@ -5,6 +5,9 @@ Rule: update this file when starting/finishing anything. If interrupted, resume 
 
 ## RESUME HERE — Milestone 2 "UI lock-in" (owner feedback recorded in PREFERENCES 2026-10-15; owner asleep)
 2026-10-16 latest: QA pass 2 fixes committed 241e85f, RELEASED v0.1.0-test4, remote script reinstalled.
+[~] QA pass 3 (emulator + mock only) running. Launching Live unattended was BLOCKED by the permission
+    classifier → real-Live mutating verification (arr.trim/arr.move/swap/device.insert names/etc.) needs the owner
+    present or explicit approval; prepare a scripted checklist (tools/live_verify.py) for that session.
 Next: owner QA of test4 on real Live; open nits P2-1-12/13/14/17/18, P2-2-4/7; verify arr.trim/arr.move/swap on real Live.
 2026-10-16: laptop restarted mid-QA (RAM) → resource rules in PREFERENCES. P2-R1 fixes committed fb66daa,
 RELEASED v0.1.0-test3; remote script reinstalled to owner's User Library (Live restart needed to load it).
