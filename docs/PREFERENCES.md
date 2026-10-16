@@ -25,6 +25,9 @@ Single user (the owner). Read this before every change. Newest entries at the bo
   release.yml builds assembleRelease signed with it and stamps versionName from the tag, versionCode = run number.
   Installed test builds always follow the test channel. Owner reported: update check didn't work and install
   failed (causes: versionName always 0.1.0; per-build debug keys) — fixed from v0.1.0-test5 on.
+- 2026-10-16 (owner): the app must be usable WITHOUT a Live connection — settings/updates reachable from the
+  Connect screen, plus a demo mode to explore the UI. Emulator must be easy to open (tools\Start Emulator.cmd,
+  -port 5554 because NTKDaemon holds 5563).
 - Release tags: builds ≤ v0.1.0-test10 compare pre-release text lexically ("test10" < "test9"), so from now on
   bump the base version instead of growing the test number past 9 (v0.1.1-test1, v0.1.1-test2 … v0.1.2-test1).
   Natural ordering is fixed from v0.1.1-test1 on.
