@@ -408,7 +408,7 @@ private fun LocateDialog(current: String, bpb: Double, unit: Double, maxBar: Int
     val r = com.livecompanion.ui.track.Bbt.parse(text, bpb, unit, maxBar)
     val go = { r.beats?.let(onOk) ?: Unit }
     LiveDialog("Locate (bar.beat.sixteenth)", onDismiss) {
-        LiveTextField(text, { text = it; touched = true }, onDone = { go() })
+        LiveTextField(text, { text = it; touched = true }, onDone = { go() }, autoFocus = true)
         val e = r.error
         if (e != null && touched) LiveText(e, style = LiveType.Small, color = LiveColors.Rec, maxLines = 2)
         LiveDialogButtons {

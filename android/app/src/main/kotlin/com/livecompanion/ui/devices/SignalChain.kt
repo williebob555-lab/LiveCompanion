@@ -74,14 +74,16 @@ fun ChainRow(
 
     fun targetFor(f: Int): Int {
         if (f < 0) return -1
-        // A neighbour is passed as soon as the dragged panel's LEADING edge crosses its centre (short drags follow).
+        // A neighbour is passed as soon as the dragged panel's LEADING edge is ~35% into it (short drags follow).
         val left = (lefts[f] ?: 0f) + dx
         val right = left + (widths[f] ?: 0f)
         var t = 0
         for (j in devices.indices) {
             if (j == f) continue
-            val c = (lefts[j] ?: 0f) + (widths[j] ?: 0f) / 2
-            if (if (j > f) right > c else left > c) t++
+            val jl = lefts[j] ?: 0f
+            val jw = widths[j] ?: 0f
+            // Passed once the leading edge is ~35% into the neighbour (not its centre).
+            if (if (j > f) right > jl + jw * 0.35f else left < jl + jw * 0.65f) t++
         }
         return t
     }

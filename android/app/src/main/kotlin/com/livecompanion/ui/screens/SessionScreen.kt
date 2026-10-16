@@ -223,7 +223,7 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
             Column(Modifier.fillMaxSize()) {
                 controls(false)
                 Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.Center) {
-                    slotList(Modifier.widthIn(max = 460.dp).fillMaxHeight().weight(1f, fill = false), true, 64.dp)
+                    slotList(Modifier.widthIn(max = 560.dp).fillMaxHeight().weight(1f, fill = false), true, 64.dp)
                 }
             }
         }

@@ -128,3 +128,5 @@ Port note: stop any mock on 9010 before using real Live (it blocked the script o
 
 ## Done log
 - 2026-10-15 Docs system created; process questions answered (public repo, local+CI builds, mock+emulator+real Live QA, milestone reports).
+
+- QA pass 5 follow-ups P5-3-1, P5-4-1, P5-5-1, P5-6-1: fixed (pending commit; unit/roborazzi/pytest green).

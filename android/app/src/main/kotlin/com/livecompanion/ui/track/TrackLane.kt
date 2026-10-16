@@ -780,18 +780,18 @@ private fun DrawScope.drawClip(
             }
         } else if (!c.audio && c.pn.isNotEmpty() && bodyH > 6f * dens) {
             // Live-style mini piano roll: solid rounded note bars whose HEIGHT scales with the lane
-            // (row = body height / pitch span, clamped 2..10dp). Span = used range padded, at least one octave;
-            // the group is centred vertically in the clip body.
+            // (row = body height / pitch span; bar height clamped 2..10dp). Span = used range padded, at least one octave;
+            // the range fills the whole body.
             var lo = 127; var hi = 0
             for (n in c.pn) { if (n.size >= 3) { val p = n[2].toInt(); if (p < lo) lo = p; if (p > hi) hi = p } }
             lo -= 1; hi += 1
             if (hi - lo + 1 < 12) { val mid = (hi + lo) / 2; lo = mid - 5; hi = lo + 11 }
             val rows = hi - lo + 1
-            val avail = bodyH - 6f * dens
-            val rowH = (avail / rows).coerceIn(2f * dens, 10f * dens)
-            val used = min(rowH * rows, bodyH)
-            val y0 = bodyTop + (bodyH - used) / 2f
-            val nh = max(rowH * 0.86f, 1.5f * dens)
+            val pad = 2f * dens
+            val avail = (bodyH - 2 * pad).coerceAtLeast(1f)
+            val rowH = avail / rows          // pitch range spans the ENTIRE body, top = highest pitch
+            val y0 = bodyTop + pad
+            val nh = (rowH * 0.86f).coerceIn(2f * dens, 10f * dens)
             val fill = lighten(base, 0.55f).copy(alpha = if (c.muted) 0.4f else 1f)
             val edge = dim(base, 0.35f).copy(alpha = if (c.muted) 0.5f else 0.9f)
             val rad = androidx.compose.ui.geometry.CornerRadius(min(nh / 2f, 2f * dens))

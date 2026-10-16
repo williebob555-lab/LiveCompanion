@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
@@ -47,7 +48,10 @@ fun DenseTextField(
     placeholder: String = "",
     onDone: (() -> Unit)? = null,
     isError: Boolean = false,
+    autoFocus: Boolean = false,
 ) {
+    val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+    if (autoFocus) androidx.compose.runtime.LaunchedEffect(Unit) { try { focus.requestFocus() } catch (_: Exception) {} }
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
@@ -55,7 +59,7 @@ fun DenseTextField(
         textStyle = LiveType.Body.copy(color = LiveColors.Text),
         cursorBrush = SolidColor(LiveColors.Accent),
         keyboardActions = KeyboardActions(onAny = { onDone?.invoke() }),
-        modifier = modifier,
+        modifier = if (autoFocus) modifier.focusRequester(focus) else modifier,
         decorationBox = { inner ->
             Box(
                 Modifier.heightIn(min = 32.dp).fillMaxWidth()
@@ -140,7 +144,7 @@ fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, onOk: (Str
     val err = nameError(text)
     val go = { if (err == null) onOk(text.trim()) else touched = true }
     LiveDialog(title, onDismiss) {
-        LiveTextField(text, { text = it; touched = true }, onDone = { go() })
+        LiveTextField(text, { text = it; touched = true }, onDone = { go() }, autoFocus = true)
         if (err != null && touched) LiveText(err, style = LiveType.Small, color = LiveColors.Rec, maxLines = 2)
         LiveDialogButtons {
             DenseButton("Cancel", onDismiss, Modifier.widthIn(min = 72.dp))

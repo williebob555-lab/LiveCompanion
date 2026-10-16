@@ -195,6 +195,10 @@ private fun TrackRow(
             .background(if (focused) LiveColors.PanelHi else LiveColors.Panel)
             .then(if (focused) Modifier.border(1.dp, LiveColors.Accent, LiveShapes.Small) else Modifier),
     ) {
+        // Error ABOVE the editor row so the soft keyboard never hides it.
+        if (renaming && showErr) nameError(text)?.let {
+            LiveText(it, Modifier.padding(horizontal = 8.dp, vertical = 2.dp), LiveType.Small, LiveColors.Rec)
+        }
         Row(
             Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = 36.dp).clickable(onClick = onFocus),
             verticalAlignment = Alignment.CenterVertically,
@@ -204,7 +208,7 @@ private fun TrackRow(
             Box(Modifier.width(6.dp).fillMaxHeight().heightIn(min = 36.dp).background(liveColor(t.color)))
             if (renaming) {
                 val tryOk = { if (nameError(text) == null) onRename(text) else showErr = true }
-                DenseTextField(text, { text = it; showErr = true }, Modifier.weight(1f).padding(vertical = 2.dp), onDone = tryOk)
+                DenseTextField(text, { text = it; showErr = true }, Modifier.weight(1f).padding(vertical = 2.dp), onDone = tryOk, autoFocus = true)
                 LiveTextButton("OK", tryOk, on = nameError(text) == null, minWidth = 40.dp)
                 LiveTextButton("X", onCancelRename, minWidth = 32.dp)
             } else {
@@ -230,9 +234,6 @@ private fun TrackRow(
                 LiveTextButton(if (open) "Edit ▴" else "Edit ▾", onToggleOpen, on = open, minHeight = 32.dp, minWidth = 56.dp)
             }
             Box(Modifier.width(2.dp))
-        }
-        if (renaming && showErr) nameError(text)?.let {
-            LiveText(it, Modifier.padding(horizontal = 8.dp, vertical = 2.dp), LiveType.Small, LiveColors.Rec)
         }
         if (open && !renaming) {
             Column(Modifier.fillMaxWidth().padding(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

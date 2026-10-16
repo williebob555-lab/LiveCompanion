@@ -121,7 +121,7 @@ fun TypeDialog(title: String, initial: String, onDismiss: () -> Unit, onOk: (Str
     var text by remember { mutableStateOf(initial) }
     val err = validate(text)
     LiveDialog(title = title, onDismiss = onDismiss) {
-        LiveTextField(text, { text = it }, Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text), onDone = { if (err == null) onOk(text) })
+        LiveTextField(text, { text = it }, Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text), onDone = { if (err == null) onOk(text) }, autoFocus = true)
         if (err != null) LiveText(err, style = LiveType.Small, color = LiveColors.Rec, maxLines = 2)
         LiveDialogButtons {
             LiveTextButton("Cancel", onDismiss, minHeight = DenseH)

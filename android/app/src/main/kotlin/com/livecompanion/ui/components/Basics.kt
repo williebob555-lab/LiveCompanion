@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -28,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -241,7 +243,10 @@ fun LiveTextField(
     placeholder: String = "",
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     onDone: (() -> Unit)? = null,
+    autoFocus: Boolean = false,
 ) {
+    val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+    if (autoFocus) androidx.compose.runtime.LaunchedEffect(Unit) { try { focus.requestFocus() } catch (_: Exception) {} }
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
@@ -250,7 +255,7 @@ fun LiveTextField(
         cursorBrush = SolidColor(LiveColors.Accent),
         keyboardOptions = keyboardOptions,
         keyboardActions = KeyboardActions(onAny = { onDone?.invoke() }),
-        modifier = modifier,
+        modifier = if (autoFocus) modifier.focusRequester(focus) else modifier,
         decorationBox = { inner ->
             Box(
                 Modifier
@@ -284,6 +289,7 @@ fun LiveDialog(
         val maxH = (LocalConfiguration.current.screenHeightDp * 0.9f).dp
         Column(
             modifier
+                .imePadding()
                 .padding(horizontal = 16.dp)
                 .widthIn(max = 420.dp)
                 .fillMaxWidth()
