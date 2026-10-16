@@ -45,3 +45,78 @@ owner gives new feedback.
 - [ ] Live-like: dark theme, light-blue accent, no orange chrome, subtle radii, consistent control sizes.
 - [ ] Landscape default; fullscreen; screen stays on; info strip readable and fully visible.
 - [ ] Each tab screenshot reviewed: does it look like Live and not empty/clumsy? (write one line per tab)
+
+
+## Review — v0.1.1-test3 candidate (commit 6b9bd16)
+Reviewer: owner-preference agent, pixel_7 emulator (2400x1080 landscape, 1080x2400 portrait, plus 1136x640 @320dpi = 568x320dp small phone), debug build, DEMO mode + mock on :9021 with "Simulate 300 ms server delay" ON. Screens: qa/screens/conf_*.png.
+Not verifiable here: installing an APK (download needs approval), real Live, recording in red (mock does not simulate recording), Windows installer run, tablet size.
+
+### Setup & access
+- PASS  App opens without Live; "Settings & updates" on Connect (conf_01_connect, conf_02_settings).
+- PASS  Update check works with no Live: Stable -> "No stable release yet" + hint; Test -> "Version 0.1.1-test2 available" + Download and install (conf_03, conf_04). Install-in-place / resume-after-permission NOT exercised.
+  - FAIL (cosmetic) Release notes shown raw: "TODO: status / Co-Authored-By: Claude Opus 5.5 <noreply@...> / **Full Changelog**: https://..." (conf_04_update_test). Fix: publish a short human changelog in release.yml, or have UpdateCheck strip trailers, markdown and the compare link and cap to ~5 lines.
+- PASS  Demo mode: every tab opens and shows content (conf_05 ... conf_t_*). Caveat: a demo clip move over other clips silently removes Beat B/C (conf_19), and the Takes tab has no take lanes in demo so take drags cannot be tried there. Fix: demo should overwrite/trim like Live and ship a take lane.
+- PASS  Waveforms with no helper (audio track Vocals via mock, remote-script peaks): conf_50_audio_arr. (Mock waveform is synthetic; real WAV not checked.)
+- PASS  Windows setup: SETUP.md = double-click "Install LiveCompanion.cmd" + one control-surface pick (read, not run).
+
+### Feel (300 ms delay ON)
+- PASS  Arrange clip hold-drag (conf_18 -> 20: moved, no snap-back). Loop-brace edge drag (conf_34 -> 36) stays where released. Ruler scrub (conf_37). Clip-editor note hold-drag (conf_40, conf_42) incl. velocity stem following. Session tile drop to empty slot (conf_33). Device hold-drag reorder (conf_49). Takes demote / promote / lane-to-lane move (conf_25 ... 31) against the remote script, no snap-back.
+- PASS  Device added from the Add dialog is present in the first screenshot after the tap (conf_46); adb latency prevents resolving below ~300 ms.
+- NOT TESTED  faders, knobs, macros, punch, warp markers, locators, clip trim, velocity precision (adb drags too coarse). Docs say they use Optimistic/SectionGuard.
+- FAIL  Loop brace row is ~9dp tall with ~8dp-wide edge handles (conf_36, grey brace row at the top of the lane). Hitting an edge needs pixel accuracy. Fix: keep the visual, but make the touch area the whole ruler+brace band (>=40dp) with edge hit zones >=24dp.
+- NOTE  Promote in the Takes tab leaves the take in its lane (conf_29: Beat B in main AND lane 1). Fine if that is Live's behaviour; say so in the hint.
+
+### Direct manipulation
+- PASS  Hold-drag works for clips (session + arrangement), notes, devices, takes (promote / demote / move, Takes-tab Main row), loop brace. Target-lane highlight during the drag could not be captured (adb drag blocks) - UNVERIFIED.
+- NOT TESTED  hold-drag of locators/markers and warp markers; uniform hold delay.
+- PASS  No long-press-only actions, no submenus; button alternatives exist (clip nudge < >, device Move, Promote).
+- FAIL  Track-picker dialog: expanding "Edit" opens a 4x14 colour palette that fills the whole dialog; Rename / Duplicate / Delete sit BELOW it and appear only after scrolling (conf_15 vs conf_16). Hidden controls. Fix: one row Rename | Duplicate | Delete above the palette, or a "Color" chip that opens the palette.
+
+### Visibility
+- PASS  Rounded corners / cutout (pixel_7 landscape): top bar, rail, bottom strips, info strip, Settings (left cutout strip) are inset; nothing in the four corners (conf_05, conf_18, conf_36). Portrait OK (conf_p_*).
+- FAIL  Truncated important text at font 1.0: scene names "Chor...", "Vers..." (two different scenes look identical, conf_06) and the track name "Renam..." in the top-bar picker (conf_21). Fix: widen the landscape scene column (~72dp; tiles are far wider than needed) or allow two lines; make the picker chip flex instead of the Mon AUTO button.
+- FAIL  Font 1.3: position readout "1.1..." and track "Dru..." truncated in the top bar; scene names "Verse...", "Chor..." (conf_f13_Arrange, conf_f13_Session). Fix: size the position field to its content; shrink transport icon width when fontScale > 1.15.
+- FAIL  Portrait Devices: Compressor panel cut at the right edge ("De", half chevron) with no scroll cue (conf_p_Devices). Fix: edge fade + ">" cue, or wrap the chain.
+- PASS  No overlap at 2400x1080, 1080x2400 and 568x320dp.
+- PASS  Collapsibles are labelled (^ PROPERTIES, Edit v, "Got it" tip).
+
+### Space & zoom
+- PASS  Lane fills the height; clip editor gets nearly everything (conf_09). Chrome above the lane on pixel_7 landscape ~17% (top bar + ruler/brace, conf_18).
+- FAIL  Small phone landscape (568x320dp): chrome above the lane ~32% (two transport rows + ruler), lane ~58% of height (conf_sm_Arrange). Fix: below 700dp collapse row 2 to a 28dp strip (track + arm/M/S) and move vol/pan to Mix.
+- FAIL  Small-phone Tracks tab: the focused track row is crushed to a sliver (conf_sm_Tracks; "Vocals" shows only a red button; Guitar / FX Group not visible; pinned Master eats the height). Fix: pin Master only if >= 5 rows fit, else keep it inside the scroll.
+- PASS  Top-bar buttons ~40dp, icons 18dp.
+- PASS  Clip editor zoom-out: clip is ~1/4 of the width after 8x H- (conf_10: 417 of 1670 px). Track-view zoom-out not measured.
+
+### Tracks
+- PASS  Rename / add / delete / duplicate / colour exist in the Tracks tab and in the top-bar picker (conf_07, conf_14, conf_15, conf_16); reorder limitation explained, no fake handles. (Hidden-controls FAIL in the picker is listed above.)
+
+### Clip editor hard minimums
+- PASS  Grid: Auto + Triplet + 1/1..1/32 (conf_11). Minor: no "Off" like Live - add it.
+- PASS  Signature dialog (beats + unit 1/1..1/16 with live "Result: 4/4") (conf_12); ruler and grid follow.
+- PASS  Waveform graphics (conf_50). Recording in RED: UNVERIFIED (mock cannot record; code exists in TrackLane/PianoRoll). Verify on real Live or add recording to the mock/demo.
+
+### Look
+- PASS  Dark Live theme, light-blue accent, no orange chrome (orange only as clip colours), small radii, consistent 40dp bars.
+- PASS  Landscape default, fullscreen (no status bar), FLAG_KEEP_SCREEN_ON in MainActivity, info strip readable (POS / BPM / SIG / CPU).
+
+### Tab look review
+- Arrange: Live-like clip blocks with header bar, good. Flat brown slabs with tiny note ticks make sparse drum clips look heavy/empty; scale the pitch range so notes fill more of the block.
+- Session: compact bars but ~1000px wide with a lot of dead orange; scene names truncated; reads as a list more than Live's grid, acceptable for one track.
+- Tracks: clear, tall rows, empty middle in each row; fine.
+- Clip: the editor is excellent and Live-like; with no clip open the tab is a plain list ("Open a clip on Drums") - auto-open the selected/first clip.
+- Devices: Live-like signal chain; ~60% of the screen empty below, generic "Param 1..6" labels in demo/mock; scale knobs up with the free height.
+- Browser: first open is empty ("Pick a category above"); auto-open Instruments.
+- Mix: clear; bottom third empty; send rows are big dark bars at -inf dB.
+- Takes: without lanes it is an almost empty screen with one sentence; with lanes it works (Main row + lanes + hint) but the lower 50% is empty and its flat clip blocks differ from Arrange's header-bar style.
+- More: clean, updates first; Developer section needs two scrolls.
+
+### Principles not covered by the checklist
+- Principle 4: after normal taps in demo a notice "Demo: not simulated (device.close)" appeared; unsupported demo ops should be silent or disabled, not look like errors.
+- Principle 6: Devices / Mix / Takes leave large empty areas while controls stay small; scale with free space.
+- Principle 8: clip-editor ruler shows "1.2 1.3 1.4 2" with no "1" at the bar start (hidden under the loop flag) - minor.
+- QA hazard: a stale mock with an older remote script was already listening on :9020 and answered "unknown op: takes.demote". run_mock.py should detect/report an occupied port loudly (it only logged "cannot bind").
+- Settings shows "0.1.0 (build 1) - debug build" for this candidate (version stamping only in release.yml - expected).
+
+### Totals
+PASS 21 / FAIL 9 / UNVERIFIED or NOT TESTED 6.
+FAILs: raw release notes; loop-brace hit target; track-picker Rename/Duplicate/Delete hidden below palette; truncated scene/track names @1.0; truncated pos/track/scene @1.3; portrait Devices clipped panel; small-phone chrome 32%; small-phone Tracks focused row crushed.
