@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
@@ -122,14 +124,26 @@ private fun ClipEditor(clip: ClipState, store: LiveStore, client: LiveClient, mo
     BoxWithConstraints(modifier.fillMaxSize().background(LiveColors.Bg)) {
         var open by remember(clip.loc) { mutableStateOf(false) }
         val mh = maxHeight
+        val mw = maxWidth
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (clip.audio) AudioEditor(clip, host, rt, edits, session.tempo, rec, Modifier.fillMaxSize())
-                else PianoRoll(clip, ed, rt, edits, session.scale, session.tempo, rec, Modifier.fillMaxSize())
+            // Landscape: properties are a right-side column (the editor narrows, never shortens). Portrait: bottom
+            // panel capped so the editor keeps >= 60% of the height.
+            val side = mw > mh
+            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    if (clip.audio) AudioEditor(clip, host, rt, edits, session.tempo, rec, Modifier.fillMaxSize())
+                    else PianoRoll(clip, ed, rt, edits, session.scale, session.tempo, rec, Modifier.fillMaxSize())
+                }
+                if (open && side) {
+                    Column(
+                        Modifier.width(minOf(260.dp, mw * 0.42f)).fillMaxHeight().background(LiveColors.Panel)
+                            .verticalScroll(rememberScrollState()).padding(4.dp),
+                    ) { ClipProps(clip, ed.takeIf { !clip.audio }, ops, client, null) }
+                }
             }
-            if (open) {
+            if (open && !side) {
                 Column(
-                    Modifier.fillMaxWidth().heightIn(max = mh * 0.5f).background(LiveColors.Panel)
+                    Modifier.fillMaxWidth().heightIn(max = mh * 0.4f).background(LiveColors.Panel)
                         .verticalScroll(rememberScrollState()).padding(4.dp),
                 ) { ClipProps(clip, ed.takeIf { !clip.audio }, ops, client, null) }
             }

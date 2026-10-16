@@ -122,7 +122,7 @@ fun PianoRoll(
     }
 
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val twoRows = maxHeight >= 330.dp
+        val twoRows = maxWidth < 640.dp
         val toolbarGrid: @Composable () -> Unit = {
             GridControls(sub, { sub = it }, snap, { snap = it }, "$num/$den", { sigDialog = true }, stepLabel(stepNow))
         }

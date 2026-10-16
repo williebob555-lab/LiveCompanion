@@ -53,6 +53,7 @@ import kotlin.math.roundToInt
 
 private val CELL_W = 50.dp
 private val KNOB = 34.dp
+private val ROW_H = 62.dp
 internal val HEADER_H = 26.dp
 
 fun typeColor(t: String): Color = when (t) {
@@ -185,19 +186,25 @@ fun DevicePanel(
             }
             Box(Modifier.size(HEADER_H).clickable(onClick = flip), contentAlignment = Alignment.Center) { Chevron(false) }
         }
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+        // Tall panel: fill rows of knobs (4 per row) up to what fits; the rest stays behind "Params".
+        val cols = columnsFor(controlCount(d))
+        val reserve = (if (d.variations != null) 28 else 0) + (if (d.chains.isNotEmpty()) 28 + 26 * d.chains.size else 0)
+        val rowsFit = ((maxHeight.value - reserve) / ROW_H.value).toInt().coerceAtLeast(2)
+        val shown = (rowsFit * cols).coerceAtLeast(cols)
         Column(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 4.dp)
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 4.dp)
                 .alpha(if (d.on) 1f else 0.5f),
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             val macros = d.macros.orEmpty()
             if (macros.isNotEmpty() || d.pp.isNotEmpty()) {
                 FlowRow(
-                    Modifier.fillMaxWidth(), maxItemsInEachRow = columnsFor(controlCount(d)),
+                    Modifier.fillMaxWidth(), maxItemsInEachRow = cols,
                     horizontalArrangement = Arrangement.spacedBy(0.dp), verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    for (m in macros) MacroKnob(m, d, tr, store, client)
-                    for (p in d.pp) ParamCell(p, d, tr, store, client)
+                    for (m in macros.take(shown)) MacroKnob(m, d, tr, store, client)
+                    for (p in d.pp.take((shown - macros.size).coerceAtLeast(0))) ParamCell(p, d, tr, store, client)
                 }
             } else if (d.chains.isEmpty()) {
                 LiveText(typeBadge(d.type), style = LiveType.Label)
@@ -212,6 +219,7 @@ fun DevicePanel(
                 }
             }
             if (d.chains.isNotEmpty()) RackChains(d, tr, ui, client)
+        }
         }
         Row(Modifier.fillMaxWidth().padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             SmallBtn("Params", {

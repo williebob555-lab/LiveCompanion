@@ -150,16 +150,8 @@ fun PositionReadout(store: LiveStore, modifier: Modifier = Modifier, minHeight: 
     ) { LiveText(formatPosition(pos, s.sigNum, s.sigDen), style = LiveType.Mono) }
 }
 
-internal fun formatPosition(pos: Double, num: Int, den: Int): String {
-    val beatLen = 4.0 / den
-    val barLen = beatLen * num
-    val p = pos.coerceAtLeast(0.0)
-    val bar = floor(p / barLen).toInt() + 1
-    val inBar = p - (bar - 1) * barLen
-    val beat = floor(inBar / beatLen).toInt() + 1
-    val sixteenth = floor((inBar - (beat - 1) * beatLen) / beatLen * 4).toInt().coerceIn(0, 3) + 1
-    return "$bar.$beat.$sixteenth"
-}
+internal fun formatPosition(pos: Double, num: Int, den: Int): String =
+    com.livecompanion.ui.track.posString(pos, com.livecompanion.ui.track.beatsPerBar(num, den), com.livecompanion.ui.track.beatUnit(den))
 
 @Composable
 private fun TempoDialog(current: Float, onDismiss: () -> Unit, onTap: () -> Unit, onSet: (Float) -> Unit) {

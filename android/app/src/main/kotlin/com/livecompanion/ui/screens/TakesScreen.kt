@@ -206,7 +206,7 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Box(Modifier.size(10.dp).background(liveColor(clip.color), LiveShapes.Small))
                             LiveText(clip.name.ifEmpty { "Take" }, Modifier.weight(1f, fill = false), LiveType.Title)
-                            LiveText("${barPos(clip.start, bpb)} - ${barPos(clip.end, bpb)}", style = LiveType.Small, color = LiveColors.TextDim)
+                            LiveText("${barPos(clip.start, bpb, 4.0 / session.sigDen)} - ${barPos(clip.end, bpb, 4.0 / session.sigDen)}", style = LiveType.Small, color = LiveColors.TextDim)
                         }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             DBtn("Audition", {

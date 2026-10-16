@@ -279,8 +279,20 @@ fun ArrangeScreen(
             modifier = Modifier.weight(1f).fillMaxWidth(),
         )
 
-        // ---- selection toolbar (rare actions as visible buttons, no menus)
-        Column(
+        // ---- first-run tip (dismissible, once) - the permanent hint row was removed; see More -> Help
+        if (selClip == null && selTake == null && !ArrangeTip.dismissed) {
+            var gone by remember { mutableStateOf(false) }
+            if (!gone) Row(
+                Modifier.fillMaxWidth().background(LiveColors.Panel).padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                LiveText(ARRANGE_HELP, Modifier.weight(1f), LiveType.Small, color = LiveColors.TextDim, maxLines = 2)
+                DBtn("Got it", { ArrangeTip.dismissed = true; gone = true })
+            }
+        }
+
+        // ---- selection toolbar (rare actions as visible buttons, no menus); absent when nothing is selected
+        if (selClip != null || selTake != null) Column(
             Modifier.fillMaxWidth().heightIn(min = 32.dp).background(LiveColors.Panel).padding(horizontal = 4.dp, vertical = 2.dp),
             verticalArrangement = Arrangement.Center,
         ) {
@@ -319,12 +331,6 @@ fun ArrangeScreen(
                     DBtn("To main lane", { client.op("takes.promote", "loc" to Loc.take(tr, st.first, st.second)) })
                     DBtn("Edit", { client.op("clip.open", "loc" to Loc.take(tr, st.first, st.second)); goTab(Tab.Clip) })
                 }
-            } else {
-                LiveText(
-                    if (clips.isEmpty()) "No clips on this track - double-tap the lane to create a MIDI clip"
-                    else "Tap clip = select, hold + drag = move, drag selected edges = trim, drag ruler = scrub",
-                    style = LiveType.Small, color = LiveColors.TextDim, maxLines = 2,
-                )
             }
         }
     }
@@ -337,7 +343,7 @@ fun ArrangeScreen(
         ArrDialog.Color -> if (sc != null) ColorDialog({ dialog = null }) { c ->
             client.op("clip.set", "loc" to Loc.arr(tr, sc.i), "k" to "color", "v" to c); dialog = null
         } else dialog = null
-        ArrDialog.Locate -> LocateDialog(posString(clock.shown, bpb, unit), bpb, unit, { dialog = null }) { b ->
+        ArrDialog.Locate -> LocateDialog(posString(clock.shown, bpb, unit), bpb, unit, (session.songLen / bpb).toInt() + 1000, { dialog = null }) { b ->
             seek(b); dialog = null
         }
         null -> Unit
@@ -345,6 +351,11 @@ fun ArrangeScreen(
 }
 
 private const val PEAK_N = 1024
+
+internal const val ARRANGE_HELP = "Tap clip = select, hold + drag = move, drag selected edges = trim, drag ruler = scrub, double-tap empty lane = new MIDI clip"
+
+/** First-run tip state (per app process; the same text lives permanently in More -> Help). */
+internal object ArrangeTip { @Volatile var dismissed = false }
 
 private enum class ArrDialog { Rename, Color, Locate }
 
@@ -365,19 +376,18 @@ private fun PosReadout(clock: PlayheadClock, bpb: Double, unit: Double, onClick:
 }
 
 @Composable
-private fun LocateDialog(current: String, bpb: Double, unit: Double, onDismiss: () -> Unit, onOk: (Double) -> Unit) {
+private fun LocateDialog(current: String, bpb: Double, unit: Double, maxBar: Int, onDismiss: () -> Unit, onOk: (Double) -> Unit) {
     var text by remember { mutableStateOf(current) }
-    var err by remember { mutableStateOf(false) }
-    val go = {
-        val b = parsePos(text, bpb, unit)
-        if (b == null) err = true else onOk(b)
-    }
+    var touched by remember { mutableStateOf(false) }
+    val r = com.livecompanion.ui.track.Bbt.parse(text, bpb, unit, maxBar)
+    val go = { r.beats?.let(onOk) ?: Unit }
     LiveDialog("Locate (bar.beat.sixteenth)", onDismiss) {
-        LiveTextField(text, { text = it; err = false }, onDone = { go() })
-        if (err) LiveText("Use bar.beat.sixteenth, e.g. 5.2.3 (numbers from 1)", style = LiveType.Small, color = LiveColors.Rec, maxLines = 2)
+        LiveTextField(text, { text = it; touched = true }, onDone = { go() })
+        val e = r.error
+        if (e != null && touched) LiveText(e, style = LiveType.Small, color = LiveColors.Rec, maxLines = 2)
         LiveDialogButtons {
             LiveTextButton("Cancel", onDismiss, minWidth = 72.dp)
-            LiveTextButton("Go", { go() }, on = true, minWidth = 72.dp)
+            LiveTextButton("Go", { go() }, on = r.beats != null, enabled = r.beats != null, minWidth = 72.dp)
         }
     }
 }
@@ -392,11 +402,8 @@ private fun fitArrange(view: TimelineView, spans: List<Pair<Double, Double>>, lo
 
 private fun min0(a: Double, b: Double) = if (a < b) a else b
 
-internal fun barPos(beat: Double, bpb: Double): String {
-    val bar = floor(beat / bpb).toInt() + 1
-    val inBar = beat - (bar - 1) * bpb
-    return "$bar.${floor(inBar).toInt() + 1}"
-}
+internal fun barPos(beat: Double, bpb: Double, unit: Double = 1.0): String =
+    posString(beat, bpb, unit).substringBeforeLast('.')
 
 internal fun fmtBars(v: Double): String = if (v == Math.rint(v)) v.toInt().toString() else "%.2f".format(v)
 

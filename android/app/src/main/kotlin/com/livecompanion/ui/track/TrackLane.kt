@@ -566,17 +566,33 @@ private fun DrawScope.drawBase(
         val le = view.xOf(lp.start + lp.len)
         val col = if (lp.enabled) LiveColors.Accent else LiveColors.TextDim
         drawRect(col.copy(alpha = if (lp.enabled) 0.10f else 0.05f), Offset(ls, rulerPx), Size(le - ls, mainH + takesN * takeH))
-        drawRect(col.copy(alpha = if (lp.enabled) 0.85f else 0.45f), Offset(ls, scrubPx + 2f * dens), Size(le - ls, rulerPx - scrubPx - 3f * dens))
+        // Brace row: loop brace on the upper part (always "LOOP", accent when on); punch in/out are separate thin red
+        // flags on a second thin strip below it - never relabel or recolor the loop brace.
+        val punchH = 4f * dens
+        val punchOn = m.punchIn || m.punchOut
+        val braceBot = if (punchOn) rulerPx - punchH - 1f * dens else rulerPx
+        drawRect(col.copy(alpha = if (lp.enabled) 0.85f else 0.45f), Offset(ls, scrubPx + 2f * dens), Size(le - ls, braceBot - scrubPx - 3f * dens))
         val hw = 5f * dens
-        val lcol = if (m.punchIn) LiveColors.Rec else col
-        val rcol = if (m.punchOut) LiveColors.Rec else col
-        drawRect(lcol, Offset(ls - 1f, scrubPx), Size(hw, rulerPx - scrubPx))
-        drawRect(rcol, Offset(le - hw + 1f, scrubPx), Size(hw, rulerPx - scrubPx))
-        drawLine(lcol.copy(alpha = 0.9f), Offset(ls, rulerPx), Offset(ls, totalH), if (m.punchIn) 2f * dens else 1f)
-        drawLine(rcol.copy(alpha = 0.9f), Offset(le, rulerPx), Offset(le, totalH), if (m.punchOut) 2f * dens else 1f)
+        drawRect(col, Offset(ls - 1f, scrubPx), Size(hw, braceBot - scrubPx))
+        drawRect(col, Offset(le - hw + 1f, scrubPx), Size(hw, braceBot - scrubPx))
+        drawLine(col.copy(alpha = 0.9f), Offset(ls, rulerPx), Offset(ls, totalH), 1f)
+        drawLine(col.copy(alpha = 0.9f), Offset(le, rulerPx), Offset(le, totalH), 1f)
         if (le - ls > 56f * dens) {
-            val lbl = tm.measure(if (m.punchIn || m.punchOut) "PUNCH" else "LOOP", BeatText.copy(color = Color.Black), maxLines = 1)
-            drawText(lbl, topLeft = Offset(ls + hw + 3f * dens, scrubPx + (rulerPx - scrubPx - lbl.size.height) / 2f))
+            val lbl = tm.measure("LOOP", BeatText.copy(color = Color.Black), maxLines = 1)
+            drawText(lbl, topLeft = Offset(ls + hw + 3f * dens, scrubPx + (braceBot - scrubPx - lbl.size.height) / 2f))
+        }
+        if (punchOn) {
+            val py = rulerPx - punchH
+            val flag = min(18f * dens, (le - ls) / 2f)
+            if (m.punchIn && m.punchOut) drawRect(LiveColors.Rec.copy(alpha = 0.5f), Offset(ls, py + punchH / 2f - 0.5f * dens), Size(le - ls, 1f * dens))
+            if (m.punchIn) {
+                drawRect(LiveColors.Rec, Offset(ls, py), Size(flag, punchH))
+                drawLine(LiveColors.Rec, Offset(ls, rulerPx), Offset(ls, totalH), 2f * dens)
+            }
+            if (m.punchOut) {
+                drawRect(LiveColors.Rec, Offset(le - flag, py), Size(flag, punchH))
+                drawLine(LiveColors.Rec, Offset(le, rulerPx), Offset(le, totalH), 2f * dens)
+            }
         }
     }
 

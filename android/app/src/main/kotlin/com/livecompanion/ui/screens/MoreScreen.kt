@@ -100,6 +100,11 @@ fun MoreScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifi
             }
         }
 
+        Section("Help") {
+            LiveLabel("Arrange")
+            LiveText(ARRANGE_HELP, style = LiveType.Small, color = LiveColors.TextDim, maxLines = 4)
+        }
+
         Section("App updates") {
             Info("Installed", installed)
             LiveLabel("Channel")

@@ -43,15 +43,19 @@ Phone landscape (~360–411dp tall) is the primary target: minimize vertical chr
    tab row: Arrange (default) · Session · Tracks · Clip · Devices · Browser · Mix(focus sends/routing) · Takes (dim) · More (settings/update).
 3. **Session** — the focused track's slot column: fire/stop/record per slot, hold-and-drag a clip onto another slot to move it, visible ⋯ button for rare actions (dup/copy/move/delete/rename/create),
    big "Take ▶" button (take.next), scene launch column toggle.
-4. **Arrange** — horizontal lane of this track (zoom/pan), loop brace, playhead, clip select → Clip tab.
+4. **Arrange** — horizontal lane of this track (zoom/pan), loop brace (+ separate red punch IN/OUT flags), playhead, no permanent hint row (dismissible first-run tip; More -> Help), clip select → Clip tab.
 5. **Takes** — take lanes for the track, per-take audition/promote/rename, ratings (stored on phone).
-6. **Clip** — full-width L->R editor (ui/clip/*): toolbar = signature (tap to edit) + GRID (Auto adaptive | 1/1..1/32 | Trip) + Snap; ruler with loop-brace row (drag body/edges, tap toggles loop), bar/beat/subdivision ticks following the clip signature, start/end flags (drag); floating H-/H+/V-/V+/Fit zoom pad + two-finger pinch/pan. MIDI: note-name keys, Fold, Scale highlight (song scale), Draw/Select, drag to move/resize, box select, Vel/Prob lane. Audio: gain-scaled helper-peaks waveform, seconds or beats ruler, warp markers (Warp+ tap to add, drag to move, Del warp). Recording = growing RED region + red playhead. Playhead interpolated per frame. Properties = thin collapsible handle strip at the bottom (^ PROPERTIES).
+6. **Clip** — full-width L->R editor (ui/clip/*): toolbar = signature (tap to edit) + ONE grid picker button ("Auto 1/16 v", opens a small popup grid: Auto, 1/1..1/32, Triplet) + Snap; single row at >= 640dp, two rows below; ruler with loop-brace row (drag body/edges, tap toggles loop), bar/beat/subdivision ticks following the clip signature, start/end flags (drag); floating H-/H+/V-/V+/Fit zoom pad + two-finger pinch/pan. MIDI: note-name keys, Fold, Scale highlight (song scale), Draw/Select, drag to move/resize, box select, Vel/Prob lane. Audio: gain-scaled helper-peaks waveform, seconds or beats ruler, warp markers (Warp+ tap to add, drag to move, Del warp). Recording = growing RED region + red playhead. Playhead interpolated per frame. Properties = thin collapsible handle strip at the bottom (^ PROPERTIES); expanded, they are a right-side column in landscape (editor narrows) or a bottom panel capped at 40% height in portrait.
    (helper peaks) with loop/start markers and warp markers.
 7. **Devices** — Live-style horizontal SIGNAL CHAIN: panels left to right joined by flow arrows (title bar = power, name, collapse chevron),
-   inline knobs (first 8 params; macros for racks; quantized params as stepped selectors; double-tap resets to default, value strings shown),
+   inline knobs (rows of 4, as many as the panel height allows of the first 16 params; macros for racks; quantized params as stepped selectors; double-tap resets to default, value strings shown),
    rack chains selectable -> the chain's devices appear inline to the right. Hold a title and drag to reorder (device.move), Dup/Del(confirm) buttons,
    "+" at the end opens the native-device quick list (device.insert) with a Browser link. "Params" opens the full list. Browser Load / insert show a
    dim "loading..." panel until the devices section catches up (ui/devices/DevicePending).
 8. **Browser** — category roots → folders → items, load onto focused track, preview.
 9. **Tracks** — all tracks/returns/master: color bar, tap name = inline rename, arm/M/S, tap row = focus, "Edit" chevron expands color palette / duplicate / delete (confirm); add audio/MIDI/return. No reorder (LOM has no move_track; a note says so).
 10. **Settings** — host, follow-Live-selection, haptics, update channel (stable/test), check for update.
+
+
+## Position text
+Every bar.beat.sixteenth readout/parser uses `ui/track/Bbt.kt` (signature-aware, 1-based; a sixteenth is always 0.25 quarter, so 3/8 beats have 2). Typed values out of range are rejected with an inline message, never wrapped.

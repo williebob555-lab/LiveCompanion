@@ -97,7 +97,8 @@ fun ClipProps(
     var sigOpen by remember { mutableStateOf(false) }
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val cols = (maxWidth / 110.dp).toInt().coerceIn(1, 4)
-        val bb = barBeats(clip.signature.getOrElse(0) { 4 }, clip.signature.getOrElse(1) { 4 })
+        val sigN = clip.signature.getOrElse(0) { 4 }
+        val sigD = clip.signature.getOrElse(1) { 4 }
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             // name + color (+ close)
             var name by remember(clip.loc) { mutableStateOf(clip.name) }
@@ -122,7 +123,7 @@ fun ClipProps(
             fun pos(label: String, value: Double, key: String, upd: (ClipState, Double) -> ClipState): @Composable FlowRowScope.() -> Unit = {
                 // positions in beats; seconds for unwarped audio
                 val unwarped = clip.audio && !clip.warping
-                val disp = if (unwarped) "%.2fs".format(value) else formatBbt(value, bb)
+                val disp = if (unwarped) "%.2fs".format(value) else formatBbt(value, sigN, sigD)
                 StepField(
                     label, disp, Modifier.weight(1f), pxPerStep = 8f, typedInit = if (unwarped) "%.3f".format(value) else disp,
                     onStep = { s ->
@@ -131,13 +132,16 @@ fun ClipProps(
                         if (nv != null && nv != value) ops.set(key, nv) { upd(it, nv) }
                     },
                     validate = { t ->
-                        val nv = if (unwarped) parseNumber(t) else parseBbt(t, bb)?.takeIf { it.isFinite() }
-                        if (nv == null) {
-                            if (unwarped) "Enter seconds, e.g. 1.5" else "Use bar.beat.sixteenth (e.g. 2.1.1) or beats"
-                        } else markerError(key, nv, clip)
+                        if (unwarped) {
+                            val nv = parseNumber(t)
+                            if (nv == null) "Enter seconds, e.g. 1.5" else markerError(key, nv, clip)
+                        } else {
+                            val r = parseBbtChecked(t, sigN, sigD)
+                            if (r.beats == null) r.error else markerError(key, r.beats, clip)
+                        }
                     },
                     onTyped = { t ->
-                        val nv = if (unwarped) parseNumber(t) else parseBbt(t, bb)
+                        val nv = if (unwarped) parseNumber(t) else parseBbt(t, sigN, sigD)
                         if (nv != null && markerError(key, nv, clip) == null) ops.set(key, nv) { upd(it, nv) }
                     },
                 )

@@ -137,11 +137,18 @@ fun fmtSeconds(t: Double): String {
     }
 }
 
-/** Ruler label for a grid line: bar number, bar.beat, or bar.beat.sub, picking the shortest that fits [spacingPx]. */
-fun rulerLabel(l: GridLine, stridePx: Float): String? = when (l.level) {
+/**
+ * Ruler label for a grid line: bar number, bar.beat, or bar.beat.sixteenth, picking the shortest that fits.
+ * Labels come from the shared signature-aware [com.livecompanion.ui.track.Bbt]; lines that are not on a sixteenth
+ * (triplet subdivisions) get no label so they are never confused with beat.sixteenth positions.
+ */
+fun rulerLabel(l: GridLine, stridePx: Float, barLen: Double = 4.0, beatLen: Double = 1.0): String? = when (l.level) {
     GridLevel.Bar -> "${l.bar + 1}"
-    GridLevel.Beat -> if (stridePx >= 30f) "${l.bar + 1}.${l.beatInBar + 1}" else null
-    GridLevel.Sub -> if (stridePx >= 34f) "${l.bar + 1}.${l.beatInBar + 1}.${l.subIdx + 1}" else null
+    GridLevel.Beat -> if (stridePx >= 30f) com.livecompanion.ui.track.Bbt.format(l.t, barLen, beatLen).substringBeforeLast('.') else null
+    GridLevel.Sub -> {
+        val q = l.t / com.livecompanion.ui.track.Bbt.SIXTEENTH
+        if (stridePx >= 34f && abs(q - Math.rint(q)) < 1e-6) com.livecompanion.ui.track.Bbt.format(l.t, barLen, beatLen) else null
+    }
 }
 
 /** True when bar [bar] (0-based) should get the darker band (Live alternates bar shading). */

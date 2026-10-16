@@ -360,7 +360,7 @@ def macros(d):
     return out
 
 
-PREVIEW_PARAMS = 8
+PREVIEW_PARAMS = 16
 
 
 def ser_param(i, p):

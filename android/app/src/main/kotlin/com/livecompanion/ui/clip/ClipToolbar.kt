@@ -51,24 +51,41 @@ fun ToolRow(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
 }
 
 /**
- * Subdivision control: Auto (adaptive) + fixed 1/1..1/32 + Triplet toggle + Snap, and the time signature button.
- * [adaptiveLabel] is the step the adaptive grid currently uses (shown on the Auto button).
+ * Subdivision control: signature button, ONE grid picker button ("Auto 1/16 v" / "1/8T v") that opens a small fixed
+ * popup grid (Auto, 1/1..1/32, Triplet), and Snap. [adaptiveLabel] is the step the adaptive grid currently uses.
  */
 @Composable
 fun GridControls(
     sub: Subdiv, onSub: (Subdiv) -> Unit, snap: Boolean, onSnap: (Boolean) -> Unit, sigLabel: String, onSig: () -> Unit,
     adaptiveLabel: String, showSub: Boolean = true,
 ) {
+    var pick by remember { mutableStateOf(false) }
     ToolBtn(sigLabel, onSig, minWidth = 38.dp)
     if (showSub) {
         ToolCaption("GRID")
-        ToolBtn(if (sub.adaptive) "Auto $adaptiveLabel" else "Auto", { onSub(sub.copy(adaptive = true)) }, on = sub.adaptive, minWidth = 40.dp)
-        for (d in Subdiv.DENOMS) {
-            ToolBtn("1/$d", { onSub(sub.copy(adaptive = false, denom = d)) }, on = !sub.adaptive && sub.denom == d, minWidth = 32.dp)
-        }
-        ToolBtn("Trip", { onSub(sub.copy(triplet = !sub.triplet, adaptive = if (sub.adaptive) false else sub.adaptive)) }, on = sub.triplet && !sub.adaptive, minWidth = 34.dp)
+        ToolBtn(sub.label(null).let { if (sub.adaptive) "Auto $adaptiveLabel" else it } + " v", { pick = true }, minWidth = 64.dp)
     }
     ToolBtn("Snap", { onSnap(!snap) }, on = snap, minWidth = 36.dp)
+    if (pick) GridPickerDialog(sub, onSub) { pick = false }
+}
+
+/** Fixed popup grid of subdivisions; picking one applies it and closes. */
+@Composable
+private fun GridPickerDialog(sub: Subdiv, onSub: (Subdiv) -> Unit, onDismiss: () -> Unit) {
+    LiveDialog(title = "Grid", onDismiss = onDismiss) {
+        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            ToolBtn("Auto", { onSub(sub.copy(adaptive = true)); onDismiss() }, on = sub.adaptive, minWidth = 56.dp)
+            ToolBtn("Triplet", { onSub(sub.copy(triplet = !sub.triplet, adaptive = false)) }, on = sub.triplet && !sub.adaptive, minWidth = 64.dp)
+        }
+        for (rowDenoms in Subdiv.DENOMS.chunked(3)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                for (d in rowDenoms) {
+                    ToolBtn("1/$d", { onSub(sub.copy(adaptive = false, denom = d)); onDismiss() }, on = !sub.adaptive && sub.denom == d, minWidth = 56.dp)
+                }
+            }
+        }
+        LiveDialogButtons { ToolBtn("Close", onDismiss, minWidth = 56.dp) }
+    }
 }
 
 /** Time signature editor: numerator typed with +/- steppers, denominator chosen from 1,2,4,8,16. */

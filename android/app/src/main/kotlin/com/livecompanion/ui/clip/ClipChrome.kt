@@ -233,11 +233,11 @@ fun DrawScope.drawClipTop(
                     }
                     GridLevel.Beat -> {
                         drawLine(BeatLine, Offset(x, bh + (th - bh) * 0.5f), Offset(x, th), 1f)
-                        rulerLabel(l, (axis.beatLen * v.ppu).toFloat())?.let { drawText(tm, it, Offset(x + 3f, bh), lbl) }
+                        rulerLabel(l, (axis.beatLen * v.ppu).toFloat(), axis.barLen, axis.beatLen)?.let { drawText(tm, it, Offset(x + 3f, bh), lbl) }
                     }
                     GridLevel.Sub -> {
                         if (stridePx >= 5f) drawLine(SubLine, Offset(x, bh + (th - bh) * 0.75f), Offset(x, th), 1f)
-                        rulerLabel(l, stridePx)?.let { drawText(tm, it, Offset(x + 3f, bh), lbl) }
+                        rulerLabel(l, stridePx, axis.barLen, axis.beatLen)?.let { drawText(tm, it, Offset(x + 3f, bh), lbl) }
                     }
                 }
             }

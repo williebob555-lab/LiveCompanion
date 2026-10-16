@@ -21,6 +21,15 @@ Plan: 4 parallel sonnet agents, then QA pass + fix pass:
 - Then: re-run tools/dump_fixtures.py, QA pass 2 on new build + real Live, fix, tag v0.1.0-test3.
 Port note: stop any mock on 9010 before using real Live (it blocked the script once).
 
+### P2-R1 fix pass (uncommitted, awaiting gate review)
+- [x] P2-1-1..6 fixed(pending commit): shared signature-aware Bbt (ui/track/Bbt.kt; BbtTests) used by transport, info strip,
+  arrange, clip props and clip ruler; locate dialog validates inline (max = song length + 1000 bars); loop+punch drawn as
+  loop brace + separate red IN/OUT flag strip; orientation migration (Prefs flag orientation_chosen_v2 -> landscape until chosen);
+  clip props = right-side column in landscape (bottom panel capped at 40% in portrait).
+- [x] Clip toolbar: one "1/16 v" grid picker popup; single row at >= 640dp wide. Arrange hint row removed (dismissible
+  first-run tip per process + More -> Help). Devices: server preview params 8 -> 16, panels fill rows of 4 by height.
+- Next: owner review of screenshots, then commit and tag v0.1.0-test3.
+
 ## Earlier resume notes
 - Released v0.1.0-test1 then v0.1.0-test2 (prerelease, tag on 8ca7296) with APK + remote-script zip + helper zip. SETUP.md written.
 - QA R3/R4 + session-pane toggle fixed and released as v0.1.0-test2 (CI-built; not yet re-QA'd on emulator).

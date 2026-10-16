@@ -40,12 +40,15 @@ class Prefs(context: Context) {
 
     /** "land" (default — owner preference), "port" or "auto". */
     var orientation: String
-        get() = sp.getString(K_ORIENTATION, "land") ?: "land"
-        set(v) { sp.edit().putString(K_ORIENTATION, v).apply() }
+        // Values stored by builds before the explicit-choice flag are ignored: landscape is the default until the
+        // user picks an orientation under the current setting (K_ORIENT_SET, version flag).
+        get() = if (sp.getBoolean(K_ORIENT_SET, false)) sp.getString(K_ORIENTATION, "land") ?: "land" else "land"
+        set(v) { sp.edit().putString(K_ORIENTATION, v).putBoolean(K_ORIENT_SET, true).apply() }
 
     private companion object {
         const val K_PANE_HIDDEN = "session_pane_hidden"
         const val K_ORIENTATION = "orientation"
+        const val K_ORIENT_SET = "orientation_chosen_v2"
         const val K_RECENTS = "recents"
         const val K_LAST_HOST = "last_host"
         const val K_FOLLOW = "follow_live"

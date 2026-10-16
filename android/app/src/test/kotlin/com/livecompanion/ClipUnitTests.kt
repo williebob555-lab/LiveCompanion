@@ -36,11 +36,11 @@ class ClipUnitTests {
     }
 
     @Test fun bbt() {
-        assertEquals("1.1.1", formatBbt(0.0, 4.0))
-        assertEquals("2.2.3", formatBbt(4.0 + 1.0 + 0.5, 4.0))
-        assertEquals(5.5, parseBbt("2.2.3", 4.0)!!, 1e-9)
-        assertEquals(3.25, parseBbt("3.25", 4.0)!!, 1e-9)
-        assertNull(parseBbt("x", 4.0))
+        assertEquals("1.1.1", formatBbt(0.0, 4, 4))
+        assertEquals("2.2.3", formatBbt(4.0 + 1.0 + 0.5, 4, 4))
+        assertEquals(5.5, parseBbt("2.2.3", 4, 4)!!, 1e-9)
+        assertEquals(3.25, parseBbt("3.25", 4, 4)!!, 1e-9)
+        assertNull(parseBbt("x", 4, 4))
         assertEquals("C3", pitchName(60))
     }
 

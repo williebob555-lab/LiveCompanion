@@ -27,25 +27,11 @@ fun snapTo(beat: Double, grid: Double): Double = if (grid <= 0.0) beat else Math
 /** Grid used for nudge / loop edits when snap is Off. */
 fun effectiveGrid(grid: Double): Double = if (grid <= 0.0) 0.25 else grid
 
-/** "bar.beat.sixteenth" (all 1-based), following the song signature. */
-fun posString(beat: Double, bpb: Double, unit: Double): String {
-    val b = max(0.0, beat) + 1e-9
-    val bar = floor(b / bpb).toInt()
-    val inBar = b - bar * bpb
-    val bt = floor(inBar / unit).toInt()
-    val sx = floor((inBar - bt * unit) / 0.25).toInt()
-    return "${bar + 1}.${bt + 1}.${sx + 1}"
-}
+/** "bar.beat.sixteenth" (all 1-based), following the song signature. See [Bbt]. */
+fun posString(beat: Double, bpb: Double, unit: Double): String = Bbt.format(beat, bpb, unit)
 
-/** Parse "5", "5.2" or "5.2.3" (bar.beat.sixteenth, 1-based) to beats; null when malformed. */
-fun parsePos(text: String, bpb: Double, unit: Double): Double? {
-    val parts = text.trim().split('.', ' ', ':', ',').filter { it.isNotEmpty() }
-    if (parts.isEmpty() || parts.size > 3) return null
-    val n = parts.map { it.toIntOrNull() ?: return null }
-    if (n.any { it < 1 }) return null
-    val bar = n[0]; val bt = n.getOrElse(1) { 1 }; val sx = n.getOrElse(2) { 1 }
-    return (bar - 1) * bpb + (bt - 1) * unit + (sx - 1) * 0.25
-}
+/** Parse "5", "5.2" or "5.2.3" (bar.beat.sixteenth, 1-based) to beats; null when malformed or out of range. */
+fun parsePos(text: String, bpb: Double, unit: Double): Double? = Bbt.parse(text, bpb, unit).beats
 
 /**
  * Playhead extrapolation between ~20 Hz rt frames: [pos] + elapsed * tempo / 60, wrapped inside an enabled loop

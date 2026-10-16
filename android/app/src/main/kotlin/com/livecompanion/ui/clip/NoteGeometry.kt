@@ -89,26 +89,21 @@ private val NAMES = arrayOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A"
 fun pitchName(p: Int): String = NAMES[((p % 12) + 12) % 12] + (p / 12 - 2) // Live: C3 = 60
 fun isBlackKey(p: Int): Boolean = when (((p % 12) + 12) % 12) { 1, 3, 6, 8, 10 -> true; else -> false }
 
-/** "bar.beat.sixteenth" (1-based) like Live's clip view. */
-fun formatBbt(pos: Double, barBeats: Double): String {
-    val bb = if (barBeats > 0) barBeats else 4.0
-    val bar = floor(pos / bb + 1e-9)
-    val rem = pos - bar * bb
-    val beat = floor(rem + 1e-9)
-    val sub = floor((rem - beat) * 4 + 1e-9)
-    return "${bar.toInt() + 1}.${beat.toInt() + 1}.${sub.toInt() + 1}"
+/** "bar.beat.sixteenth" (1-based) like Live's clip view; the shared signature-aware [com.livecompanion.ui.track.Bbt]. */
+fun formatBbt(pos: Double, num: Int, den: Int): String =
+    com.livecompanion.ui.track.Bbt.format(pos, com.livecompanion.ui.track.beatsPerBar(num, den), com.livecompanion.ui.track.beatUnit(den))
+
+/** Result of [parseBbtChecked]: [beats] or an inline [error]. */
+fun parseBbtChecked(text: String, num: Int, den: Int): com.livecompanion.ui.track.Bbt.Parsed {
+    val s = text.trim().replace(',', '.')
+    // Three dotted parts = bar.beat.sixteenth; anything else numeric is a plain decimal beat count.
+    if (s.split('.').size == 3 || s.isEmpty()) {
+        return com.livecompanion.ui.track.Bbt.parse(s, com.livecompanion.ui.track.beatsPerBar(num, den), com.livecompanion.ui.track.beatUnit(den), 100_000)
+    }
+    val d = s.toDoubleOrNull()?.takeIf { abs(it) < 1e7 }
+        ?: return com.livecompanion.ui.track.Bbt.Parsed(null, "Use bar.beat.sixteenth (e.g. 2.1.1) or beats")
+    return com.livecompanion.ui.track.Bbt.Parsed(d, null)
 }
 
-/** Accepts "b.b.s" (bar.beat.sixteenth, 1-based) or a decimal beat count. Null if invalid. */
-fun parseBbt(text: String, barBeats: Double): Double? {
-    val s = text.trim().replace(',', '.')
-    if (s.isEmpty()) return null
-    val parts = s.split('.')
-    if (parts.size == 3) {
-        val b = parts[0].toIntOrNull() ?: return null
-        val q = parts[1].toIntOrNull() ?: return null
-        val sx = parts[2].toIntOrNull() ?: return null
-        return (b - 1) * barBeats + (q - 1) + (sx - 1) / 4.0
-    }
-    return s.toDoubleOrNull()?.takeIf { abs(it) < 1e7 }
-}
+/** Accepts "b.b.s" (bar.beat.sixteenth, 1-based, range-checked) or a decimal beat count. Null if invalid. */
+fun parseBbt(text: String, num: Int, den: Int): Double? = parseBbtChecked(text, num, den).beats
