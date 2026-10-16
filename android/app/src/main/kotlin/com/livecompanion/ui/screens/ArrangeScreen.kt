@@ -31,11 +31,13 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.livecompanion.data.Prefs
 import com.livecompanion.net.LiveClient
 import com.livecompanion.net.Peaks
 import com.livecompanion.net.PeaksClient
@@ -45,7 +47,10 @@ import com.livecompanion.state.LiveStore
 import com.livecompanion.state.Loc
 import com.livecompanion.ui.components.LiveDialog
 import com.livecompanion.ui.components.LiveDialogButtons
+import com.livecompanion.ui.components.LiveIconButton
+import com.livecompanion.ui.components.LiveIconKind
 import com.livecompanion.ui.components.LiveText
+import com.livecompanion.ui.components.NameDialog
 import com.livecompanion.ui.components.LiveTextButton
 import com.livecompanion.ui.components.LiveTextField
 import com.livecompanion.ui.components.TLoop
@@ -77,6 +82,8 @@ import kotlin.math.floor
 import kotlin.math.max
 
 private val DenseH = 28.dp
+/** Slim control height for the arrangement strip (keeps the lane tall). */
+private val SlimH = 24.dp
 
 /** Live's clip palette approximations for the color picker. */
 internal val ClipPalette = listOf(
@@ -163,6 +170,11 @@ fun ArrangeScreen(
         }
     }
 
+    // Zoom limits: whole arrangement (+ margin) fills the width .. 1/64 note per ~24dp.
+    val dens = LocalDensity.current.density
+    val contentEnd = max(clips.maxOfOrNull { it.end } ?: 0.0, bpb * 4)
+    SideEffect { view.setLimits(contentEnd, dens) }
+
     // Fit once content (or at least a few bars) is known; refit on track change.
     var fitKey by remember { mutableStateOf("") }
     val contentKey = "$tr:${clips.size}"
@@ -174,12 +186,12 @@ fun ArrangeScreen(
     }
 
     val model = remember(clips, takes, showTakes, sel, selTake, bpb, unit, grid, session.tempo, session.loop, session.loopStart, session.loopLen,
-        session.punchIn, session.punchOut, session.cues, focus.kind) {
+        session.punchIn, session.punchOut, session.cues, focus.kind, tr) {
         LaneModel(
             clips = clips, takes = if (takes.supported) takes.lanes else emptyList(), showTakes = showTakes && takes.supported,
             sel = sel, selTake = selTake, bpb = bpb, unit = unit, grid = grid, tempo = session.tempo.toDouble(),
             loop = TLoop(session.loop, session.loopStart, session.loopLen),
-            punchIn = session.punchIn, punchOut = session.punchOut, cues = session.cues, midi = focus.kind == "midi",
+            punchIn = session.punchIn, punchOut = session.punchOut, cues = session.cues, midi = focus.kind == "midi", trackRef = tr,
         )
     }
 
@@ -246,54 +258,58 @@ fun ArrangeScreen(
         )
     }
 
-    Column(modifier.fillMaxSize().background(LiveColors.Bg), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        // ---- locate + snap + toggles
-        FlowRow(
-            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(2.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
-        ) {
-            val m = Modifier
-            PosReadout(clock, bpb, unit) { dialog = ArrDialog.Locate }
-            DBtn("<", {
-                val g = effectiveGrid(grid)
-                seek(max(0.0, ceil(clock.shown / g - 1e-6) * g - g))
-            }, m)
-            DBtn(">", {
-                val g = effectiveGrid(grid)
-                seek(floor(clock.shown / g + 1e-6) * g + g)
-            }, m)
-            for (s in Snap.entries) DBtn(s.label, { snap = s }, m, on = snap == s)
-            DBtn("Follow", { follow = !follow }, m, on = follow)
-            DBtn("Loop", { actions.onLoopToggle() }, m, on = session.loop)
-            DBtn("In", { client.op("song.set", "k" to "punch_in", "v" to !session.punchIn); store.updateSession { it.copy(punchIn = !it.punchIn) } }, m, on = session.punchIn, onColor = LiveColors.Rec)
-            DBtn("Out", { client.op("song.set", "k" to "punch_out", "v" to !session.punchOut); store.updateSession { it.copy(punchOut = !it.punchOut) } }, m, on = session.punchOut, onColor = LiveColors.Rec)
-            DBtn("Fit", { fitArrange(view, clips.map { it.start to it.end }, session.loopStart, session.loopLen, bpb) }, m)
-            if (takes.supported && takes.lanes.isNotEmpty()) DBtn("Takes", { showTakes = !showTakes }, m, on = showTakes)
-        }
+    val ctx = LocalContext.current
+    val prefs = remember { Prefs(ctx) }
+    var nudgeTo by remember { mutableStateOf<Pair<Int, Double>?>(null) }
+    LaunchedEffect(clips) { nudgeTo = null }
 
-        // ---- the lane
+    Column(modifier.fillMaxSize().background(LiveColors.Bg), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        // ---- the lane (ruler + loop brace on top; every control lives in the slim strips BELOW so the lane stays tall)
         TrackLane(
             view = view, model = model, actions = actions, clock = clock, rec = rec, peaks = peaks, follow = follow,
             modifier = Modifier.weight(1f).fillMaxWidth(),
         )
 
-        // ---- first-run tip (dismissible, once) - the permanent hint row was removed; see More -> Help
-        if (selClip == null && selTake == null && !ArrangeTip.dismissed) {
-            var gone by remember { mutableStateOf(false) }
-            if (!gone) Row(
-                Modifier.fillMaxWidth().background(LiveColors.Panel).padding(horizontal = 4.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                LiveText(ARRANGE_HELP, Modifier.weight(1f), LiveType.Small, color = LiveColors.TextDim, maxLines = 2)
-                DBtn("Got it", { ArrangeTip.dismissed = true; gone = true })
-            }
+        // ---- ONE slim control row: locate, step, snap (tap cycles), follow, punch, fit, takes
+        FlowRow(
+            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(horizontal = 2.dp, vertical = 1.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
+            PosReadout(clock, bpb, unit) { dialog = ArrDialog.Locate }
+            SBtn("<", {
+                val g = effectiveGrid(grid)
+                seek(max(0.0, ceil(clock.shown / g - 1e-6) * g - g))
+            })
+            SBtn(">", {
+                val g = effectiveGrid(grid)
+                seek(floor(clock.shown / g + 1e-6) * g + g)
+            })
+            SBtn("Snap ${snap.label}", { snap = Snap.entries[(snap.ordinal + 1) % Snap.entries.size] }, minWidth = 62.dp)
+            SBtn("Follow", { follow = !follow }, on = follow)
+            SBtn("In", { client.op("song.set", "k" to "punch_in", "v" to !session.punchIn); store.updateSession { it.copy(punchIn = !it.punchIn) } }, on = session.punchIn, onColor = LiveColors.Rec)
+            SBtn("Out", { client.op("song.set", "k" to "punch_out", "v" to !session.punchOut); store.updateSession { it.copy(punchOut = !it.punchOut) } }, on = session.punchOut, onColor = LiveColors.Rec)
+            SBtn("Fit", { fitArrange(view, clips.map { it.start to it.end }, session.loopStart, session.loopLen, bpb) })
+            if (takes.supported && takes.lanes.isNotEmpty()) SBtn("Takes", { showTakes = !showTakes }, on = showTakes)
         }
 
-        // ---- selection toolbar (rare actions as visible buttons, no menus); absent when nothing is selected
+        // ---- first-run tip: shown once EVER (persisted), dismissible; the same text lives in More -> Help
+        var tipGone by remember { mutableStateOf(false) }
+        val tipFirstTime = remember { !prefs.arrangeTipSeen }
+        val showTip = tipFirstTime && !tipGone && selClip == null && selTake == null
+        LaunchedEffect(tipFirstTime) { if (tipFirstTime) prefs.arrangeTipSeen = true }
+        if (showTip) Row(
+            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(horizontal = 4.dp, vertical = 1.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            LiveText(ARRANGE_HELP, Modifier.weight(1f), LiveType.Small, color = LiveColors.TextDim, maxLines = 2)
+            SBtn("Got it", { tipGone = true })
+        }
+
+        // ---- selection strip (visible buttons, no menus); absent when nothing is selected
         if (selClip != null || selTake != null) Column(
-            Modifier.fillMaxWidth().heightIn(min = 32.dp).background(LiveColors.Panel).padding(horizontal = 4.dp, vertical = 2.dp),
+            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(horizontal = 2.dp, vertical = 1.dp),
             verticalArrangement = Arrangement.Center,
         ) {
             val st = selTake
@@ -306,18 +322,30 @@ fun ArrangeScreen(
                     Box(Modifier.size(10.dp).background(liveColor(selClip.color), LiveShapes.Small))
                     LiveText(
                         selClip.name.ifEmpty { if (selClip.audio) "Audio" else "MIDI" },
-                        Modifier.widthIn(max = 140.dp), LiveType.Small,
+                        Modifier.widthIn(max = 110.dp), LiveType.Small,
                     )
                     LiveText(
-                        "${posString(selClip.start, bpb, unit)} - ${posString(selClip.end, bpb, unit)}",
-                        style = LiveType.Small, color = LiveColors.TextDim, modifier = Modifier.padding(horizontal = 4.dp),
+                        posString(selClip.start, bpb, unit),
+                        style = LiveType.Small, color = LiveColors.TextDim, modifier = Modifier.padding(horizontal = 2.dp),
                     )
-                    DBtn("Edit", { client.op("clip.open", "loc" to loc); goTab(Tab.Clip) })
-                    DBtn("Dup", { client.op("clip.to_arr", "loc" to loc, "time" to selClip.end) })
-                    DBtn("Mute", { client.op("clip.set", "loc" to loc, "k" to "muted", "v" to !selClip.muted) }, on = selClip.muted, onColor = LiveColors.MuteOn)
-                    DBtn("Rename", { dialog = ArrDialog.Rename })
-                    DBtn("Color", { dialog = ArrDialog.Color })
-                    DBtn("Delete", { client.op("clip.delete", "loc" to loc); sel = -1 }, on = true, onColor = LiveColors.Rec)
+                    // Non-gesture alternative to hold-drag: nudge by the snap step (1/16 when snap is off).
+                    val g = effectiveGrid(grid)
+                    val nudge = { dir: Int ->
+                        val base = nudgeTo?.takeIf { it.first == selClip.i }?.second ?: selClip.start
+                        val ns = max(0.0, roundBeat(base + dir * g))
+                        if (ns != base) {
+                            nudgeTo = selClip.i to ns
+                            actions.onMove(selClip.i, ns)
+                        }
+                    }
+                    LiveIconButton(LiveIconKind.Prev, { nudge(-1) }, minHeight = SlimH, minWidth = 30.dp)
+                    LiveIconButton(LiveIconKind.Next, { nudge(1) }, minHeight = SlimH, minWidth = 30.dp)
+                    SBtn("Edit", { client.op("clip.open", "loc" to loc); goTab(Tab.Clip) })
+                    SBtn("Dup", { client.op("clip.to_arr", "loc" to loc, "time" to selClip.end) })
+                    SBtn("Mute", { client.op("clip.set", "loc" to loc, "k" to "muted", "v" to !selClip.muted) }, on = selClip.muted, onColor = LiveColors.MuteOn)
+                    SBtn("Rename", { dialog = ArrDialog.Rename })
+                    SBtn("Color", { dialog = ArrDialog.Color })
+                    SBtn("Delete", { client.op("clip.delete", "loc" to loc); sel = -1 }, on = true, onColor = LiveColors.Rec)
                 }
             } else if (st != null) {
                 val tl = takes.lanes.firstOrNull { it.i == st.first }
@@ -328,8 +356,8 @@ fun ArrangeScreen(
                 ) {
                     LiveText(tc?.name?.ifEmpty { tl.name } ?: "Take", Modifier.widthIn(max = 160.dp), LiveType.Small)
                     if (tc != null) LiveText("${posString(tc.start, bpb, unit)} - ${posString(tc.end, bpb, unit)}", style = LiveType.Small, color = LiveColors.TextDim, modifier = Modifier.padding(horizontal = 4.dp))
-                    DBtn("To main lane", { client.op("takes.promote", "loc" to Loc.take(tr, st.first, st.second)) })
-                    DBtn("Edit", { client.op("clip.open", "loc" to Loc.take(tr, st.first, st.second)); goTab(Tab.Clip) })
+                    SBtn("To main lane", { client.op("takes.promote", "loc" to Loc.take(tr, st.first, st.second)) })
+                    SBtn("Edit", { client.op("clip.open", "loc" to Loc.take(tr, st.first, st.second)); goTab(Tab.Clip) })
                 }
             }
         }
@@ -354,8 +382,6 @@ private const val PEAK_N = 1024
 
 internal const val ARRANGE_HELP = "Tap clip = select, hold + drag = move, drag selected edges = trim, drag ruler = scrub, double-tap empty lane = new MIDI clip"
 
-/** First-run tip state (per app process; the same text lives permanently in More -> Help). */
-internal object ArrangeTip { @Volatile var dismissed = false }
 
 private enum class ArrDialog { Rename, Color, Locate }
 
@@ -366,7 +392,7 @@ private fun PosReadout(clock: PlayheadClock, bpb: Double, unit: Double, onClick:
     val style = LiveType.Mono.copy(fontSize = 12.sp, color = LiveColors.Text)
     val w = with(LocalDensity.current) { (12.sp * 7.2f).toDp() } + 12.dp
     Canvas(
-        Modifier.size(w, DenseH)
+        Modifier.size(w, SlimH)
             .background(LiveColors.Bg, LiveShapes.Small).border(1.dp, LiveColors.Line, LiveShapes.Small)
             .clickable(onClick = onClick),
     ) {
@@ -407,6 +433,13 @@ internal fun barPos(beat: Double, bpb: Double, unit: Double = 1.0): String =
 
 internal fun fmtBars(v: Double): String = if (v == Math.rint(v)) v.toInt().toString() else "%.2f".format(v)
 
+/** Slim (24dp) text button for the arrangement strips. */
+@Composable
+private fun SBtn(
+    label: String, onClick: () -> Unit, modifier: Modifier = Modifier, on: Boolean = false,
+    onColor: androidx.compose.ui.graphics.Color = LiveColors.Accent, minWidth: androidx.compose.ui.unit.Dp = 34.dp,
+) = LiveTextButton(label, onClick, modifier, on, onColor, true, minHeight = SlimH, minWidth = minWidth)
+
 /** Dense (28dp) text button used across the arrangement/takes screens. */
 @Composable
 internal fun DBtn(
@@ -419,16 +452,8 @@ internal fun DBtn(
 ) = LiveTextButton(label, onClick, modifier, on, onColor, enabled, minHeight = DenseH, minWidth = 36.dp)
 
 @Composable
-internal fun RenameClipDialog(initial: String, onDismiss: () -> Unit, onOk: (String) -> Unit) {
-    var text by remember { mutableStateOf(initial) }
-    LiveDialog("Rename", onDismiss) {
-        LiveTextField(text, { text = it }, onDone = { onOk(text) })
-        LiveDialogButtons {
-            LiveTextButton("Cancel", onDismiss, minWidth = 72.dp)
-            LiveTextButton("OK", { onOk(text) }, on = true, minWidth = 72.dp)
-        }
-    }
-}
+internal fun RenameClipDialog(initial: String, onDismiss: () -> Unit, onOk: (String) -> Unit) =
+    NameDialog("Rename", initial, onDismiss, onOk)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

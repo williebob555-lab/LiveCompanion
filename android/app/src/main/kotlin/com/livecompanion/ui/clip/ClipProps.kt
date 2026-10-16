@@ -28,6 +28,7 @@ import com.livecompanion.state.ClipState
 import com.livecompanion.state.LiveStore
 import com.livecompanion.ui.components.ColorPaletteDialog
 import com.livecompanion.ui.components.DenseTextField
+import com.livecompanion.ui.components.nameError
 import com.livecompanion.ui.components.LiveLabel
 import com.livecompanion.ui.components.liveColor
 import com.livecompanion.ui.theme.LiveColors
@@ -106,14 +107,16 @@ fun ClipProps(
             if (clip.name != name && clip.name != lastSent) { name = clip.name; lastSent = clip.name }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
                 DenseTextField(
-                    name, { name = it; lastSent = it; ops.set("name", it) { c -> c.copy(name = it) } },
+                    name, { name = it; if (nameError(it) == null) { lastSent = it; ops.set("name", it) { c -> c.copy(name = it) } } },
                     Modifier.weight(1f).height(DenseH), placeholder = if (clip.audio) "Audio" else "MIDI",
+                    isError = nameError(name) != null,
                 )
                 androidx.compose.foundation.layout.Box(
                     Modifier.size(DenseH).background(liveColor(clip.color), LiveShapes.Small).clickable { palette = true },
                 )
                 if (onClose != null) Btn("Close", onClose)
             }
+            nameError(name)?.let { com.livecompanion.ui.components.LiveText(it, style = com.livecompanion.ui.theme.LiveType.Small, color = LiveColors.Rec) }
             Cells(cols) {
                 Btn("Loop", { ops.set("looping", !clip.looping) { it.copy(looping = !clip.looping) } }, Modifier.weight(1f), on = clip.looping)
                 Btn("Muted", { ops.set("muted", !clip.muted) { it.copy(muted = !clip.muted) } }, Modifier.weight(1f), on = clip.muted, onColor = LiveColors.MuteOn)

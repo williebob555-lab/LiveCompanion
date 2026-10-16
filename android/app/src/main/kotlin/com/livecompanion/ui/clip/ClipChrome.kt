@@ -89,6 +89,18 @@ class ClipView(var minPpu: Float = 3f, var maxPpu: Float = 1200f) {
 
     var minX = -2.0
 
+    /**
+     * Zoom limits: min = the whole content ([span] axis units + margin) fills the width; max = [unitsPer64] (one 1/64 note)
+     * spans ~24dp. [dens] = px per dp. No-op until the size and a span are known.
+     */
+    fun setLimits(span: Double, unitsPer64: Double, dens: Float) {
+        if (width <= leftW || span < 1e-3) return
+        val gw = max(width - leftW, 50f)
+        val lo = (gw / (span * 1.08)).toFloat()
+        minPpu = lo
+        maxPpu = max(lo, (24f * dens / unitsPer64).toFloat())
+    }
+
     /** Two-finger horizontal transform step: zoom by finger-span ratio about the old midpoint, pan with the new one. */
     fun transformX(a: PointerInputChange, b: PointerInputChange) {
         val pcx = (a.previousPosition.x + b.previousPosition.x) / 2f

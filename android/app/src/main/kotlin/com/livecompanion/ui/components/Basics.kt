@@ -147,7 +147,7 @@ fun LiveDivider(modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().height(1.dp).background(LiveColors.Line))
 }
 
-enum class LiveIconKind { Play, Stop, Rec, SessionRec, Overdub, Loop, Metronome, Undo, Redo, Prev, Next, Down, Plus, Close }
+enum class LiveIconKind { Play, Stop, Rec, SessionRec, Overdub, Loop, Metronome, Undo, Redo, Prev, Next, Down, Plus, Close, Draw, Select, Dup, Trash, SelAll }
 
 /** Vector-drawn icons (no font glyph dependence). */
 @Composable
@@ -206,6 +206,28 @@ private fun DrawScope.drawIcon(kind: LiveIconKind, c: Color) {
         LiveIconKind.Close -> {
             drawLine(c, p(.25f, .25f), p(.75f, .75f), sw, StrokeCap.Round)
             drawLine(c, p(.75f, .25f), p(.25f, .75f), sw, StrokeCap.Round)
+        }
+        LiveIconKind.Draw -> {
+            drawLine(c, p(.3f, .7f), p(.78f, .22f), sw * 1.7f, StrokeCap.Round)
+            drawPath(Path().apply { moveTo(.14f * w, .88f * h); lineTo(.2f * w, .62f * h); lineTo(.4f * w, .8f * h); close() }, c)
+        }
+        LiveIconKind.Select -> {
+            drawPath(Path().apply {
+                moveTo(.26f * w, .1f * h); lineTo(.26f * w, .86f * h); lineTo(.44f * w, .68f * h); lineTo(.58f * w, .94f * h)
+                lineTo(.7f * w, .88f * h); lineTo(.56f * w, .62f * h); lineTo(.8f * w, .62f * h); close()
+            }, c)
+        }
+        LiveIconKind.Dup -> {
+            drawRoundRect(c, p(.12f, .12f), Size(.5f * w, .5f * h), androidx.compose.ui.geometry.CornerRadius(.06f * w), style = Stroke(sw))
+            drawRoundRect(c, p(.38f, .38f), Size(.5f * w, .5f * h), androidx.compose.ui.geometry.CornerRadius(.06f * w), style = Stroke(sw))
+        }
+        LiveIconKind.Trash -> {
+            drawLine(c, p(.18f, .26f), p(.82f, .26f), sw, StrokeCap.Round)
+            drawPath(Path().apply { moveTo(.4f * w, .26f * h); lineTo(.4f * w, .14f * h); lineTo(.6f * w, .14f * h); lineTo(.6f * w, .26f * h) }, c, style = Stroke(sw))
+            drawPath(Path().apply { moveTo(.27f * w, .32f * h); lineTo(.33f * w, .9f * h); lineTo(.67f * w, .9f * h); lineTo(.73f * w, .32f * h) }, c, style = Stroke(sw))
+        }
+        LiveIconKind.SelAll -> {
+            drawRect(c, p(.14f, .14f), Size(.72f * w, .72f * h), style = Stroke(sw, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(w * .12f, w * .09f))))
         }
     }
 }

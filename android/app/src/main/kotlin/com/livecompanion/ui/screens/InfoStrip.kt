@@ -56,7 +56,7 @@ fun InfoStrip(store: LiveStore, statusOverride: ConnStatus?, client: LiveClient,
         Column(Modifier.fillMaxWidth(), Arrangement.spacedBy(4.dp), Alignment.CenterHorizontally) {
             Box(Modifier.size(7.dp).background(dot, CircleShape))
             Cell("POS", formatPosition(pos, s.sigNum, s.sigDen))
-            Cell("BPM", String.format(java.util.Locale.US, "%.1f", s.tempo))
+            Cell("BPM", formatTempo(s.tempo))
             Cell("SIG", "${s.sigNum}/${s.sigDen}")
         }
         Column(Modifier.fillMaxWidth(), Arrangement.spacedBy(4.dp), Alignment.CenterHorizontally) {

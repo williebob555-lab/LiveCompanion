@@ -164,7 +164,7 @@ fun AudioEditor(
     }
 
     BoxWithConstraints(modifier.fillMaxSize().background(LiveColors.Bg)) {
-        val twoRows = maxWidth < 640.dp
+        val twoRows = maxWidth < 500.dp
         val gridTools: @Composable () -> Unit = {
             GridControls(sub, { sub = it }, snap, { snap = it }, "$num/$den", { sigDialog = true }, stepLabel(stepNow), showSub = !seconds)
         }
@@ -179,6 +179,10 @@ fun AudioEditor(
             if (twoRows) { ToolRow { gridTools() }; ToolRow { waveTools() } } else ToolRow { gridTools(); waveTools() }
             Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().onSizeChanged { v.width = it.width.toFloat(); v.height = it.height.toFloat() }) {
                 v.fitReq
+                run {
+                    val span = max(extent.second - extent.first, 1e-3)
+                    v.setLimits(span, if (seconds) 0.0625 * 60.0 / max(tempo.toDouble(), 20.0) else 0.0625, density.density)
+                }
                 if (v.width > 0f && !v.inited && (fileSec > 0 || rec)) {
                     v.inited = true
                     v.fit(extent.first, extent.second)
@@ -267,7 +271,7 @@ fun AudioEditor(
                         }
                     },
                 ) {
-                    drawWave(clip, peaks, map, v, axis, if (seconds) 0.0 else gridStepFor(sub, v.ppu, axis.beatLen, axis.barLen), fileSec, color, gain, selWarp, dragWarp, tm, lblSp, "$num/$den", sub.label(if (sub.adaptive && !seconds) gridStepFor(sub, v.ppu, axis.beatLen, axis.barLen) else null))
+                    drawWave(clip, peaks, map, v, axis, if (seconds) 0.0 else gridStepFor(sub, v.ppu, axis.beatLen, axis.barLen), fileSec, color, gain, selWarp, dragWarp, tm, lblSp, "", "")
                 }
                 ZoomPad(Modifier.align(Alignment.BottomEnd), { v.zoomX(it) }, null, { v.requestFit() })
                 Canvas(Modifier.fillMaxSize()) {
@@ -276,7 +280,7 @@ fun AudioEditor(
                         drawRecRegion(v, 0.0, h ?: 0.0, v.topH, size.height)
                         drawText(tm, "RECORDING", Offset(v.leftW + 8f, v.topH + 6f), TextStyle(fontSize = lblSp, color = LiveColors.Rec))
                     }
-                    if (h != null) drawPlayhead(v, h, if (rec) LiveColors.Rec else LiveColors.Play, v.braceH, size.height)
+                    if (h != null) drawPlayhead(v, h, if (rec) LiveColors.Rec else LiveColors.Playhead, v.braceH, size.height)
                 }
                 if (peaks == null && !rec) {
                     Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {

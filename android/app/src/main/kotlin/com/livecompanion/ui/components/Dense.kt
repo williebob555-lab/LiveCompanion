@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -45,6 +46,7 @@ fun DenseTextField(
     modifier: Modifier = Modifier,
     placeholder: String = "",
     onDone: (() -> Unit)? = null,
+    isError: Boolean = false,
 ) {
     BasicTextField(
         value = value,
@@ -58,7 +60,7 @@ fun DenseTextField(
             Box(
                 Modifier.heightIn(min = 32.dp).fillMaxWidth()
                     .background(LiveColors.Bg, LiveShapes.Small)
-                    .border(1.dp, LiveColors.Line, LiveShapes.Small)
+                    .border(1.dp, if (isError) LiveColors.Rec else LiveColors.Line, LiveShapes.Small)
                     .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
@@ -92,22 +94,26 @@ fun DenseSelect(
         LiveText(value.ifEmpty { "-" }, Modifier.weight(1f), LiveType.Small)
         LiveIcon(LiveIconKind.Down, LiveColors.TextDim, size = 12.dp)
     }
-    if (open) {
-        LiveDialog(title, { open = false }) {
-            LiveScrollColumn(Modifier.weight(1f, fill = false)) {
-                items.forEachIndexed { i, s ->
-                    val sel = s == value
-                    Row(
-                        Modifier.fillMaxWidth().height(34.dp)
-                            .background(if (sel) LiveColors.Accent else LiveColors.PanelHi, LiveShapes.Small)
-                            .clickable { open = false; onSelect(i, s) }
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) { LiveText(s, style = LiveType.Body, color = if (sel) androidx.compose.ui.graphics.Color.Black else LiveColors.Text) }
-                }
+    if (open) SelectDialog(title, value, items, { open = false }, onSelect)
+}
+
+/** The list dialog behind [DenseSelect] (also used by compact dropdown chips). */
+@Composable
+fun SelectDialog(title: String, value: String, items: List<String>, onDismiss: () -> Unit, onSelect: (Int, String) -> Unit) {
+    LiveDialog(title, onDismiss) {
+        LiveScrollColumn(Modifier.weight(1f, fill = false)) {
+            items.forEachIndexed { i, s ->
+                val sel = s == value
+                Row(
+                    Modifier.fillMaxWidth().height(34.dp)
+                        .background(if (sel) LiveColors.Accent else LiveColors.PanelHi, LiveShapes.Small)
+                        .clickable { onDismiss(); onSelect(i, s) }
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { LiveText(s, style = LiveType.Body, color = if (sel) androidx.compose.ui.graphics.Color.Black else LiveColors.Text) }
             }
-            LiveDialogButtons { DenseButton("Cancel", { open = false }) }
         }
+        LiveDialogButtons { DenseButton("Cancel", onDismiss) }
     }
 }
 
@@ -119,6 +125,26 @@ fun ConfirmDialog(title: String, message: String, confirm: String, onConfirm: ()
         LiveDialogButtons {
             DenseButton("Cancel", onDismiss)
             DenseButton(confirm, { onConfirm(); onDismiss() }, on = true, onColor = LiveColors.Rec)
+        }
+    }
+}
+
+/** Inline message for an unusable name (blank), or null. Used by every rename (clip, track, take lane). */
+fun nameError(text: String): String? = if (text.isBlank()) "Name can't be empty" else null
+
+/** Rename dialog: empty names are rejected with an inline error (OK stays active so the message shows on tap). */
+@Composable
+fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, onOk: (String) -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    var touched by remember { mutableStateOf(false) }
+    val err = nameError(text)
+    val go = { if (err == null) onOk(text.trim()) else touched = true }
+    LiveDialog(title, onDismiss) {
+        LiveTextField(text, { text = it; touched = true }, onDone = { go() })
+        if (err != null && touched) LiveText(err, style = LiveType.Small, color = LiveColors.Rec, maxLines = 2)
+        LiveDialogButtons {
+            DenseButton("Cancel", onDismiss, Modifier.widthIn(min = 72.dp))
+            DenseButton("OK", { go() }, Modifier.widthIn(min = 72.dp), on = err == null)
         }
     }
 }

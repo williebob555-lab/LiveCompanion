@@ -18,6 +18,14 @@ object AppUpdates {
     fun installedVersion(context: Context): String =
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "0"
 
+    /** "0.1.0-test5 (build 5)", plus " - debug build" for a debuggable (locally built) APK. */
+    fun installedLabel(context: Context): String = runCatching {
+        val pi = context.packageManager.getPackageInfo(context.packageName, 0)
+        val code = androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(pi)
+        val debug = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        "${pi.versionName ?: "0"} (build $code)" + if (debug) " - debug build" else ""
+    }.getOrElse { installedVersion(context) }
+
     /** Blocking; call off the main thread. */
     fun check(context: Context, channel: UpdateCheck.Channel): UpdateCheck.Result =
         UpdateCheck.check(installedVersion(context), channel)

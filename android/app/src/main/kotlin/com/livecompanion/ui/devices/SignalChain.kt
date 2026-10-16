@@ -81,6 +81,13 @@ fun ChainRow(
     }
     val target = targetFor(from)
 
+    // One reorder path for hold-drag and for the move buttons of the selected device.
+    fun commitMove(f: Int, t: Int) {
+        if (f !in devices.indices || t !in devices.indices || t == f) return
+        store.updateDevices { st -> st.copy(devices = editList(st.devices, into) { l -> l.moved(f, t) }) }
+        client.op("device.move", "tr" to tr, "path" to devsNow.value[f].path, "to" to t)
+    }
+
     val start = pending.filter { it.atStart }
     val end = pending.filter { !it.atStart }
     Row(modifier.fillMaxHeight()) {
@@ -120,11 +127,7 @@ fun ChainRow(
                             val f = from
                             val t = targetFor(f)
                             from = -1; dx = 0f
-                            if (f >= 0 && t >= 0 && t != f) {
-                                store.updateDevices { s -> s.copy(devices = editList(s.devices, into) { l -> l.moved(f, t) }) }
-                                val args = mutableListOf<Pair<String, Any?>>("tr" to tr, "path" to devsNow.value[f].path, "to" to t)
-                                client.op("device.move", *args.toTypedArray())
-                            }
+                            if (f >= 0 && t >= 0) commitMove(f, t)
                         },
                         onDragCancel = { from = -1; dx = 0f },
                     )
@@ -138,7 +141,7 @@ fun ChainRow(
                         .fillMaxHeight(),
                 ) {
                     FlowArrow()
-                    DevicePanel(d, tr, ui, into, store, client, handle, isDrag)
+                    DevicePanel(d, tr, ui, into, store, client, handle, isDrag, index = i, count = devices.size, onShift = { dir -> commitMove(i, i + dir) })
                     val sel = ui.chainSel[d.path]
                     val chain = d.chains.firstOrNull { it.i == sel }
                     if (chain != null && ui.collapsed[d.path] != true) {
@@ -175,7 +178,7 @@ private fun ChainGroup(title: String, content: @Composable () -> Unit) {
 @Composable
 private fun AddPanel(empty: Boolean, onClick: () -> Unit) {
     Column(
-        Modifier.width(if (empty) 120.dp else 44.dp).fillMaxHeight().clip(LiveShapes.Small)
+        Modifier.width(if (empty) 120.dp else 44.dp).height(if (empty) 84.dp else 70.dp).clip(LiveShapes.Small)
             .background(LiveColors.Panel.copy(alpha = 0.5f)).border(1.dp, LiveColors.Line, LiveShapes.Small)
             .clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,

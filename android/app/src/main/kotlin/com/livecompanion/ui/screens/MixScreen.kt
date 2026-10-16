@@ -46,8 +46,9 @@ import com.livecompanion.ui.theme.LiveShapes
 import com.livecompanion.ui.theme.LiveType
 
 /**
- * Mix tab: the focused track's mixer (big volume fader, pan, meter, sends with return names, routing,
- * monitor, arm/mute/solo, name/color, track actions) plus a compact strip of returns and master.
+ * Mix tab: sends (with return names), routing, and the returns + master strip. Name / arm / mute / solo / monitor
+ * (and vol / pan outside the 700..900dp band) live in the top bar and are NOT repeated here; track duplicate /
+ * delete / add live in the Tracks tab.
  */
 @Composable
 fun MixScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier) {
@@ -56,7 +57,6 @@ fun MixScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifie
     val rt = store.rt.collectAsState()
     var rename by remember { mutableStateOf(false) }
     var palette by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
 
     if (focus.ref.isEmpty()) {
         Box(modifier.fillMaxSize().background(LiveColors.Bg), contentAlignment = Alignment.Center) {
@@ -67,78 +67,42 @@ fun MixScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifie
     val f = focus
     val ref = f.ref
     fun set(k: String, v: Any?) = client.op("track.set", "tr" to ref, "k" to k, "v" to v)
-    val isReg = f.kind != "return" && f.kind != "master"
-
-    val header: @Composable () -> Unit = {
-        Row(
-            Modifier.fillMaxWidth().background(LiveColors.Panel, LiveShapes.Small).padding(3.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
-            Box(Modifier.clickable { palette = true }.padding(4.dp)) { ColorChip(f.color, size = 16.dp) }
-            LiveText(f.name, Modifier.weight(1f).clickable { rename = true }.padding(vertical = 6.dp), LiveType.Title)
-            DenseButton("Rename", { rename = true })
-        }
-        if (f.armable || isReg) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (f.armable) DenseButton("Arm", {
-                    store.updateFocus { it.copy(arm = !f.arm) }; set("arm", !f.arm)
-                }, Modifier.weight(1f), on = f.arm, onColor = LiveColors.Rec)
-                DenseButton("Mute", {
-                    store.updateFocus { it.copy(mute = !f.mute) }; store.patchTrack(ref) { it.copy(mute = !f.mute) }; set("mute", !f.mute)
-                }, Modifier.weight(1f), on = f.mute, onColor = LiveColors.MuteOn)
-                DenseButton("Solo", {
-                    store.updateFocus { it.copy(solo = !f.solo) }; store.patchTrack(ref) { it.copy(solo = !f.solo) }; set("solo", !f.solo)
-                }, Modifier.weight(1f), on = f.solo, onColor = LiveColors.Solo)
-            }
-        }
-        if (f.armable) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                LiveLabel("Mon", Modifier.width(40.dp))
-                listOf("In", "Auto", "Off").forEachIndexed { i, s ->
-                    DenseButton(s, { store.updateFocus { it.copy(monitor = i) }; set("monitor", i) }, Modifier.weight(1f), on = f.monitor == i)
-                }
-            }
-        }
-    }
+    val fs = androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)
 
     BoxWithConstraints(modifier.fillMaxSize().background(LiveColors.Bg)) {
         val wide = maxWidth >= 520.dp
-        val faderH = 34.dp
-        val strip: @Composable () -> Unit = { VolPanStrip(f, rt, faderH, store, client, ref) }
-        val rest: @Composable () -> Unit = {
-            SendsAndRouting(f, store, client, ref, set = ::set)
-            TrackActions(f, tracks.tracks.size, ref, client, onDelete = { confirmDelete = true })
-            ReturnsStrip(tracks.returns, tracks.master, ref, store, client, rt)
+        // The top bar already carries name / arm / mute / solo / monitor, and vol+pan except in the 700..900dp band.
+        val topBarHasFaders = maxWidth < 700.dp || maxWidth >= 900.dp * fs
+        val title: @Composable () -> Unit = {
+            Row(
+                Modifier.fillMaxWidth().background(LiveColors.Panel, LiveShapes.Small).padding(horizontal = 3.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Box(Modifier.clickable { palette = true }.padding(4.dp)) { ColorChip(f.color, size = 14.dp) }
+                LiveText(f.name, Modifier.weight(1f).clickable { rename = true }.padding(vertical = 4.dp), LiveType.Title)
+                LiveLabel("Sends / routing")
+            }
         }
+        val left: @Composable () -> Unit = {
+            title()
+            if (!topBarHasFaders) VolPanStrip(f, rt, 28.dp, store, client, ref)
+            SendsAndRouting(f, store, client, ref, set = ::set)
+        }
+        val right: @Composable () -> Unit = { ReturnsStrip(tracks.returns, tracks.master, ref, store, client, rt) }
         if (wide) {
             Row(Modifier.fillMaxSize().padding(2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    header(); strip()
-                }
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(3.dp)) { rest() }
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(3.dp)) { left() }
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(3.dp)) { right() }
             }
         } else {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(2.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                header(); strip(); rest()
+                left(); right()
             }
         }
     }
 
-    if (rename) RenameDialog(f.name, { rename = false }) { set("name", it) }
+    if (rename) com.livecompanion.ui.components.NameDialog("Rename track", f.name, { rename = false }) { set("name", it); rename = false }
     if (palette) ColorPaletteDialog(f.color, { c -> store.updateFocus { it.copy(color = c) }; set("color", c) }, { palette = false })
-    if (confirmDelete) ConfirmDialog("Delete track", "Delete \"${f.name}\"?", "Delete", { client.op("track.delete", "tr" to ref) }, { confirmDelete = false })
-}
-
-@Composable
-private fun RenameDialog(name: String, onDismiss: () -> Unit, onOk: (String) -> Unit) {
-    var text by remember { mutableStateOf(name) }
-    LiveDialog("Rename track", onDismiss) {
-        DenseTextField(text, { text = it }, Modifier.fillMaxWidth(), onDone = { onOk(text); onDismiss() })
-        LiveDialogButtons {
-            DenseButton("Cancel", onDismiss)
-            DenseButton("OK", { onOk(text); onDismiss() }, on = true)
-        }
-    }
 }
 
 @Composable
@@ -219,25 +183,6 @@ private fun RouteRow(label: String, value: String, items: List<String>, onPick: 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         LiveText(label, Modifier.weight(0.4f), LiveType.Small, color = LiveColors.TextDim)
         DenseSelect(label, value, items, { _, s -> onPick(s) }, Modifier.weight(0.6f))
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun TrackActions(f: FocusState, trackCount: Int, ref: String, client: LiveClient, onDelete: () -> Unit) {
-    val idx = if (ref.startsWith("t")) ref.drop(1).toIntOrNull() else null
-    val at = (idx?.plus(1)) ?: trackCount
-    Column(Modifier.fillMaxWidth().background(LiveColors.Panel, LiveShapes.Small).padding(4.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        LiveLabel("Track")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            DenseButton("Duplicate", { client.op("track.duplicate", "tr" to ref) }, enabled = f.kind != "master")
-            DenseButton("+ Audio", { client.op("track.create", "kind" to "audio", "i" to at) })
-            DenseButton("+ MIDI", { client.op("track.create", "kind" to "midi", "i" to at) })
-        }
-        // Destructive: own row, right-aligned, away from Duplicate (confirm dialog follows).
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            DenseButton("Delete track", onDelete, enabled = f.kind != "master", onColor = LiveColors.Rec)
-        }
     }
 }
 

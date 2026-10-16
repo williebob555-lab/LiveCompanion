@@ -8,6 +8,11 @@ Rule: update this file when starting/finishing anything. If interrupted, resume 
 fixed, icon redrawn (equal L/C) → RELEASED v0.1.0-test5 (versionCode 5, release-signed, verified). From test5 on,
 in-app updates install in place. Icon not yet visually verified on a launcher — check on emulator next QA.
 2026-10-16 latest: QA pass 2 fixes committed 241e85f, RELEASED v0.1.0-test4, remote script reinstalled.
+2026-10-16 latest+: QA pass 3 fix pass DONE, uncommitted (all P3-1-*/2-*/3-*/4-* marked "fixed(pending commit)" in qa/REVIEW_LOG.md,
+    nits left open: P3-2-4/5, P3-3-5/8/9, P3-4-5, warp-marker handles). Design critique applied: Arrange (Live-like clips, controls below the lane,
+    nudge buttons, light locators/playhead, no orange), Session tiles + side control column, Clip icon toolbar + zoom limits, Devices content-sized
+    panels + dropdown chips + move buttons, Mix de-duplicated, update UI (No stable release yet). Gate green (assembleDebug, unit tests, roborazzi, pytest).
+    Next: owner review of screenshots / test6 release; emulator re-check of arrange drag cancel + nudge on a real device; real-Live verify arr.move overlap.
 [~] QA pass 3 (emulator + mock only) running. Launching Live unattended was BLOCKED by the permission
     classifier → real-Live mutating verification (arr.trim/arr.move/swap/device.insert names/etc.) needs the owner
     present or explicit approval; prepare a scripted checklist (tools/live_verify.py) for that session.

@@ -46,6 +46,8 @@ class ChainUi {
     val chainSel = mutableStateMapOf<String, Int>()
     var addInto by mutableStateOf<String?>(null)
     var openPath by mutableStateOf<String?>(null)
+    /** Device whose title was tapped: it shows the non-gesture move buttons (the same reorder as hold-drag). */
+    var selPath by mutableStateOf<String?>(null)
 }
 
 // ------------------------------------------------------------------ optimistic tree edits

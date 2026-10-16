@@ -26,9 +26,11 @@ object LiveColors {
     val TextDim = Color(0xFF8A8A8A)
     /** Ableton Live 12 dark-theme selection light blue. */
     val Accent = Color(0xFF5FBEEB)
-    /** Orange: warnings / Live's own orange-coded states only. */
-    val Warn = Color(0xFFFFA22B)
+    /** Pale yellow for warnings / status text (the app has no orange chrome; clip colours come from Live). */
+    val Warn = Color(0xFFE8D36A)
     val Play = Color(0xFF5FD35F)
+    /** Live-like playhead / locator colour: near-white, never orange. */
+    val Playhead = Color(0xFFF4F4F4)
     val Rec = Color(0xFFFF3B30)
     val Solo = Color(0xFF3D9FE0)
     val MuteOn = Color(0xFFE8C547)

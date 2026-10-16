@@ -36,6 +36,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.livecompanion.net.Peaks
 import com.livecompanion.state.ArrClip
@@ -46,7 +47,6 @@ import com.livecompanion.ui.components.TimelineView
 import com.livecompanion.ui.components.dim
 import com.livecompanion.ui.components.liveColor
 import com.livecompanion.ui.components.onColor
-import com.livecompanion.ui.components.timelineRulerHeight
 import com.livecompanion.ui.theme.LiveColors
 import com.livecompanion.ui.theme.LiveType
 import androidx.compose.runtime.snapshotFlow
@@ -76,6 +76,8 @@ class LaneModel(
     val punchOut: Boolean = false,
     val cues: List<CuePoint> = emptyList(),
     val midi: Boolean = false,
+    /** Track this lane shows; a change (e.g. the track was deleted) cancels any drag in flight. */
+    val trackRef: String = "",
 )
 
 class LaneActions(
@@ -110,7 +112,11 @@ private enum class Mode { Pending, Hold, Pan, Move, TrimL, TrimR, Scrub, LoopL, 
 
 private const val HOLD_MS = 230L
 private const val TAKE_H_DP = 24f
-private const val BRACE_H_DP = 18f
+private const val BRACE_H_DP = 9f
+/** Scrub (bar number) row height. */
+private const val SCRUB_H_DP = 16f
+/** Live-like: a clip block is at most this tall (top aligned); the rest of a tall lane stays empty. */
+private const val CLIP_MAX_DP = 120f
 /** Visible trim handle width == edge grab zone (selected clip only). */
 private const val EDGE_DP = 14f
 /** No clip may be trimmed shorter than 1/16 beat (also enforced by the server). */
@@ -135,7 +141,7 @@ fun TrackLane(
     val haptic = LocalHapticFeedback.current
     val slop = LocalViewConfiguration.current.touchSlop
     val tm = rememberTextMeasurer()
-    val scrubPx = with(density) { timelineRulerHeight().toPx() }
+    val scrubPx = with(density) { maxOf(SCRUB_H_DP.dp, 10.sp.toDp() + 5.dp).toPx() }
     val bracePx = BRACE_H_DP * dens
     val rulerPx = scrubPx + bracePx
     val takeH = TAKE_H_DP * dens
@@ -154,6 +160,7 @@ fun TrackLane(
 
     // The server section replaces our optimistic edit.
     LaunchedEffect(model.clips) { drag = null }
+    LaunchedEffect(model.trackRef) { drag = null }
     LaunchedEffect(Unit) {
         snapshotFlow { drag }.collectLatest { d ->
             if (d != null && d.committed) { delay(1500); if (drag?.serial == d.serial) drag = null }
@@ -198,7 +205,10 @@ fun TrackLane(
         return if (d != null && d.i == i) d.start to d.end else c.start to c.end
     }
 
-    fun hitMain(x: Float): ArrClip? {
+    fun clipBottom(): Float = rulerPx + 2f * dens + min(mainH() - 4f * dens, CLIP_MAX_DP * dens)
+
+    fun hitMain(x: Float, y: Float): ArrClip? {
+        if (y > clipBottom() + tapPad) return null
         var best: ArrClip? = null
         var bestD = Float.MAX_VALUE
         for (c in curM.clips) {
@@ -268,7 +278,7 @@ fun TrackLane(
                             else if (p0.x > view.xOf(lp.start) && p0.x < view.xOf(lp.start + lp.len)) edgeLoop = 3
                         }
                         Zone.Main -> {
-                            hitClip = hitMain(p0.x)
+                            hitClip = hitMain(p0.x, p0.y)
                             val hc = hitClip
                             if (hc != null) {
                                 val (s, e) = effClip(hc.i)!!
@@ -307,6 +317,12 @@ fun TrackLane(
                             continue@gesture
                         }
                         val pressed = ev.changes.filter { it.pressed }
+                        // The focused track changed or the dragged clip vanished (deleted elsewhere): abandon the gesture.
+                        if (curM.trackRef != m.trackRef || (hitClip != null && curM.clips.none { it.i == hitClip!!.i })) {
+                            cancelEdits(); drag = null
+                            do { val e2 = awaitPointerEvent() } while (e2.changes.any { it.pressed })
+                            break@gesture
+                        }
                         if (pressed.size >= 2) {
                             if (!multi) { cancelEdits(); mode = Mode.Multi; multi = true; prevSpan = 0f }
                             val pa = pressed[0].position
@@ -315,7 +331,7 @@ fun TrackLane(
                             val span = max(abs(pa.x - pb.x), (pa - pb).getDistance() * 0.5f)
                             if (prevSpan > 0f && span > 1f) {
                                 val anchor = view.beatAt(prevCx)
-                                val np = (view.ppb * span / prevSpan).coerceIn(TimelineView.MIN_PPB, TimelineView.MAX_PPB)
+                                val np = view.clampPpb(view.ppb * span / prevSpan)
                                 view.ppb = np
                                 view.start = max(0.0, anchor - cx / np)
                             }
@@ -457,10 +473,10 @@ fun TrackLane(
             if (rec.active) drawRec(view, rec, ph, scrubPx, rulerPx, mh, tm, dens)
             val x = view.xOf(ph)
             if (x >= -4f && x <= size.width + 4f) {
-                val col = if (clock.isPlaying) LiveColors.Play else LiveColors.Text
-                drawLine(col, Offset(x, scrubPx * 0.5f), Offset(x, rulerPx + mh + takesN * takeH), 1.5f * dens)
+                val col = LiveColors.Playhead
+                drawLine(col, Offset(x, scrubPx * 0.5f), Offset(x, rulerPx + mh + takesN * takeH), 1.2f * dens)
                 val p = Path().apply {
-                    moveTo(x - 5f * dens, 1f * dens); lineTo(x + 5f * dens, 1f * dens); lineTo(x, scrubPx * 0.62f); close()
+                    moveTo(x - 4f * dens, 1f * dens); lineTo(x + 4f * dens, 1f * dens); lineTo(x, scrubPx * 0.7f); close()
                 }
                 drawPath(p, col)
             }
@@ -482,6 +498,8 @@ private val BeatText = LiveType.Label.copy(fontSize = 9.sp, letterSpacing = 0.sp
 private val ClipText = LiveType.Small.copy(fontSize = 11.sp)
 private val CueText = LiveType.Label.copy(fontSize = 9.sp, letterSpacing = 0.sp, color = LiveColors.Text)
 
+private fun barPxOf(ppb: Float, bpb: Double): Float = (ppb * bpb).toFloat()
+
 private fun DrawScope.drawBase(
     view: TimelineView, m: LaneModel, drag: DragEdit?, peaks: Map<String, Peaks>,
     scrubPx: Float, rulerPx: Float, mainH: Float, takeH: Float, tm: TextMeasurer, dens: Float,
@@ -494,6 +512,25 @@ private fun DrawScope.drawBase(
     val totalH = rulerPx + mainH + takesN * takeH
     val first = view.start
     val last = view.start + w / ppb
+
+    // locator labels are measured first so bar / beat numbers underneath them can be skipped (no collisions)
+    class CueBox(val cue: CuePoint, val x: Float, val lx: Float, val layout: androidx.compose.ui.text.TextLayoutResult?)
+    val cueBoxes = ArrayList<CueBox>()
+    for (cu in m.cues) {
+        val x = view.xOf(cu.t)
+        if (x < -2f || x > w) continue
+        var lay: androidx.compose.ui.text.TextLayoutResult? = null
+        var lx = x + 8f * dens
+        if (cu.n.isNotEmpty() && barPxOf(ppb, bpb) >= 24f * dens) {
+            lay = tm.measure(cu.n, CueText, overflow = TextOverflow.Ellipsis, maxLines = 1, constraints = Constraints(maxWidth = (64f * dens).toInt()))
+            if (lx + lay.size.width + 3f * dens > w) lx = x - 8f * dens - lay.size.width
+        }
+        cueBoxes.add(CueBox(cu, x, lx, lay))
+    }
+    fun blocked(x0: Float, x1: Float): Boolean = cueBoxes.any { b ->
+        val l = b.layout ?: return@any false
+        x1 > b.lx - 3f * dens && x0 < b.lx + l.size.width + 3f * dens
+    }
 
     // ---- backgrounds
     drawRect(LiveColors.Panel, Offset(0f, rulerPx), Size(w, mainH))
@@ -536,7 +573,7 @@ private fun DrawScope.drawBase(
                     val bar = floor(b / bpb + 1e-9).toInt()
                     val idx = Math.round((b - bar * bpb) / unit).toInt()
                     val l = tm.measure("${bar + 1}.${idx + 1}", BeatText, maxLines = 1)
-                    drawText(l, topLeft = Offset(x + 3f * dens, (scrubPx - l.size.height) / 2f))
+                    if (!blocked(x + 3f * dens, x + 3f * dens + l.size.width)) drawText(l, topLeft = Offset(x + 3f * dens, (scrubPx - l.size.height) / 2f))
                 }
             }
             bt++
@@ -548,7 +585,7 @@ private fun DrawScope.drawBase(
         if (x >= -1f && x <= w) {
             drawLine(Color(0xFF555555), Offset(x, 0f), Offset(x, totalH), 1f)
             val l = tm.measure("${bar + 1}", RulerText.copy(color = LiveColors.Text), maxLines = 1)
-            drawText(l, topLeft = Offset(x + 3f * dens, (scrubPx - l.size.height) / 2f))
+            if (!blocked(x + 3f * dens, x + 3f * dens + l.size.width)) drawText(l, topLeft = Offset(x + 3f * dens, (scrubPx - l.size.height) / 2f))
         }
         bar += step
     }
@@ -572,19 +609,15 @@ private fun DrawScope.drawBase(
         drawRect(col.copy(alpha = if (lp.enabled) 0.10f else 0.05f), Offset(ls, rulerPx), Size(le - ls, mainH + takesN * takeH))
         // Brace row: loop brace on the upper part (always "LOOP", accent when on); punch in/out are separate thin red
         // flags on a second thin strip below it - never relabel or recolor the loop brace.
-        val punchH = 4f * dens
+        val punchH = 2.5f * dens
         val punchOn = m.punchIn || m.punchOut
         val braceBot = if (punchOn) rulerPx - punchH - 1f * dens else rulerPx
-        drawRect(col.copy(alpha = if (lp.enabled) 0.85f else 0.45f), Offset(ls, scrubPx + 2f * dens), Size(le - ls, braceBot - scrubPx - 3f * dens))
+        drawRect(col.copy(alpha = if (lp.enabled) 0.85f else 0.45f), Offset(ls, scrubPx + 1f * dens), Size(le - ls, braceBot - scrubPx - 2f * dens))
         val hw = 5f * dens
         drawRect(col, Offset(ls - 1f, scrubPx), Size(hw, braceBot - scrubPx))
         drawRect(col, Offset(le - hw + 1f, scrubPx), Size(hw, braceBot - scrubPx))
         drawLine(col.copy(alpha = 0.9f), Offset(ls, rulerPx), Offset(ls, totalH), 1f)
         drawLine(col.copy(alpha = 0.9f), Offset(le, rulerPx), Offset(le, totalH), 1f)
-        if (le - ls > 56f * dens) {
-            val lbl = tm.measure("LOOP", BeatText.copy(color = Color.Black), maxLines = 1)
-            drawText(lbl, topLeft = Offset(ls + hw + 3f * dens, scrubPx + (braceBot - scrubPx - lbl.size.height) / 2f))
-        }
         if (punchOn) {
             val py = rulerPx - punchH
             val flag = min(18f * dens, (le - ls) / 2f)
@@ -600,24 +633,26 @@ private fun DrawScope.drawBase(
         }
     }
 
-    // ---- cues / locators
-    for (cu in m.cues) {
-        val x = view.xOf(cu.t)
-        if (x < -2f || x > w) continue
-        val path = Path().apply { moveTo(x, scrubPx - 1f); lineTo(x - 4f * dens, scrubPx - 7f * dens); lineTo(x + 4f * dens, scrubPx - 7f * dens); close() }
-        drawPath(path, LiveColors.Warn)
-        drawLine(LiveColors.Warn.copy(alpha = 0.35f), Offset(x, scrubPx), Offset(x, totalH), 1f)
-        if (cu.n.isNotEmpty() && unitPx >= 8f * dens) {
-            val l = tm.measure(cu.n, CueText, overflow = TextOverflow.Ellipsis, maxLines = 1, constraints = Constraints(maxWidth = (60f * dens).toInt()))
-            // left of the marker: bar numbers sit to the right of their bar line
-            val lx = if (x - l.size.width - 6f * dens >= 0f) x - l.size.width - 6f * dens else x + 6f * dens
-            drawText(l, topLeft = Offset(lx, 1f * dens))
+    // ---- cues / locators: small light flags on the ruler (never orange); labels sit right of the flag on a dark pill
+    for (b in cueBoxes) {
+        val x = b.x
+        val flag = LiveColors.Playhead
+        drawLine(flag.copy(alpha = 0.22f), Offset(x, rulerPx), Offset(x, totalH), 1f)
+        drawLine(flag.copy(alpha = 0.85f), Offset(x, 1f * dens), Offset(x, scrubPx), 1f * dens)
+        val path = Path().apply { moveTo(x, 1f * dens); lineTo(x + 6f * dens, 3.5f * dens); lineTo(x, 6f * dens); close() }
+        drawPath(path, flag)
+        val l = b.layout
+        if (l != null) {
+            val pillH = scrubPx - 2f * dens
+            drawRoundRect(LiveColors.PanelHi.copy(alpha = 0.95f), Offset(b.lx - 3f * dens, 1f * dens), Size(l.size.width + 6f * dens, pillH),
+                androidx.compose.ui.geometry.CornerRadius(2f * dens))
+            drawText(l, topLeft = Offset(b.lx, 1f * dens + (pillH - l.size.height) / 2f))
         }
     }
 
     // ---- main lane clips
     val top = rulerPx + 2f * dens
-    val h = mainH - 4f * dens
+    val h = min(mainH - 4f * dens, CLIP_MAX_DP * dens)
     // the clip being dragged is drawn last (on top); anything it would overwrite is flagged in red
     val ordered = if (drag == null) m.clips else m.clips.filter { it.i != drag.i } + m.clips.filter { it.i == drag.i }
     for (c in ordered) {
@@ -651,7 +686,10 @@ private fun DrawScope.drawBase(
             val os = max(o.start, drag.start); val oe = min(o.end, drag.end)
             if (oe - os <= 1e-6) continue
             val ox0 = max(view.xOf(os), 0f); val ox1 = min(view.xOf(oe), w)
-            if (ox1 > ox0) drawRect(LiveColors.Rec.copy(alpha = 0.45f), Offset(ox0, top), Size(ox1 - ox0, h))
+            if (ox1 > ox0) {
+                drawRect(LiveColors.Rec.copy(alpha = 0.45f), Offset(ox0, top), Size(ox1 - ox0, h))
+                drawRect(LiveColors.Rec, Offset(ox0, top), Size(ox1 - ox0, h), style = Stroke(2f * dens))
+            }
         }
     }
 
@@ -725,17 +763,19 @@ private fun DrawScope.drawClip(
                 x += stepPx
             }
         } else if (!c.audio && c.pn.isNotEmpty() && bodyH > 6f * dens) {
+            // Live-style mini piano roll: thin note lines spread over the clip's own pitch range (not a fixed 4-row grid).
             var lo = 127; var hi = 0
             for (n in c.pn) { if (n.size >= 3) { val p = n[2].toInt(); if (p < lo) lo = p; if (p > hi) hi = p } }
-            val rows = (hi - lo + 1).coerceAtLeast(4)
-            val rowH = (bodyH - 4f * dens) / rows
-            val nh = rowH.coerceIn(1.5f, 5f * dens)
-            val nc = onColor(body).copy(alpha = if (c.muted) 0.35f else 0.85f)
+            val pad = 4f * dens
+            val range = (hi - lo).coerceAtLeast(0)
+            val nh = ((bodyH - 2 * pad) / (range + 1)).coerceIn(1.5f * dens, 3.5f * dens)
+            val usable = (bodyH - 2 * pad - nh).coerceAtLeast(0f)
+            val nc = onColor(body).copy(alpha = if (c.muted) 0.35f else 0.9f)
             placeNotes(c, clipLen) { rel, dur, pitch ->
                 val nx = view.xOf(s + rel)
-                val nw = max((dur * view.ppb).toFloat(), 1.5f)
+                val nw = max((dur * view.ppb).toFloat() - 0.5f * dens, 1.5f)
                 if (nx + nw >= 0f && nx <= w) {
-                    val ny = bodyTop + 2f * dens + (hi - pitch) * rowH
+                    val ny = bodyTop + pad + if (range == 0) usable / 2f else (hi - pitch).toFloat() / range * usable
                     drawRect(nc, Offset(nx, ny), Size(nw, nh))
                 }
             }
@@ -753,13 +793,14 @@ private fun DrawScope.drawClip(
         }
         // ---- name
         if (cw > 14f * dens) {
-            val tw = (cw - 6f * dens).coerceAtLeast(0f)
+            val selPad = if (selected) min(EDGE_DP * dens, cw * 0.3f) else 0f
+            val tw = (cw - 6f * dens - 2 * selPad).coerceAtLeast(0f)
             if (tw > 8f * dens) {
                 val lbl = tm.measure(
                     c.name.ifEmpty { if (c.audio) "Audio" else "MIDI" }, ClipText.copy(color = onColor(head)),
                     overflow = TextOverflow.Ellipsis, maxLines = 1, constraints = Constraints(maxWidth = tw.toInt()),
                 )
-                drawText(lbl, topLeft = Offset(max(sx, 0f) + 3f * dens, top + (headH - lbl.size.height) / 2f))
+                drawText(lbl, topLeft = Offset(max(sx, 0f) + 3f * dens + selPad, top + (headH - lbl.size.height) / 2f))
             }
         }
     }

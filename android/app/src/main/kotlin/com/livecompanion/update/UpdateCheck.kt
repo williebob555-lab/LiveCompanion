@@ -37,6 +37,10 @@ object UpdateCheck {
         data class Available(val release: Release, val download: Asset) : Result
         data class AvailableWithoutDownload(val release: Release) : Result
         data class UpToDate(val installed: Version) : Result
+        /** The stable channel has no release at all; [testAvailable] = pre-releases exist (switch to the Test channel). */
+        data class NoStable(val testAvailable: Boolean) : Result
+        /** Nothing has been published for this channel yet. */
+        data object NoReleases : Result
         data class Failed(val message: String) : Result
     }
 
@@ -64,14 +68,19 @@ object UpdateCheck {
 
         val release = try {
             newestOf(parseReleases(body, channel))
+                ?: return noRelease(channel, parseReleases(body, Channel.TEST).isNotEmpty())
         } catch (e: Exception) {
             return Result.Failed("GitHub sent back something unexpected.")
-        } ?: return Result.UpToDate(installed)
+        }
 
         if (release.version <= installed) return Result.UpToDate(installed)
         val download = pickAsset(release) ?: return Result.AvailableWithoutDownload(release)
         return Result.Available(release, download)
     }
+
+    /** Nothing newer or older exists for [channel]: say so instead of a misleading "up to date". */
+    internal fun noRelease(channel: Channel, anyPrerelease: Boolean): Result =
+        if (channel == Channel.STABLE) Result.NoStable(anyPrerelease) else Result.NoReleases
 
     /** The APK to download; prefers one whose name contains the release version. */
     internal fun pickAsset(release: Release): Asset? {

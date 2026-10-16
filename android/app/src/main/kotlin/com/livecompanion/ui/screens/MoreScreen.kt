@@ -42,6 +42,8 @@ private sealed interface UpdateUi {
     data object Idle : UpdateUi
     data object Checking : UpdateUi
     data class UpToDate(val v: String) : UpdateUi
+    data class NoStable(val testAvailable: Boolean) : UpdateUi
+    data object NoReleases : UpdateUi
     data class Available(val release: UpdateCheck.Release, val asset: UpdateCheck.Asset?) : UpdateUi
     data class Downloading(val progress: Float) : UpdateUi
     data class Failed(val msg: String) : UpdateUi
@@ -56,9 +58,15 @@ fun MoreScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifi
     val hello by store.hello.collectAsState()
     val session by store.session.collectAsState()
     val scope = rememberCoroutineScope()
-    var test by remember { mutableStateOf(actions.prefs?.testChannel ?: false) }
+    val installedIsTest = remember { com.livecompanion.update.Version.parse(AppUpdates.installedVersion(context))?.preRelease != null }
+    var test by remember { mutableStateOf(installedIsTest || (actions.prefs?.testChannel ?: false)) }
     var ui by remember { mutableStateOf<UpdateUi>(UpdateUi.Idle) }
-    val installed = remember { AppUpdates.installedVersion(context) }
+    val installed = remember { AppUpdates.installedLabel(context) }
+    // Switching channel invalidates an old result ("Up to date" under the other channel would be stale).
+    fun pickChannel(testOn: Boolean) {
+        test = testOn; actions.prefs?.testChannel = testOn
+        if (ui !is UpdateUi.Checking && ui !is UpdateUi.Downloading) ui = UpdateUi.Idle
+    }
 
     Column(
         modifier.fillMaxSize().background(LiveColors.Bg).verticalScroll(rememberScrollState()).padding(8.dp),
@@ -109,11 +117,12 @@ fun MoreScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifi
             Info("Installed", installed)
             LiveLabel("Channel")
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                LiveTextButton("Stable", { test = false; actions.prefs?.testChannel = false }, Modifier.weight(1f), on = !test)
-                LiveTextButton("Test", { test = true; actions.prefs?.testChannel = true }, Modifier.weight(1f), on = test)
+                LiveTextButton("Stable", { pickChannel(false) }, Modifier.weight(1f), on = !test)
+                LiveTextButton("Test", { pickChannel(true) }, Modifier.weight(1f), on = test)
             }
             LiveText(
-                if (test) "Test builds (pre-releases) are offered as well." else "Only stable releases are offered.",
+                if (installedIsTest) "This is a test build, so it always follows the Test channel."
+                else if (test) "Test builds (pre-releases) are offered as well." else "Only stable releases are offered.",
                 style = LiveType.Small, color = LiveColors.TextDim, maxLines = 2,
             )
             LiveTextButton(
@@ -126,6 +135,8 @@ fun MoreScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifi
                             is UpdateCheck.Result.Available -> UpdateUi.Available(r.release, r.download)
                             is UpdateCheck.Result.AvailableWithoutDownload -> UpdateUi.Available(r.release, null)
                             is UpdateCheck.Result.UpToDate -> UpdateUi.UpToDate(r.installed.toString())
+                            is UpdateCheck.Result.NoStable -> UpdateUi.NoStable(r.testAvailable)
+                            is UpdateCheck.Result.NoReleases -> UpdateUi.NoReleases
                             is UpdateCheck.Result.Failed -> UpdateUi.Failed(r.message)
                         }
                     }
@@ -136,7 +147,12 @@ fun MoreScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifi
                 UpdateUi.Idle -> Unit
                 UpdateUi.Checking -> LiveText("Checking...", style = LiveType.Small, color = LiveColors.TextDim)
                 is UpdateUi.UpToDate -> LiveText("Up to date (${u.v}).", style = LiveType.Small, color = LiveColors.Play)
-                is UpdateUi.Failed -> LiveText(u.msg, style = LiveType.Small, color = LiveColors.Warn, maxLines = 3)
+                is UpdateUi.NoStable -> {
+                    LiveText("No stable release yet.", style = LiveType.Small, color = LiveColors.Text)
+                    if (u.testAvailable) LiveText("Test builds exist - switch the channel to Test to get them.", style = LiveType.Small, color = LiveColors.TextDim, maxLines = 3)
+                }
+                UpdateUi.NoReleases -> LiveText("No releases have been published yet.", style = LiveType.Small, color = LiveColors.TextDim)
+                is UpdateUi.Failed -> LiveText(u.msg, style = LiveType.Small, color = LiveColors.Rec, maxLines = 3)
                 is UpdateUi.Downloading -> {
                     LiveText(
                         if (u.progress >= 0) "Downloading ${(u.progress * 100).toInt()}%" else "Downloading...",

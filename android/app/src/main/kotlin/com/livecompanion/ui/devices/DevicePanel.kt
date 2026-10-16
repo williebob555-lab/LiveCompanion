@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,6 +44,8 @@ import com.livecompanion.state.LiveStore
 import com.livecompanion.state.Macro
 import com.livecompanion.state.Param
 import com.livecompanion.ui.components.ConfirmDialog
+import com.livecompanion.ui.components.LiveIconButton
+import com.livecompanion.ui.components.LiveIconKind
 import com.livecompanion.ui.components.LiveKnob
 import com.livecompanion.ui.components.LiveText
 import com.livecompanion.ui.components.LiveTextButton
@@ -136,11 +139,13 @@ private fun SmallBtn(label: String, onClick: () -> Unit, modifier: Modifier = Mo
 fun DevicePanel(
     d: Device, tr: String, ui: ChainUi, into: String, store: LiveStore, client: LiveClient,
     handle: Modifier, dragging: Boolean, modifier: Modifier = Modifier,
+    index: Int = 0, count: Int = 1, onShift: (Int) -> Unit = {},
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
     val collapsed = ui.collapsed[d.path] == true
     val isOpen = ui.openPath == d.path
-    val border = if (isOpen || dragging) LiveColors.Accent else LiveColors.Line
+    val selected = ui.selPath == d.path
+    val border = if (isOpen || dragging || selected) LiveColors.Accent else LiveColors.Line
     val toggle = {
         store.updateDevices { s -> s.copy(devices = patchDevice(s.devices, d.path) { it.copy(on = !it.on) }) }
         client.op("device.toggle", "tr" to tr, "path" to d.path)
@@ -174,68 +179,87 @@ fun DevicePanel(
         return
     }
 
-    Column(
-        modifier.width(panelWidth(d)).fillMaxHeight()
-            .background(LiveColors.Panel, LiveShapes.Small).border(1.dp, border, LiveShapes.Small),
-    ) {
-        Box(Modifier.fillMaxWidth().height(2.dp).background(typeColor(d.type)))
-        Row(Modifier.fillMaxWidth().height(HEADER_H), verticalAlignment = Alignment.CenterVertically) {
-            PowerButton(d.on, toggle)
-            Box(Modifier.weight(1f).fillMaxHeight().then(handle), contentAlignment = Alignment.CenterStart) {
-                LiveText(d.name.ifEmpty { d.cls }, style = LiveType.Title, color = if (d.on) LiveColors.Text else LiveColors.TextDim)
-            }
-            Box(Modifier.size(HEADER_H).clickable(onClick = flip), contentAlignment = Alignment.Center) { Chevron(false) }
-        }
-        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-        // Tall panel: fill rows of knobs (4 per row) up to what fits; the rest stays behind "Params".
+    // Panels are sized to their CONTENT (height too); the first controls that fit the available height are shown inline.
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
+        val avail = maxHeight
+        val actionsH = 30.dp
+        val selH = if (selected) 28.dp else 0.dp
         val cols = columnsFor(controlCount(d))
         val reserve = (if (d.variations != null) 28 else 0) + (if (d.chains.isNotEmpty()) 28 + 26 * d.chains.size else 0)
-        val rowsFit = ((maxHeight.value - reserve) / ROW_H.value).toInt().coerceAtLeast(2)
+        val knobMax = (avail - HEADER_H - 2.dp - actionsH - selH - 6.dp).coerceAtLeast(ROW_H)
+        val rowsFit = ((knobMax.value - reserve) / ROW_H.value).toInt().coerceAtLeast(1)
         val shown = (rowsFit * cols).coerceAtLeast(cols)
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 4.dp)
-                .alpha(if (d.on) 1f else 0.5f),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+            Modifier.width(panelWidth(d))
+                .background(LiveColors.Panel, LiveShapes.Small).border(1.dp, border, LiveShapes.Small),
         ) {
-            val macros = d.macros.orEmpty()
-            if (macros.isNotEmpty() || d.pp.isNotEmpty()) {
-                FlowRow(
-                    Modifier.fillMaxWidth(), maxItemsInEachRow = cols,
-                    horizontalArrangement = Arrangement.spacedBy(0.dp), verticalArrangement = Arrangement.spacedBy(2.dp),
+            Box(Modifier.fillMaxWidth().height(2.dp).background(typeColor(d.type)))
+            Row(Modifier.fillMaxWidth().height(HEADER_H), verticalAlignment = Alignment.CenterVertically) {
+                PowerButton(d.on, toggle)
+                Box(
+                    Modifier.weight(1f).fillMaxHeight().then(handle)
+                        .clickable { ui.selPath = if (selected) null else d.path },
+                    contentAlignment = Alignment.CenterStart,
                 ) {
-                    for (m in macros.take(shown)) MacroKnob(m, d, tr, store, client)
-                    for (p in d.pp.take((shown - macros.size).coerceAtLeast(0))) ParamCell(p, d, tr, store, client)
+                    LiveText(d.name.ifEmpty { d.cls }, style = LiveType.Title, color = if (d.on) LiveColors.Text else LiveColors.TextDim)
                 }
-            } else if (d.chains.isEmpty()) {
-                LiveText(typeBadge(d.type), style = LiveType.Label)
+                Box(Modifier.size(HEADER_H).clickable(onClick = flip), contentAlignment = Alignment.Center) { Chevron(false) }
             }
-            d.variations?.let { vr ->
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    fun v(act: String, i: Int? = null) = client.op("device.var", "tr" to tr, "path" to d.path, "act" to act, "i" to i)
-                    SmallBtn("<", { if (vr.sel > 0) v("select", vr.sel - 1) })
-                    LiveText(if (vr.count == 0) "-" else "${vr.sel + 1}/${vr.count}", Modifier.widthIn(min = 24.dp), LiveType.Small, textAlign = TextAlign.Center)
-                    SmallBtn(">", { if (vr.sel < vr.count - 1) v("select", vr.sel + 1) })
-                    SmallBtn("Store", { v("store") })
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = knobMax).verticalScroll(rememberScrollState()).padding(horizontal = 4.dp)
+                    .alpha(if (d.on) 1f else 0.5f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                val macros = d.macros.orEmpty()
+                if (macros.isNotEmpty() || d.pp.isNotEmpty()) {
+                    FlowRow(
+                        Modifier.fillMaxWidth(), maxItemsInEachRow = cols,
+                        horizontalArrangement = Arrangement.spacedBy(0.dp), verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        for (m in macros.take(shown)) MacroKnob(m, d, tr, store, client)
+                        for (p in d.pp.take((shown - macros.size).coerceAtLeast(0))) ParamCell(p, d, tr, store, client)
+                    }
+                } else if (d.chains.isEmpty()) {
+                    LiveText(typeBadge(d.type), style = LiveType.Label)
+                }
+                d.variations?.let { vr ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        fun v(act: String, i: Int? = null) = client.op("device.var", "tr" to tr, "path" to d.path, "act" to act, "i" to i)
+                        SmallBtn("<", { if (vr.sel > 0) v("select", vr.sel - 1) })
+                        LiveText(if (vr.count == 0) "-" else "${vr.sel + 1}/${vr.count}", Modifier.widthIn(min = 24.dp), LiveType.Small, textAlign = TextAlign.Center)
+                        SmallBtn(">", { if (vr.sel < vr.count - 1) v("select", vr.sel + 1) })
+                        SmallBtn("Store", { v("store") })
+                    }
+                }
+                if (d.chains.isNotEmpty()) RackChains(d, tr, ui, client)
+            }
+            if (selected) {
+                // Non-gesture alternative to hold-drag: move the selected device one place left / right.
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    LiveIconButton(LiveIconKind.Prev, { onShift(-1) }, Modifier.weight(1f), enabled = index > 0, minHeight = 24.dp, minWidth = 24.dp)
+                    LiveText("Move", Modifier.weight(1f), LiveType.Label, textAlign = TextAlign.Center)
+                    LiveIconButton(LiveIconKind.Next, { onShift(1) }, Modifier.weight(1f), enabled = index < count - 1, minHeight = 24.dp, minWidth = 24.dp)
                 }
             }
-            if (d.chains.isNotEmpty()) RackChains(d, tr, ui, client)
-        }
-        }
-        Row(Modifier.fillMaxWidth().padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            SmallBtn("Params", {
-                if (isOpen) { ui.openPath = null; client.op("device.close") }
-                else { ui.openPath = d.path; client.op("device.open", "tr" to tr, "path" to d.path) }
-            }, Modifier.weight(1f), on = isOpen)
-            SmallBtn("Dup", {
-                store.updateDevices { s ->
-                    s.copy(devices = editList(s.devices, into) { l ->
-                        val i = l.indexOfFirst { it.path == d.path }
-                        if (i < 0) l else l.toMutableList().also { it.add(i + 1, l[i]) }
-                    })
-                }
-                client.op("device.duplicate", "tr" to tr, "path" to d.path)
-            })
-            SmallBtn("Del", { confirmDelete = true }, color = LiveColors.Rec)
+            Row(Modifier.fillMaxWidth().padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                SmallBtn("Params", {
+                    if (isOpen) { ui.openPath = null; client.op("device.close") }
+                    else { ui.openPath = d.path; client.op("device.open", "tr" to tr, "path" to d.path) }
+                }, Modifier.weight(1f), on = isOpen)
+                SmallBtn("Dup", {
+                    store.updateDevices { s ->
+                        s.copy(devices = editList(s.devices, into) { l ->
+                            val i = l.indexOfFirst { it.path == d.path }
+                            if (i < 0) l else l.toMutableList().also { it.add(i + 1, l[i]) }
+                        })
+                    }
+                    client.op("device.duplicate", "tr" to tr, "path" to d.path)
+                })
+                SmallBtn("Del", { confirmDelete = true }, color = LiveColors.Rec)
+            }
         }
     }
     if (confirmDelete) {
@@ -301,19 +325,22 @@ private fun ParamCell(p: Param, d: Device, tr: String, store: LiveStore, client:
     Box(Modifier.width(CELL_W), contentAlignment = Alignment.TopCenter) {
         if (p.quant && !items.isNullOrEmpty()) {
             val cur = (p.v - p.min).roundToInt().coerceIn(0, items.lastIndex)
+            var pick by remember { mutableStateOf(false) }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                // Stepped selector: each tap advances to the next item (wraps around).
-                Box(
+                // Live-style dropdown chip (value + chevron): tap opens the list of choices.
+                Row(
                     Modifier.padding(top = 4.dp).width(CELL_W - 4.dp).height(KNOB - 6.dp).clip(LiveShapes.Small)
-                        .background(LiveColors.PanelHi)
-                        .clickable { send(p.min + (cur + 1) % items.size) },
-                    contentAlignment = Alignment.Center,
-                ) { LiveText(items[cur], Modifier.padding(horizontal = 2.dp), LiveType.Small, textAlign = TextAlign.Center) }
-                Row(Modifier.padding(top = 2.dp).height(4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    if (items.size <= 6) for (k in items.indices) Box(Modifier.size(4.dp).background(if (k == cur) LiveColors.Accent else LiveColors.Line))
+                        .background(LiveColors.PanelHi).border(1.dp, LiveColors.Line, LiveShapes.Small)
+                        .clickable { pick = true }
+                        .padding(start = 4.dp, end = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    LiveText(items[cur], Modifier.weight(1f), LiveType.Small)
+                    Chevron(false, Modifier.size(8.dp))
                 }
-                LiveText(p.name, Modifier.width(CELL_W - 2.dp), LiveType.Label, textAlign = TextAlign.Center)
+                LiveText(p.name, Modifier.width(CELL_W - 2.dp).padding(top = 6.dp), LiveType.Label, textAlign = TextAlign.Center)
             }
+            if (pick) com.livecompanion.ui.components.SelectDialog(p.name, items[cur], items, { pick = false }) { idx, _ -> send(p.min + idx) }
         } else {
             LiveKnob(
                 value = p.v, valueRange = p.min..p.max.coerceAtLeast(p.min + 1e-6f), defaultValue = p.default ?: p.min,

@@ -61,12 +61,33 @@ class TimelineView {
 
     val fitted get() = ppb > 0f
 
+    /** Dynamic zoom limits (set by the screen): min = whole content fills the width, max = 1/64 note per ~24dp. */
+    var minPpb by mutableFloatStateOf(MIN_PPB)
+    var maxPpb by mutableFloatStateOf(MAX_PPB)
+
+    /** ppb at which [from]..[to] (min 4 beats) plus margin exactly fills the width. */
+    fun fitPpb(from: Double, to: Double): Float {
+        val span = max(to - from, 4.0)
+        val pad = span * 0.04
+        return (widthPx / (span + 2 * pad)).toFloat()
+    }
+
+    /** Limits for a track view whose content ends at [contentEnd] beats; [dens] = px per dp. */
+    fun setLimits(contentEnd: Double, dens: Float) {
+        if (widthPx <= 0f) return
+        val lo = fitPpb(0.0, contentEnd).coerceIn(MIN_PPB, MAX_PPB)
+        minPpb = lo
+        maxPpb = max(lo, 24f * dens / 0.0625f).coerceAtMost(MAX_PPB * 4f)
+    }
+
+    fun clampPpb(p: Float): Float = p.coerceIn(minPpb, max(minPpb, maxPpb))
+
     fun fit(from: Double, to: Double) {
         if (widthPx <= 0f) return
         val span = max(to - from, 4.0)
         val pad = span * 0.04
         start = max(0.0, from - pad)
-        ppb = (widthPx / (span + 2 * pad)).toFloat().coerceIn(MIN_PPB, MAX_PPB)
+        ppb = fitPpb(from, to).coerceIn(MIN_PPB, MAX_PPB)
     }
 
     fun beatAt(x: Float): Double = start + x / ppb
@@ -220,7 +241,7 @@ fun Timeline(
                             val span = max(abs(a.x - b.x), (a - b).getDistance() * 0.5f)
                             if (prevSpan > 0f && span > 1f) {
                                 val anchor = view.beatAt(prevCx)
-                                val np = (view.ppb * span / prevSpan).coerceIn(TimelineView.MIN_PPB, TimelineView.MAX_PPB)
+                                val np = view.clampPpb(view.ppb * span / prevSpan)
                                 view.ppb = np
                                 view.start = max(0.0, anchor - cx / np)
                             }
@@ -317,7 +338,7 @@ private fun PlayheadLayer(rt: StateFlow<RtFrame>, view: TimelineView, modifier: 
         if (!view.fitted) return@Canvas
         val x = view.xOf(f.pos)
         if (x in 0f..size.width) {
-            val c = if (f.playing) LiveColors.Play else LiveColors.Text
+            val c = LiveColors.Playhead
             drawLine(c, Offset(x, 0f), Offset(x, size.height), 1.5f)
         }
     }

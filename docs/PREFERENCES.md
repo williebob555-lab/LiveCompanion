@@ -63,6 +63,8 @@ Single user (the owner). Read this before every change. Newest entries at the bo
   - App icon/branding consistent with the owner's LiveSample (C:\Sampler App) and LivePatch (C:\LivePatch) apps.
   - Responsiveness: device added from browser took ~10 s to appear — changes must reflect within one tick.
   - Overall: "make it look good and make sense".
+- 2026-10-16 DESIGN RULES derived by Claude from QA pass 3's critique (NOT owner-stated; implements the owner's
+  "look good / Live-like / drag-first" direction — owner may override): no orange chrome anywhere (playhead = near-white, locators = small light flags; orange only as Live's own clip colours); Arrange = Live-like clip blocks (header bar, darker body, thin note lines over the clip's pitch range) with ALL controls in slim strips below the lane (<= ~15% chrome above it in 800x360); Session = compact clip tiles, not full-width bars; Clip toolbar = icons, signature/grid shown once; Devices = content-sized panels with dropdown chips; Mix must not repeat top-bar controls; every gesture needs a visible non-gesture alternative (device move buttons, clip nudge buttons); empty names are always rejected with an inline error.
 - 2026-10-15: Ableton-side setup must be EASY and QUICK. Keep SETUP.md ≤ a handful of steps; aim for a
   one-click Windows installer (script + optional helper autostart) and zero config beyond picking the
   control surface once.

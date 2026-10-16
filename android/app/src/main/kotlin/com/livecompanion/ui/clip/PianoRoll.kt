@@ -122,20 +122,26 @@ fun PianoRoll(
     }
 
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val twoRows = maxWidth < 640.dp
+        val twoRows = maxWidth < 500.dp
         val toolbarGrid: @Composable () -> Unit = {
             GridControls(sub, { sub = it }, snap, { snap = it }, "$num/$den", { sigDialog = true }, stepLabel(stepNow))
         }
         val toolbarTools: @Composable () -> Unit = {
-            ToolBtn("Draw", { mode = RollMode.Draw }, on = mode == RollMode.Draw, minWidth = 42.dp)
-            ToolBtn("Select", { mode = RollMode.Select }, on = mode == RollMode.Select, minWidth = 46.dp)
+            ToolSep()
+            ToolIcon(com.livecompanion.ui.components.LiveIconKind.Draw, "Draw notes", { mode = RollMode.Draw }, on = mode == RollMode.Draw, label = "Draw")
+            ToolIcon(com.livecompanion.ui.components.LiveIconKind.Select, "Select and move notes", { mode = RollMode.Select }, on = mode == RollMode.Select, label = "Select")
+            ToolSep()
             ToolBtn("Fold", { view.fold = !view.fold; view.topRow = 0f }, on = view.fold, enabled = used.isNotEmpty(), minWidth = 36.dp)
             if (scale != null) ToolBtn(scaleLabel(scale), { showScale = !showScale }, on = showScale, minWidth = 40.dp)
-            ToolBtn("Vel", { lane = Lane.Vel }, on = lane == Lane.Vel)
-            ToolBtn("Prob", { lane = Lane.Prob }, on = lane == Lane.Prob, minWidth = 34.dp)
-            ToolBtn("All", { ed.selectAll() })
-            ToolBtn("Dup", { ed.duplicateSelected() }, enabled = ed.sel.isNotEmpty())
-            ToolBtn("Del", { if (ed.sel.size > BULK_DELETE_CONFIRM) confirmDel = true else ed.deleteSelected() }, enabled = ed.sel.isNotEmpty())
+            ToolSep()
+            // lane switch: one joined pair
+            ToolBtn("Vel", { lane = Lane.Vel }, on = lane == Lane.Vel, minWidth = 34.dp)
+            ToolBtn("Prob", { lane = Lane.Prob }, on = lane == Lane.Prob, minWidth = 36.dp)
+            ToolSep()
+            ToolIcon(com.livecompanion.ui.components.LiveIconKind.SelAll, "Select all notes", { ed.selectAll() })
+            ToolIcon(com.livecompanion.ui.components.LiveIconKind.Dup, "Duplicate selected notes", { ed.duplicateSelected() }, enabled = ed.sel.isNotEmpty())
+            ToolIcon(com.livecompanion.ui.components.LiveIconKind.Trash, "Delete selected notes",
+                { if (ed.sel.size > BULK_DELETE_CONFIRM) confirmDel = true else ed.deleteSelected() }, enabled = ed.sel.isNotEmpty())
         }
         Column(Modifier.fillMaxSize()) {
             if (twoRows) {
@@ -145,7 +151,7 @@ fun PianoRoll(
                 ToolRow { toolbarGrid(); toolbarTools() }
             }
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                val laneH = (maxHeight * 0.2f).coerceIn(34.dp, 90.dp)
+                val laneH = (maxHeight * 0.17f).coerceIn(32.dp, 80.dp)
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().background(LiveColors.Bg).onSizeChanged {
                         v.width = it.width.toFloat(); v.height = it.height.toFloat()
@@ -157,7 +163,7 @@ fun PianoRoll(
                         Canvas(Modifier.fillMaxSize()) {
                             val h = head() ?: if (rec) clip.loopEnd else null
                             if (rec) drawRecRegion(v, 0.0, h ?: 0.0, v.topH, size.height)
-                            if (h != null) drawPlayhead(v, h, if (rec) LiveColors.Rec else LiveColors.Play, v.braceH, size.height)
+                            if (h != null) drawPlayhead(v, h, if (rec) LiveColors.Rec else LiveColors.Playhead, v.braceH, size.height)
                         }
                     }
                     LaneCanvas(clip, ed, view, axis, sub, lane, Modifier.height(laneH).fillMaxWidth())
@@ -201,6 +207,11 @@ private fun NotesCanvas(
     val minPpk = with(density) { 5.dp.toPx() }
     val maxPpk = with(density) { 40.dp.toPx() }
 
+    // zoom limits: whole clip + margin fills the width .. 1/64 note per ~24dp
+    run {
+        val noteEnd = ed.notes.maxOfOrNull { it.t + it.d } ?: 0.0
+        v.setLimits(max(max(clip.len, clip.loopEnd), max(clip.endMarker, noteEnd)).takeIf { it > 0 } ?: 4.0, 0.0625, density.density)
+    }
     // initial fit once the size is known
     v.fitReq // re-run the fit when requested
     if (v.width > 0f && v.height > 0f && !v.inited) {
@@ -211,9 +222,10 @@ private fun NotesCanvas(
         val ps = ed.notes.map { it.p }
         val lo = ps.minOrNull() ?: 55
         val hp = ps.maxOrNull() ?: 72
-        val rows = (hp - lo + 5).coerceAtLeast(12)
+        // default vertical zoom: 12..16 pitch rows visible (fits the notes' range when it is smaller)
+        val rows = (hp - lo + 3).coerceIn(12, 16)
         val gh = v.height - v.topH
-        view.ppk = (gh / rows).coerceIn(with(density) { 9.dp.toPx() }, with(density) { 22.dp.toPx() })
+        view.ppk = (gh / rows).coerceIn(with(density) { 8.dp.toPx() }, with(density) { 26.dp.toPx() })
         val vis = gh / view.ppk
         view.topRow = (127 - ((lo + hp) / 2f) - vis / 2f).coerceIn(0f, 127f)
         if (view.fold) view.topRow = 0f
@@ -442,6 +454,18 @@ private fun DrawScope.drawRoll(
         val dd = view.dd
         val muted = Color(0xFF777777)
         val ppu = v.ppu
+        // Notes that a move would land exactly on (same pitch + start as another note): outlined red during the drag.
+        // On drop the note replaces the one underneath (Live's rule, applied in NoteEditor.modify).
+        val clash: Set<Int> = if ((dt != 0.0 || dr != 0) && sel.isNotEmpty()) {
+            val dragged = ed.notes.filter { it.id in sel }
+            val hit = HashSet<Int>()
+            for (o in ed.notes) {
+                if (o.id in sel) continue
+                val ro = view.rowOf(o.p)
+                for (m in dragged) if (view.rowOf(m.p) + dr == ro && abs(m.t + dt - o.t) < 1e-6) { hit.add(o.id); hit.add(m.id) }
+            }
+            hit
+        } else emptySet()
         val xMin = v.unitOf(kbW) - 64.0
         val xMax = v.unitOf(w)
         for (n in ed.notes) {
@@ -460,7 +484,10 @@ private fun DrawScope.drawRoll(
             val a = 0.40f + 0.60f * (n.v / 127f)
             val sz = Size(max(nw - 1f, 2f), max(ppk - 1f, 1f))
             drawRect(base.copy(alpha = a), Offset(x, y + 0.5f), sz)
-            if (isSel) drawRect(Color.White, Offset(x, y + 0.5f), sz, style = Stroke(1.5f))
+            if (n.id in clash) {
+                drawRect(LiveColors.Rec.copy(alpha = 0.45f), Offset(x, y + 0.5f), sz)
+                drawRect(LiveColors.Rec, Offset(x - 1f, y - 0.5f), Size(sz.width + 2f, sz.height + 2f), style = Stroke(2.5f))
+            } else if (isSel) drawRect(Color.White, Offset(x, y + 0.5f), sz, style = Stroke(1.5f))
         }
         view.ghost?.let { g ->
             val row = view.rowOf(g.p)
@@ -473,7 +500,7 @@ private fun DrawScope.drawRoll(
     }
 
     // top chrome (brace, ruler, flags, corner)
-    drawClipTop(v, clip, axis, step, tm, labelSp, "$num/$den", gridLabel)
+    drawClipTop(v, clip, axis, step, tm, labelSp, "", "")
 
     // key column
     clipRect(0f, topH, kbW, h) {
@@ -525,10 +552,13 @@ private fun LaneCanvas(clip: ClipState, ed: NoteEditor, view: RollView, axis: Ax
                     if (b == null || dx < bestDx - 3f) {
                         best = n; bestDx = dx
                     } else if (abs(dx - bestDx) <= 3f) {
+                        // coincident stems (same start): prefer a SELECTED note, then the one nearest the touch height
                         val f = fracAt(down.position.y)
                         val vn = if (lane0 == Lane.Vel) n.v / 127f else n.prob
                         val vb = if (lane0 == Lane.Vel) b.v / 127f else b.prob
-                        if (abs(vn - f) < abs(vb - f)) best = n
+                        val ns = n.id in ed.sel
+                        val bs = b.id in ed.sel
+                        if (if (ns != bs) ns else abs(vn - f) < abs(vb - f)) best = n
                         bestDx = min(dx, bestDx)
                     }
                 }
@@ -562,7 +592,8 @@ private fun LaneCanvas(clip: ClipState, ed: NoteEditor, view: RollView, axis: Ax
         val h = size.height
         drawRect(LiveColors.Panel, Offset(0f, 0f), Size(v.leftW, h))
         drawText(tm, if (lane == Lane.Vel) "VELOCITY" else "PROBABILITY", Offset(3f, 3f), TextStyle(fontSize = labelSp, color = LiveColors.TextDim))
-        drawText(tm, if (lane == Lane.Vel) "127" else "100%", Offset(3f, h - labelSp.value * 1.6f), TextStyle(fontSize = labelSp, color = LiveColors.TextDim))
+        val maxLbl = tm.measure(if (lane == Lane.Vel) "127" else "100%", TextStyle(fontSize = labelSp, color = LiveColors.TextDim))
+        drawText(maxLbl, topLeft = Offset(3f, h - maxLbl.size.height - 2f))
         drawLine(LiveColors.Line, Offset(v.leftW, 0f), Offset(v.leftW, h), 1f)
         clipRect(v.leftW, 0f, w, h) {
             drawTimeGrid(v, axis, gridStepFor(sub, v.ppu, axis.beatLen, axis.barLen), 0f, h)

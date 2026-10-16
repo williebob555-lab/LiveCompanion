@@ -106,16 +106,12 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
     val recording = slotsState.slots.any { it.status == SlotStatus.RECORDING && it.hasClip }
     val takeCount = slotsState.slots.count { it.hasClip && it.clip?.name?.startsWith("Take ") == true }
 
-    Column(modifier.fillMaxSize().background(LiveColors.Bg)) {
-        Row(
-            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(1.dp),
-            horizontalArrangement = Arrangement.spacedBy(1.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    val controls: @Composable (Boolean) -> Unit = { vertical ->
+        val take: @Composable (Modifier) -> Unit = { m ->
             LiveButton(
                 onClick = { client.op("take.next", "tr" to tr) },
-                modifier = Modifier.weight(1.4f),
-                minHeight = 32.dp,
+                modifier = m,
+                minHeight = if (vertical) 40.dp else 32.dp,
                 onColor = LiveColors.Rec,
                 offColor = LiveColors.Rec.copy(alpha = 0.85f),
                 enabled = tr.isNotEmpty() && focus.armable, // group / return / master tracks cannot record
@@ -128,18 +124,37 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                     if (takeCount > 0) LiveText("$takeCount", style = LiveType.Label, color = Color.White.copy(alpha = 0.8f))
                 }
             }
-            LiveTextButton("Stop", { client.op("track.stop", "tr" to tr) }, Modifier.weight(0.8f), minHeight = 32.dp, enabled = tr.isNotEmpty())
-            LiveTextButton("Scenes", { showScenes = !showScenes }, Modifier.weight(0.9f), on = showScenes, minHeight = 32.dp)
         }
+        if (vertical) {
+            Column(Modifier.fillMaxWidth().padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                take(Modifier.fillMaxWidth())
+                LiveTextButton("Stop", { client.op("track.stop", "tr" to tr) }, Modifier.fillMaxWidth(), enabled = tr.isNotEmpty())
+                LiveTextButton("Scenes", { showScenes = !showScenes }, Modifier.fillMaxWidth(), on = showScenes)
+                LiveTextButton("+ Scene", { client.op("scene.create", "i" to slotsState.slots.size) }, Modifier.fillMaxWidth())
+                LiveText("Hold a clip and drag to move it", style = LiveType.Label, color = LiveColors.TextDim, maxLines = 3)
+            }
+        } else {
+            Row(
+                Modifier.fillMaxWidth().background(LiveColors.Panel).padding(1.dp),
+                horizontalArrangement = Arrangement.spacedBy(1.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                take(Modifier.weight(1.4f))
+                LiveTextButton("Stop", { client.op("track.stop", "tr" to tr) }, Modifier.weight(0.8f), minHeight = 32.dp, enabled = tr.isNotEmpty())
+                LiveTextButton("Scenes", { showScenes = !showScenes }, Modifier.weight(0.9f), on = showScenes, minHeight = 32.dp)
+            }
+        }
+    }
 
+    val slotList: @Composable (Modifier, Boolean) -> Unit = { m, showAddScene ->
         val slots = slotsState.slots
         if (slots.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(m, contentAlignment = Alignment.Center) {
                 LiveText(if (tr.isEmpty()) "No track selected" else "No slots", style = LiveType.Body, color = LiveColors.TextDim)
             }
         } else {
             LazyColumn(
-                Modifier.fillMaxWidth().weight(1f),
+                m,
                 state = rememberLazyListState(),
                 verticalArrangement = Arrangement.spacedBy(1.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(1.dp),
@@ -176,15 +191,34 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                         },
                     )
                 }
-                item(key = "add-scene") {
+                if (showAddScene) item(key = "add-scene") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
-                        LiveTextButton("+ Scene", { client.op("scene.create", "i" to slots.size) }, Modifier.weight(1f))
+                        LiveTextButton("+ Scene", { client.op("scene.create", "i" to slots.size) }, Modifier.weight(1f), minHeight = 28.dp)
                         LiveText(
                             "Hold a clip and drag to move it",
                             Modifier.weight(1.6f).padding(horizontal = 6.dp), LiveType.Label, LiveColors.TextDim, maxLines = 2,
                         )
                     }
                 }
+            }
+        }
+    }
+
+    // Live-like: compact clip tiles in ONE column (never full-width bars). Wide landscape puts the take / stop /
+    // scene controls in a side column next to the tiles; narrow / portrait keeps them in a row above.
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxSize().background(LiveColors.Bg)) {
+        val mw = maxWidth
+        val wide = mw >= 560.dp && mw > maxHeight
+        if (wide) {
+            Row(Modifier.fillMaxSize()) {
+                slotList(Modifier.width(minOf(mw - 150.dp, 380.dp)).fillMaxHeight(), false)
+                Box(Modifier.width(1.dp).fillMaxHeight().background(LiveColors.Line))
+                Column(Modifier.width(150.dp).fillMaxHeight()) { controls(true) }
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                controls(false)
+                slotList(Modifier.fillMaxWidth().weight(1f), true)
             }
         }
     }
@@ -305,8 +339,10 @@ private fun SlotRow(
     }
     val fg = if (!slot.hasClip) LiveColors.TextDim else onColor(cellBg)
     val density = androidx.compose.ui.platform.LocalDensity.current
+    val fs = density.fontScale.coerceAtLeast(1f)
+    val rowH = 30.dp
     Row(
-        Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = 32.dp)
+        Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = rowH)
             .onSizeChanged { onMeasured(it.height + with(density) { 1.dp.toPx() }) }
             .graphicsLayer { translationY = dragOffset; alpha = if (dragOffset != 0f) 0.85f else 1f }
             .then(if (isDropTarget) Modifier.border(2.dp, if (dropReplaces) LiveColors.Rec else LiveColors.Accent, LiveShapes.Small) else Modifier)
@@ -314,19 +350,39 @@ private fun SlotRow(
         horizontalArrangement = Arrangement.spacedBy(1.dp),
     ) {
         if (showScene) {
-            val sceneW = 58.dp * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)
-            LiveButton(onSceneFire, Modifier.width(sceneW).fillMaxHeight(), minHeight = 32.dp, minWidth = sceneW, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp)) { c ->
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    LiveIcon(LiveIconKind.Play, c, size = 9.dp)
-                    LiveText(sceneLabel, style = LiveType.Small, color = c)
+            // narrow scene column: number / short name with a tiny play triangle
+            val sceneW = 38.dp * fs
+            LiveButton(onSceneFire, Modifier.width(sceneW).fillMaxHeight(), minHeight = rowH, minWidth = sceneW, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp)) { c ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                    LiveIcon(LiveIconKind.Play, c, size = 8.dp)
+                    LiveText(sceneLabel, style = LiveType.Label.copy(color = c), color = c)
                 }
+            }
+        }
+        // launch square (Live: the play triangle at the left of the tile)
+        val launchBg = when {
+            !slot.hasClip -> LiveColors.Panel
+            status == SlotStatus.PLAYING -> LiveColors.Play
+            status == SlotStatus.RECORDING -> LiveColors.Rec
+            else -> base
+        }
+        Box(
+            Modifier.width(30.dp * fs.coerceAtMost(1.15f)).fillMaxHeight().clip(LiveShapes.Small).background(launchBg).clickable(onClick = onFire),
+            contentAlignment = Alignment.Center,
+        ) {
+            when (status) {
+                SlotStatus.PLAYING -> LiveIcon(LiveIconKind.Play, Color.Black, size = 12.dp)
+                SlotStatus.TRIGGERED -> LiveIcon(LiveIconKind.Play, Color.Black, size = 12.dp, modifier = Modifier.border(1.dp, LiveColors.Accent))
+                SlotStatus.RECORDING -> LiveIcon(LiveIconKind.Rec, Color.White, size = 13.dp)
+                SlotStatus.STOPPED -> LiveIcon(LiveIconKind.Play, onColor(base), size = 12.dp)
+                else -> if (armed) LiveIcon(LiveIconKind.Rec, LiveColors.Rec.copy(alpha = 0.6f), size = 11.dp)
             }
         }
         Box(
             Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .heightIn(min = 32.dp)
+                .heightIn(min = rowH)
                 .clip(LiveShapes.Small)
                 .background(cellBg)
                 .then(if (status == SlotStatus.TRIGGERED) Modifier.border(2.dp, LiveColors.Accent, LiveShapes.Small) else Modifier)
@@ -352,21 +408,10 @@ private fun SlotRow(
                         }
                     } else Modifier
                 )
-                .padding(horizontal = 4.dp),
+                .padding(horizontal = 6.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
-                    when (status) {
-                        SlotStatus.PLAYING -> Box(Modifier.size(18.dp).background(LiveColors.Play, LiveShapes.Small), contentAlignment = Alignment.Center) {
-                            LiveIcon(LiveIconKind.Play, Color.Black, size = 11.dp)
-                        }
-                        SlotStatus.TRIGGERED -> LiveIcon(LiveIconKind.Play, LiveColors.Accent, size = 12.dp)
-                        SlotStatus.RECORDING -> LiveIcon(LiveIconKind.Rec, LiveColors.Rec, size = 14.dp)
-                        SlotStatus.STOPPED -> LiveIcon(LiveIconKind.Play, fg, size = 11.dp)
-                        else -> if (armed) LiveIcon(LiveIconKind.Rec, LiveColors.Rec.copy(alpha = 0.6f), size = 11.dp)
-                    }
-                }
                 LiveText(
                     clip?.name?.ifEmpty { if (clip.audio) "Audio" else "MIDI" } ?: "",
                     Modifier.weight(1f, fill = false),
@@ -383,9 +428,9 @@ private fun SlotRow(
         }
         LiveIconButton(
             LiveIconKind.Stop, onStop, Modifier.fillMaxHeight(),
-            enabled = active, minHeight = 32.dp,
+            enabled = active, minHeight = rowH, minWidth = 26.dp,
         )
-        LiveTextButton("\u22EF", onMenu, Modifier.fillMaxHeight(), minHeight = 32.dp)
+        LiveTextButton("⋯", onMenu, Modifier.fillMaxHeight(), minHeight = rowH, minWidth = 26.dp)
     }
 }
 
@@ -413,16 +458,8 @@ private fun SlotMenuDialog(slot: SlotInfo, onDismiss: () -> Unit, onPick: (SlotA
 }
 
 @Composable
-private fun RenameDialog(initial: String, onDismiss: () -> Unit, onOk: (String) -> Unit) {
-    var text by remember { mutableStateOf(initial) }
-    LiveDialog("Rename clip", onDismiss) {
-        LiveTextField(text, { text = it }, onDone = { onOk(text) })
-        LiveDialogButtons {
-            LiveTextButton("Cancel", onDismiss, minWidth = 72.dp)
-            LiveTextButton("OK", { onOk(text) }, on = true, minWidth = 72.dp)
-        }
-    }
-}
+private fun RenameDialog(initial: String, onDismiss: () -> Unit, onOk: (String) -> Unit) =
+    com.livecompanion.ui.components.NameDialog("Rename clip", initial, onDismiss, onOk)
 
 /** Pick a destination track and slot number for copy/move. */
 @Composable

@@ -45,7 +45,13 @@ class Prefs(context: Context) {
         get() = if (sp.getBoolean(K_ORIENT_SET, false)) sp.getString(K_ORIENTATION, "land") ?: "land" else "land"
         set(v) { sp.edit().putString(K_ORIENTATION, v).putBoolean(K_ORIENT_SET, true).apply() }
 
+    /** The first-run Arrange tip is shown once ever (set as soon as it is displayed). */
+    var arrangeTipSeen: Boolean
+        get() = sp.getBoolean(K_ARR_TIP, false)
+        set(v) { sp.edit().putBoolean(K_ARR_TIP, v).apply() }
+
     private companion object {
+        const val K_ARR_TIP = "arrange_tip_seen"
         const val K_PANE_HIDDEN = "session_pane_hidden"
         const val K_ORIENTATION = "orientation"
         const val K_ORIENT_SET = "orientation_chosen_v2"

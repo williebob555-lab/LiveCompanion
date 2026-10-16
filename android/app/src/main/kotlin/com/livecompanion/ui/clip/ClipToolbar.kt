@@ -19,6 +19,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.livecompanion.ui.components.LiveDialog
@@ -60,9 +62,9 @@ fun GridControls(
     adaptiveLabel: String, showSub: Boolean = true,
 ) {
     var pick by remember { mutableStateOf(false) }
+    // One place for signature + grid (the ruler corner no longer repeats them).
     ToolBtn(sigLabel, onSig, minWidth = 38.dp)
     if (showSub) {
-        ToolCaption("GRID")
         ToolBtn(sub.label(null).let { if (sub.adaptive) "Auto $adaptiveLabel" else it } + " v", { pick = true }, minWidth = 64.dp)
     }
     ToolBtn("Snap", { onSnap(!snap) }, on = snap, minWidth = 36.dp)
@@ -112,15 +114,39 @@ fun SigDialog(num: Int, den: Int, onDismiss: () -> Unit, onOk: (Int, Int) -> Uni
     }
 }
 
-/** Always-visible zoom buttons floating at the bottom-right of an editor. [vertical] adds V-/V+ (piano roll). */
+/** Compact icon toggle (24dp-high tool button with a vector icon); [label] is shown beside the icon when given. */
+@Composable
+fun ToolIcon(
+    icon: com.livecompanion.ui.components.LiveIconKind, description: String, onClick: () -> Unit, modifier: Modifier = Modifier,
+    on: Boolean = false, enabled: Boolean = true, label: String? = null, onColor: Color = LiveColors.Accent,
+) {
+    com.livecompanion.ui.components.LiveButton(
+        onClick, modifier.semantics { contentDescription = description }, on, onColor, enabled,
+        minHeight = ToolH, minWidth = 30.dp, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 5.dp),
+    ) { c ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            com.livecompanion.ui.components.LiveIcon(icon, c, size = 14.dp)
+            if (label != null) LiveText(label, style = LiveType.Small, color = c)
+        }
+    }
+}
+
+/** Thin vertical divider between toolbar groups. */
+@Composable
+fun ToolSep() = Box(Modifier.padding(horizontal = 2.dp).width(1.dp).height(16.dp).background(LiveColors.Line))
+
+/** Always-visible zoom buttons floating (translucent) at the bottom-right of an editor. [onV] adds V-/V+ (piano roll). */
 @Composable
 fun ZoomPad(modifier: Modifier, onH: (Float) -> Unit, onV: ((Float) -> Unit)?, onFit: () -> Unit) {
     Row(
-        modifier.padding(6.dp).background(LiveColors.Bg.copy(alpha = 0.85f)),
-        horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically,
+        modifier.padding(4.dp).background(LiveColors.Bg.copy(alpha = 0.6f)),
+        horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically,
     ) {
-        ToolBtn("H-", { onH(0.7f) }); ToolBtn("H+", { onH(1.43f) })
-        if (onV != null) { ToolBtn("V-", { onV(0.8f) }); ToolBtn("V+", { onV(1.25f) }) }
-        ToolBtn("Fit", onFit)
+        ZoomBtn("H-") { onH(0.7f) }; ZoomBtn("H+") { onH(1.43f) }
+        if (onV != null) { ZoomBtn("V-") { onV(0.8f) }; ZoomBtn("V+") { onV(1.25f) } }
+        ZoomBtn("Fit", onFit)
     }
 }
+
+@Composable
+private fun ZoomBtn(label: String, onClick: () -> Unit) = LiveTextButton(label, onClick, minHeight = 24.dp, minWidth = 26.dp)

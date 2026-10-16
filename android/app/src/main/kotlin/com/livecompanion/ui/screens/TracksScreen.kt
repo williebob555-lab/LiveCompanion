@@ -35,6 +35,7 @@ import com.livecompanion.state.LiveStore
 import com.livecompanion.state.TrackInfo
 import com.livecompanion.ui.components.ConfirmDialog
 import com.livecompanion.ui.components.DenseTextField
+import com.livecompanion.ui.components.nameError
 import com.livecompanion.ui.components.LivePalette
 import com.livecompanion.ui.components.LiveText
 import com.livecompanion.ui.components.LiveTextButton
@@ -173,6 +174,8 @@ private fun TrackRow(
 ) {
     val master = t.kind == "master"
     val ret = t.kind == "return"
+    var text by remember(t.ref, renaming) { mutableStateOf(t.name) }
+    var showErr by remember(t.ref, renaming) { mutableStateOf(false) }
     Column(
         Modifier.fillMaxWidth().clip(LiveShapes.Small)
             .background(if (focused) LiveColors.PanelHi else LiveColors.Panel)
@@ -186,9 +189,9 @@ private fun TrackRow(
             Box(Modifier.width(if (t.group != null) 14.dp else 0.dp))
             Box(Modifier.width(6.dp).fillMaxHeight().heightIn(min = 36.dp).background(liveColor(t.color)))
             if (renaming) {
-                var text by remember(t.ref) { mutableStateOf(t.name) }
-                DenseTextField(text, { text = it }, Modifier.weight(1f).padding(vertical = 2.dp), onDone = { onRename(text) })
-                LiveTextButton("OK", { onRename(text) }, on = true, minWidth = 40.dp)
+                val tryOk = { if (nameError(text) == null) onRename(text) else showErr = true }
+                DenseTextField(text, { text = it; showErr = true }, Modifier.weight(1f).padding(vertical = 2.dp), onDone = tryOk)
+                LiveTextButton("OK", tryOk, on = nameError(text) == null, minWidth = 40.dp)
                 LiveTextButton("X", onCancelRename, minWidth = 32.dp)
             } else {
                 Box(
@@ -213,6 +216,9 @@ private fun TrackRow(
                 LiveTextButton(if (open) "Edit ▴" else "Edit ▾", onToggleOpen, on = open, minWidth = 56.dp)
             }
             Box(Modifier.width(2.dp))
+        }
+        if (renaming && showErr) nameError(text)?.let {
+            LiveText(it, Modifier.padding(horizontal = 8.dp, vertical = 2.dp), LiveType.Small, LiveColors.Rec)
         }
         if (open && !renaming) {
             Column(Modifier.fillMaxWidth().padding(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
