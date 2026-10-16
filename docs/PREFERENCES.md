@@ -34,6 +34,9 @@ Single user (the owner). Read this before every change. Newest entries at the bo
 - 2026-10-15: Default orientation is LANDSCAPE (more natural clip editor). App locks to sensorLandscape by
   default; Settings offers Landscape / Portrait / Auto. Phone-landscape (~360dp tall) is the PRIMARY layout to
   optimize — keep vertical chrome minimal there so editors get height. Portrait must still work.
+- 2026-10-15: Ableton-side setup must be EASY and QUICK. Keep SETUP.md ≤ a handful of steps; aim for a
+  one-click Windows installer (script + optional helper autostart) and zero config beyond picking the
+  control surface once.
 
 ## Performance-sensitive areas
 - Remote script runs on Live's main thread. All socket I/O is non-blocking and done in the ~100 ms

@@ -3,6 +3,13 @@
 Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (why)
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
+## RESUME HERE (paused 2026-10-15 at owner's usage limit)
+- Released v0.1.0-test1 (prerelease, tag on 8ca7296) with APK + remote-script zip + helper zip. SETUP.md written.
+- Fix agent for QA R3/R4 was told to wrap up; check its uncommitted changes (git status), build, then commit.
+- Next: (1) easy setup: one-click Windows installer (tools/setup_windows.ps1: install script + helper
+  autostart shortcut), helper bundled; (2) real-Live probe once owner selects control surface
+  (~/LiveCompanion_probe.json → docs/LOM_NOTES.md); (3) QA pass 2; (4) owner QA feedback.
+
 ## In progress
 - [x] QA pass 1 (R1–R4) done; R1/R2 fixed in 493f60d.
 - [~] Fix agent: QA R3/R4 + collapsible session pane + tempo ellipsis.
@@ -57,12 +64,13 @@ Rule: update this file when starting/finishing anything. If interrupted, resume 
 - Take ratings sync to Live clip names? (decide after owner QA)
 
 ## QA follow-ups
-- [ ] (orch) Two-pane on phone landscape: allow collapsing the left Session pane (fixed toggle on the rail, no slide) so editors get full width.
-- [ ] (orch) Tempo readout ellipsized at 568x320 f1.3.
+- [x] (orch) (fixed, pending commit) Two-pane: allow collapsing the left Session pane (fixed toggle on the rail, no slide) so editors get full width.
+- [x] (orch) (fixed, pending commit) Tempo/pos readout ellipsized at 568x320 f1.3.
+- [x] R3 Q3-1..6 + R4 Q4-1..4 fixed (pending commit): connect stays on Connect until hello (error/Cancel there, recents only after hello), host:port validation, dim+block UI while disconnected with in-bar status strip (no layout push), Back -> Session first, numeric validation (client + core/ops.py marker checks), IME-scrollable Connect, tablet lanes/devices/rail, >50 note delete confirm, client robust to minimal/hostile servers (tools/fake_min_server.py, RobustnessTest), collapsible Session pane (Prefs.sessionPaneHidden).
 - [x] R1 Q1-1..Q1-10 fixed (not committed): landscape/wide shell = left tab rail + one compact top bar (CompactTopBar.kt), props side column/toggle in Clip, symmetric safe insets, vel/prob lane >=40dp, note dedupe on move/draw, clip.set gain_db (server+PROTOCOL), take.next names "Take N" + TAKE state/count/elapsed bars, Takes tab explains workflows + "To arr", Mix horizontal faders + aligned returns/master + Delete separated, device Delete moved + confirm.
 - [x] R2 Q2-1 (null clip/params sections + fixtures + ContractTest), Q2-2 TAKE disabled when not armable, Q2-3 scene column scales with font, Q2-4 waveform snap + gesture exclusion, Q2-5 auto-reconnect (Cancel on banner) + Back confirm, Q2-6 mock exclusive arm.
-- [ ] S1 auto-focus a track on connect (qa/REVIEW_LOG R0)
-- [ ] S2 pan readout overlaps center line
+- [x] S1 auto-focus a track on connect (qa/REVIEW_LOG R0)
+- [x] S2 pan readout overlaps center line
 
 ## Done log
 - 2026-10-15 Docs system created; process questions answered (public repo, local+CI builds, mock+emulator+real Live QA, milestone reports).
