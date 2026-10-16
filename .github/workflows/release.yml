@@ -104,6 +104,12 @@ jobs:
           zip -rq "$GITHUB_WORKSPACE/dist/LiveCompanion-helper.zip" helper \
             -x 'helper/.cache/*' '*__pycache__*' '*.pyc'
 
+          # One-click Windows setup: unzip anywhere, double-click "Install LiveCompanion.cmd".
+          mkdir -p /tmp/setup
+          cp -r remote_script/LiveCompanion helper tools/setup_windows.ps1 "tools/Install LiveCompanion.cmd" /tmp/setup/
+          (cd /tmp/setup && zip -rq "$GITHUB_WORKSPACE/dist/LiveCompanion-Windows-setup.zip" . \
+            -x '*__pycache__*' '*.pyc' 'helper/.cache/*')
+
           ls -la dist
 
       - uses: actions/upload-artifact@v4

@@ -1,15 +1,20 @@
 # LiveCompanion setup (about 2 minutes)
 
-1. **Phone:** install `LiveCompanion-<version>.apk` from the GitHub release (allow "install unknown apps" once).
-2. **PC (Windows):** download `LiveCompanion-remote-script.zip` from the same release and unzip the
-   `LiveCompanion` folder into `<your User Library>\Remote Scripts\` (Live: Settings → Library shows the
-   User Library location; default `Documents\Ableton\User Library`). Restart Live afterwards.
-   (From a clone of the repo: `tools\install_remote_script.ps1` finds the User Library automatically.)
-   **Fedora/Wine:** same folder inside the Wine prefix, or run `tools/install_remote_script.sh`.
-3. **Live:** Settings → Link, Tempo & MIDI → Control Surface → pick **LiveCompanion** (Input/Output: None).
-   One time only — Live remembers it.
-4. **Phone:** open the app on the same Wi-Fi; your PC appears under "Found on this network". Tap it.
-5. Optional, for waveforms and launching Live from the phone: run `python helper/helper.py` on the PC
-   (from the `LiveCompanion-helper.zip`).
+## Windows (one click)
+1. From the latest GitHub release download **LiveCompanion-Windows-setup.zip**, unzip it anywhere,
+   double-click **Install LiveCompanion.cmd**. It:
+   - installs the Live script into the User Library Live is configured to use (found automatically),
+   - installs the waveform helper and starts it at login (needs Python 3.11+; skipped otherwise),
+   - asks once for admin to open the firewall for LiveCompanion on **private** networks.
+2. Restart Live → Settings → Link, Tempo & MIDI → Control Surface → **LiveCompanion** (Input/Output: None). Once only.
+3. Phone: install the APK from the same release, open it on the same Wi-Fi, tap your PC under "Found on this network".
+   Later updates install from inside the app (More → Check for updates).
 
-Trouble: allow Live through the firewall (TCP 9010, UDP 9011; helper TCP 9012), or type the PC's IP manually.
+## Fedora / Wine
+Run `tools/install_remote_script.sh` (uses `$WINEPREFIX`, default `~/.wine`), then step 2 above; optional helper:
+`python3 helper/helper.py`.
+
+## Trouble
+- Phone can't connect: make sure nothing else uses port 9010 (e.g. a running mock), and that Live is allowed on
+  private networks (TCP 9010, UDP 9011; helper TCP 9012). Or type the PC's IP under Manual.
+- Upgrading from a v0.1.0-test1…test4 build: uninstall it once (those were signed with throwaway keys).
