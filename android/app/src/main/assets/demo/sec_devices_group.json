@@ -1,0 +1,91 @@
+{
+ "d": {
+  "devices": [
+   {
+    "chains": [],
+    "cls": "GlueCompressor",
+    "macros": null,
+    "name": "Glue Compressor",
+    "on": true,
+    "path": "0",
+    "pp": [
+     {
+      "def": 0.5,
+      "i": 1,
+      "items": null,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Param 1",
+      "quant": false,
+      "str": "0.50",
+      "v": 0.5
+     },
+     {
+      "def": 0.55,
+      "i": 2,
+      "items": null,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Param 2",
+      "quant": false,
+      "str": "0.55",
+      "v": 0.55
+     },
+     {
+      "def": 0.6,
+      "i": 3,
+      "items": null,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Param 3",
+      "quant": false,
+      "str": "0.60",
+      "v": 0.6
+     },
+     {
+      "def": 0.65,
+      "i": 4,
+      "items": null,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Param 4",
+      "quant": false,
+      "str": "0.65",
+      "v": 0.65
+     },
+     {
+      "def": 1.0,
+      "i": 5,
+      "items": [
+       "Low",
+       "Mid",
+       "High"
+      ],
+      "max": 2.0,
+      "min": 0.0,
+      "name": "Mode",
+      "quant": true,
+      "str": "Mid",
+      "v": 1.0
+     },
+     {
+      "def": 0.5,
+      "i": 6,
+      "items": null,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Param 6",
+      "quant": false,
+      "str": "0.50",
+      "v": 0.5
+     }
+    ],
+    "type": "audio_fx",
+    "var": null
+   }
+  ],
+  "tr": "t5"
+ },
+ "s": "devices",
+ "t": "sec"
+}

@@ -6,6 +6,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.intOrNull
@@ -18,7 +20,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
-/** Waveform summary from the helper, channels merged (min of mins, max of maxes). Values -1..1. */
+/** Waveform summary (remote script `clip.peaks`, or the helper), channels merged (min of mins, max of maxes). Values -1..1. */
 class Peaks(val sr: Int, val ch: Int, val frames: Long, val n: Int, val min: FloatArray, val max: FloatArray) {
     val seconds: Double get() = if (sr > 0) frames.toDouble() / sr else 0.0
 }
@@ -63,7 +65,10 @@ fun peaksUrl(host: String, path: String, n: Int, port: Int = 9012): HttpUrl? = t
     null
 }
 
-/** Fetches and memoizes peaks. Never throws: failures come back as [PeaksResult.Err]. */
+/**
+ * Fetches and memoizes peaks. Never throws: failures come back as [PeaksResult.Err].
+ * Order: `clip.peaks` over the Live WebSocket (needs no helper) -> helper HTTP (exotic formats such as mp3/flac).
+ */
 class PeaksClient(
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(3, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build(),
@@ -73,13 +78,37 @@ class PeaksClient(
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Peaks>?) = size > 24
     }
 
+    /** The connected client used for `clip.peaks`; set by the screens that show waveforms. */
+    @Volatile var live: LiveClient? = null
+
     @Synchronized fun cached(path: String, n: Int): Peaks? = cache["$path|$n"]
 
     @Synchronized fun put(path: String, n: Int, p: Peaks) { cache["$path|$n"] = p }
 
-    suspend fun get(host: String, path: String, n: Int): PeaksResult {
+    /** [loc] = the clip locator (slot/arr/take) for the in-Live path; without it only the helper is tried. */
+    suspend fun get(host: String, path: String, n: Int, loc: JsonObject? = null): PeaksResult {
         cached(path, n)?.let { return PeaksResult.Ok(it) }
-        if (host.isBlank() || path.isBlank()) return PeaksResult.Err("No file")
+        if (path.isBlank()) return PeaksResult.Err("No file")
+        var viaLive: String? = null
+        val lc = live
+        if (lc != null && loc != null) {
+            try {
+                val d = lc.request("clip.peaks", buildJsonObject { put("loc", loc); put("n", n) }, timeoutMs = 60000)
+                val p = parsePeaks(d.toString())
+                synchronized(this) { cache["$path|$n"] = p }
+                return PeaksResult.Ok(p)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                viaLive = e.message ?: "failed"
+            }
+        }
+        if (host.isBlank()) return PeaksResult.Err(viaLive ?: "No host")
+        val r = fetchHelper(host, path, n)
+        return if (r is PeaksResult.Err && viaLive != null) PeaksResult.Err(viaLive) else r
+    }
+
+    private suspend fun fetchHelper(host: String, path: String, n: Int): PeaksResult {
         return withContext(Dispatchers.IO) {
             try {
                 val url = peaksUrl(host, path, n, port) ?: return@withContext PeaksResult.Err("Bad host")

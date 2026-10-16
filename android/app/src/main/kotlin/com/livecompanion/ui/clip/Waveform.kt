@@ -194,7 +194,7 @@ fun AudioEditor(
                     if (rec) return@LaunchedEffect
                     if (clip.filePath.isBlank()) { err = "No file"; return@LaunchedEffect }
                     while (true) {
-                        when (val r = peaksClient.get(host, clip.filePath, n)) {
+                        when (val r = peaksClient.get(host, clip.filePath, n, clip.loc)) {
                             is PeaksResult.Ok -> { peaks = r.peaks; err = null; break }
                             is PeaksResult.Err -> { err = r.msg; delay(4000) }
                         }
@@ -284,7 +284,7 @@ fun AudioEditor(
                 }
                 if (peaks == null && !rec) {
                     Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                        val msg = if (clip.filePath.isBlank()) "No audio file yet" else if (err != null) "Helper not running" else "Loading waveform..."
+                        val msg = if (clip.filePath.isBlank()) "No audio file yet" else if (err != null) "Waveform unavailable" + (if (err!!.contains("format", true)) " (format)" else "") else "Loading waveform..."
                         Box(Modifier.background(LiveColors.PanelHi).padding(horizontal = 10.dp, vertical = 6.dp)) {
                             LiveText(msg, style = LiveType.Small, color = LiveColors.TextDim)
                         }

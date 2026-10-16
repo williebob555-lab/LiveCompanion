@@ -8,7 +8,8 @@ from . import sections as S
 from .beacon import Beacon
 from .listeners import Listeners
 from .ops import Ops
-from .util import OpError, BadArgs, resolve_track, resolve_clip, resolve_device, loc_key, g
+from .peaks import PeaksWorker
+from .util import Deferred, OpError, BadArgs, resolve_track, resolve_clip, resolve_device, loc_key, g
 from .ws import WSServer
 
 PROTO = 1
@@ -47,7 +48,7 @@ class Client(object):
 class Core(object):
     def __init__(self, song, application, host="win", live_version="12.4.1", port=9010, bind_host="0.0.0.0",
                  beacon=True, beacon_port=9011, beacon_targets=None, helper_port=9012, log=None,
-                 probe_path=None, ping_timeout=10.0, rt_interval=0.05, poll_interval=2.0):
+                 probe_path=None, ping_timeout=10.0, rt_interval=0.05, poll_interval=2.0, peaks_disk_cache=True):
         self.song, self.app = song, application
         self.host, self.live_version = host, live_version
         self.log = log or (lambda m: None)
@@ -55,12 +56,14 @@ class Core(object):
         self.ping_timeout, self.rt_interval, self.poll_interval = ping_timeout, rt_interval, poll_interval
         self.ws = WSServer(bind_host, port, self.log)
         self.beacon = Beacon(port, helper_port, beacon_port, beacon_targets) if beacon else None
+        self.peaks = PeaksWorker(disk_cache=peaks_disk_cache)
         self.ops = Ops(self)
         self.clients = []
         self.dirty = set()
         self.listeners_dirty = False
         self.dev_burst = {}       # tr -> deadline (monotonic) to re-mark devices dirty (Live applies loads late)
         self._rebuild = False
+        self._cur_rid = None
         self._cid = 0
         self._next_start = 0.0
         self._last_poll = 0.0
@@ -96,6 +99,10 @@ class Core(object):
         except Exception:
             pass
         self.clients = []
+        try:
+            self.peaks.stop()
+        except Exception:
+            pass
 
     def set_name(self):
         for fn in (lambda: self.song.name, lambda: self.app.get_document_title()):
@@ -149,6 +156,7 @@ class Core(object):
             cl = conn.user
             if cl in self.clients:
                 self.clients.remove(cl)
+                self.peaks.cancel_owner(cl.id)
                 self.listeners_dirty = True
         for conn in new:
             self._on_new(conn)
@@ -174,6 +182,7 @@ class Core(object):
                     del self.dev_burst[tr]
                     self._rebuild = True
                     self.listeners_dirty = True
+        self._send_deferred()
         if self.listeners_dirty:
             self._sync_listeners()        # attach before sending state so no change slips between the two
         if self.clients:
@@ -239,12 +248,15 @@ class Core(object):
         if a is None:
             a = {}
         res = {"t": "res", "id": rid}
+        self._cur_rid = rid
         try:
             if not isinstance(op, str):
                 raise BadArgs("missing op")
             if not isinstance(a, dict):
                 raise BadArgs("a must be an object")
             d = self.ops.run(cl, op, a)
+            if isinstance(d, Deferred):
+                return            # the reply is sent from a later tick (see _send_deferred)
             json.dumps(d)
             res["ok"] = True
             res["d"] = d
@@ -263,8 +275,26 @@ class Core(object):
             except Exception:
                 self._err("after_op")
 
+    def defer_peaks(self, cl, path, n):
+        d = Deferred()
+        d.rid = self._cur_rid
+        self.peaks.submit(path, n, cl.id, d.rid)
+        return d
+
+    def _send_deferred(self):
+        for job in self.peaks.poll():
+            cl = next((c for c in self.clients if c.id == job.owner), None)
+            if cl is None:
+                continue
+            if job.ok:
+                self._send(cl, {"t": "res", "id": job.rid, "ok": True, "d": job.data})
+            else:
+                self._send(cl, {"t": "res", "id": job.rid, "ok": False, "err": job.data})
+
     def _after_op(self, cl, op, a):
         d = self.dirty
+        if op == "clip.peaks":
+            return
         if op.startswith("sys.") or op.startswith("browser.") and op != "browser.load" or op.startswith("focus.") \
                 or op.startswith("view."):
             return

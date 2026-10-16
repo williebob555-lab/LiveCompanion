@@ -1,0 +1,63 @@
+{
+ "d": {
+  "lanes": [
+   {
+    "clips": [
+     {
+      "color": 15029152,
+      "end": 14.0,
+      "i": 0,
+      "name": "Vox take 1",
+      "start": 8.0
+     },
+     {
+      "color": 15029152,
+      "end": 22.0,
+      "i": 1,
+      "name": "Vox take 1b",
+      "start": 16.0
+     }
+    ],
+    "i": 0,
+    "name": "Take Lane 1"
+   },
+   {
+    "clips": [
+     {
+      "color": 14183652,
+      "end": 14.0,
+      "i": 0,
+      "name": "Vox take 2",
+      "start": 8.0
+     }
+    ],
+    "i": 1,
+    "name": "Take Lane 2"
+   },
+   {
+    "clips": [
+     {
+      "color": 9611263,
+      "end": 14.0,
+      "i": 0,
+      "name": "Vox take 3",
+      "start": 8.0
+     },
+     {
+      "color": 9611263,
+      "end": 22.0,
+      "i": 1,
+      "name": "Vox take 3b",
+      "start": 16.0
+     }
+    ],
+    "i": 2,
+    "name": "Take Lane 3"
+   }
+  ],
+  "supported": true,
+  "tr": "t3"
+ },
+ "s": "takes",
+ "t": "sec"
+}

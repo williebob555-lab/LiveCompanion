@@ -10,7 +10,7 @@ Helper HTTP on **9012** (see bottom). Multiple clients allowed; each has its own
 |---|---|---|
 | S→C | `{"t":"hello","proto":1,"live":"12.4.1","host":"win\|wine\|mock"}` | first message after connect |
 | C→S | `{"t":"req","id":7,"op":"track.set","a":{...}}` | request; `id` unique per connection |
-| S→C | `{"t":"res","id":7,"ok":true,"d":<any>}` / `{"t":"res","id":7,"ok":false,"err":"msg"}` | reply to every req |
+| S→C | `{"t":"res","id":7,"ok":true,"d":<any>}` / `{"t":"res","id":7,"ok":false,"err":"msg"}` | reply to every req. Usually immediate; **deferred** ops (`clip.peaks`) reply from a later tick, so replies may arrive out of order — match by `id` |
 | S→C | `{"t":"sec","s":"<section>","d":<obj>}` | FULL replacement of a state section |
 | S→C | `{"t":"rt","d":{...}}` | realtime frame, ≤20 Hz |
 | S→C | `{"t":"log","lvl":"warn","msg":"..."}` | user-visible notice (e.g. op unsupported) |
@@ -115,7 +115,15 @@ Meta: `sys.info` → `{live, proto, host, ops:[str]}`.
 - `auto_arm` ↔ `song.exclusive_arm`. `rt.beat_in_bar` is 0-based. A req without `id` gets `res` with `id:null`.
 - `browser.list []` roots include `key` (e.g. "instruments"); path elements accept key or display name.
 
-## Helper HTTP (:9012)
+## clip.peaks (waveforms without the helper)
+`clip.peaks {loc, n}` (loc: slot/arr/take; n 16..8192) -> `d = {sr,ch,frames,n,min:[[..] per ch],max:[...]}` (-1..1, 3 decimals).
+Deferred reply: the file path is read on Live's main thread, decoding runs on ONE background thread (pure file I/O,
+never the LOM), the `res` is sent by a later tick. Newer request for the same clip supersedes queued older ones
+(superseded/disconnected jobs are skipped, no reply). Cached in memory (LRU 32, path+mtime+n) and on disk in
+`<tmp>/LiveCompanion/peaks`. WAV/AIFF only; errors `ok:false`: `not an audio clip`, `no audio file`, `unsupported format`
+(mp3/flac/ogg -> app falls back to the helper), `cannot read audio file: ...`, bad loc/n.
+
+## Helper HTTP (:9012) (optional: exotic-format peaks via ffmpeg, launch Live, sets)
 - `GET /health` → `{ok:true,version}`
 - `GET /peaks?path=<url-encoded clip file_path>&n=<buckets>` → `{sr,ch,frames,n,min:[[..]...per ch],max:[...]}`
   (values -1..1). Cached by path+mtime. Wine paths (`Z:\home\x`, `C:\users\x`) are translated on Linux.

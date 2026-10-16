@@ -1,0 +1,64 @@
+{
+ "d": {
+  "arm": false,
+  "armable": true,
+  "color": 16753961,
+  "fired_slot": -1,
+  "in_ch": "All Channels",
+  "in_chs": [
+   "1/2",
+   "1",
+   "2",
+   "All Channels"
+  ],
+  "in_type": "All Ins",
+  "in_types": [
+   "Ext. In",
+   "All Ins",
+   "No Input"
+  ],
+  "kind": "midi",
+  "monitor": 1,
+  "mute": false,
+  "name": "Drums",
+  "out_type": "Master",
+  "out_types": [
+   "Master",
+   "Sends Only",
+   "Ext. Out"
+  ],
+  "pan": {
+   "max": 1.0,
+   "min": -1.0,
+   "str": "C",
+   "v": 0.0
+  },
+  "playing_slot": -1,
+  "ref": "t0",
+  "sends": [
+   {
+    "max": 1.0,
+    "min": 0.0,
+    "name": "A Reverb",
+    "str": "-inf dB",
+    "v": 0.0
+   },
+   {
+    "max": 1.0,
+    "min": 0.0,
+    "name": "B Delay",
+    "str": "-inf dB",
+    "v": 0.0
+   }
+  ],
+  "solo": false,
+  "vol": {
+   "max": 1.0,
+   "min": 0.0,
+   "str": "-0.5 dB",
+   "v": 0.8
+  }
+ },
+ "s": "focus",
+ "t": "sec"
+}

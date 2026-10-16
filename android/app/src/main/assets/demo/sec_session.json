@@ -1,0 +1,61 @@
+{
+ "d": {
+  "auto_arm": true,
+  "back_to_arr": false,
+  "can_redo": false,
+  "can_undo": false,
+  "count_in": 0,
+  "cues": [
+   {
+    "n": "Intro",
+    "t": 0.0
+   },
+   {
+    "n": "Verse",
+    "t": 16.0
+   },
+   {
+    "n": "",
+    "t": 32.0
+   }
+  ],
+  "follow": false,
+  "loop": false,
+  "loop_len": 8.0,
+  "loop_start": 0.0,
+  "metronome": false,
+  "overdub": false,
+  "playing": false,
+  "pos": 0.0,
+  "punch_in": false,
+  "punch_out": false,
+  "quant": 0,
+  "rec": false,
+  "rec_quant": 5,
+  "scale": {
+   "intervals": [
+    0,
+    2,
+    3,
+    5,
+    7,
+    8,
+    10
+   ],
+   "name": "Minor",
+   "root": 0
+  },
+  "sel_scene": 0,
+  "sel_track": "t0",
+  "session_rec": false,
+  "sig": [
+   4,
+   4
+  ],
+  "song_len": 32.0,
+  "tempo": 120.0,
+  "view": "session"
+ },
+ "s": "session",
+ "t": "sec"
+}

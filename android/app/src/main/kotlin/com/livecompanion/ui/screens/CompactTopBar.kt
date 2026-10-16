@@ -18,12 +18,12 @@ import com.livecompanion.state.LiveStore
 import com.livecompanion.ui.theme.LiveColors
 
 /** Height of every control in the compact bar. */
-private val BarH = 30.dp
+private val BarH = 40.dp
 
 /**
  * Phone-landscape / tablet top chrome. ONE row when it fits (>= ~700dp of width): transport (play/stop/rec/
  * session-rec/overdub/loop/metronome, tempo, position, undo/redo) + the focused track (prev/name/next,
- * arm/M/S/monitor), plus vol/pan/meter when there is room (>= ~900dp). Narrower widths wrap onto two 30dp rows
+ * arm/M/S/monitor), plus vol/pan/meter when there is room (>= ~900dp). Narrower widths wrap onto two 40dp rows
  * (transport / track+faders), never clipping a partial control. Tabs live in the left rail, not here.
  */
 @Composable
@@ -34,25 +34,25 @@ fun CompactTopBar(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
         val w = maxWidth
         if (w >= 700.dp) {
             Row(Modifier.padding(1.dp), gap, Alignment.CenterVertically) {
-                TransportButtons(store, client, BarH, 26.dp)
+                TransportButtons(store, client, BarH, 32.dp)
                 TempoPos(store, client, 1.3f, 1.3f, BarH)
-                UndoRedo(store, client, BarH, 26.dp)
+                UndoRedo(store, client, BarH, 32.dp)
                 Row(Modifier.width(6.dp)) {}
-                TrackNav(store, client, Modifier.weight(2.4f), BarH, 26.dp)
-                TrackToggles(store, client, BarH, 28.dp)
-                if (w >= 900.dp * fs) TrackFaders(store, client, 26.dp)
+                TrackNav(store, client, Modifier.weight(2.4f), BarH, 32.dp)
+                TrackToggles(store, client, BarH, 34.dp)
+                if (w >= 900.dp * fs) TrackFaders(store, client, 32.dp)
             }
         } else {
             Column(Modifier.padding(1.dp), Arrangement.spacedBy(1.dp)) {
                 Row(horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) {
-                    TransportButtons(store, client, BarH, 26.dp)
+                    TransportButtons(store, client, BarH, 32.dp)
                     TempoPos(store, client, 1.8f, 1.8f, BarH)
-                    UndoRedo(store, client, BarH, 26.dp)
+                    UndoRedo(store, client, BarH, 32.dp)
                 }
                 Row(horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) {
-                    TrackNav(store, client, Modifier.weight(1.6f), BarH, 26.dp)
-                    TrackToggles(store, client, BarH, 28.dp)
-                    TrackFaders(store, client, 26.dp)
+                    TrackNav(store, client, Modifier.weight(1.6f), BarH, 32.dp)
+                    TrackToggles(store, client, BarH, 34.dp)
+                    TrackFaders(store, client, 32.dp)
                 }
             }
         }
@@ -66,19 +66,19 @@ fun CompactTopBar(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
  */
 @Composable
 fun PortraitTopBar(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier) {
-    val h = 28.dp
+    val h = 40.dp
     Column(modifier.fillMaxWidth().background(LiveColors.Panel).padding(1.dp), Arrangement.spacedBy(1.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
-            TransportButtons(store, client, h, 24.dp)
-            UndoRedo(store, client, h, 24.dp)
+            TransportButtons(store, client, h, 30.dp)
+            UndoRedo(store, client, h, 30.dp)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
             TempoPos(store, client, 1.3f, 1.7f, h)
-            TrackNav(store, client, Modifier.weight(2.4f), h, 28.dp)
+            TrackNav(store, client, Modifier.weight(2.4f), h, 34.dp)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
-            TrackToggles(store, client, h, 30.dp)
-            TrackFaders(store, client, 24.dp)
+            TrackToggles(store, client, h, 36.dp)
+            TrackFaders(store, client, 30.dp)
         }
     }
 }

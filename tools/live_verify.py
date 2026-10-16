@@ -84,6 +84,20 @@ def main():
         for s in ("focus", "slots", "arr", "takes", "devices"):
             ROWS.append(("  section %s (t%d)" % (s, i), "-", "ok" if sec(c, s) else "MISSING", ""))
     step(c, "browser roots", "browser.list", path=[])
+    # Waveform without the helper: first audio clip found in the first tracks' arrangements (read-only).
+    for i in range(min(8, len(tracks))):
+        c.forget("arr")
+        c.req("focus.set", tr="t%d" % i)
+        try:
+            arr = c.until("arr", timeout=4)
+        except AssertionError:
+            continue
+        audio = [k for k in arr.get("clips", []) if k.get("audio")]
+        if audio:
+            d = step(c, "clip.peaks (no helper) t%d" % i, "clip.peaks", loc={"w": "arr", "tr": "t%d" % i, "i": audio[0]["i"]}, n=512)
+            if d:
+                ROWS.append(("  peaks shape", "-", "ok", "ch=%s n=%s" % (d.get("ch"), d.get("n"))))
+            break
 
     if args.mutate:
         if args.mock_ok and hello.get("host") == "mock":

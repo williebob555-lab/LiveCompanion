@@ -570,3 +570,67 @@ def test_op_exceptions_do_not_break_tick(c, h):
     finally:
         h.song.__class__.tap_tempo = del_attr
     assert c.ok("sys.info")
+
+
+def test_clip_peaks_shape_and_deferred(c, h):
+    d = c.ok("clip.peaks", loc=SLOT("t3", 0), n=64)
+    assert d["n"] == 64 and d["sr"] == 22050 and d["frames"] > 0 and d["ch"] >= 1
+    assert len(d["min"]) == d["ch"] and all(len(x) == 64 for x in d["min"] + d["max"])
+    assert all(-1.0 <= v <= 0.0 for ch in d["min"] for v in ch)
+    assert all(0.0 <= v <= 1.0 for ch in d["max"] for v in ch)
+    assert max(max(ch) for ch in d["max"]) > 0.1          # the sine is audible
+    d2 = c.ok("clip.peaks", loc=SLOT("t3", 0), n=64)       # served from the cache
+    assert d2 == d
+    arr = h.song.tracks[3].arrangement_clips
+    if arr and getattr(arr[0], "is_audio_clip", False):
+        assert c.ok("clip.peaks", loc={"w": "arr", "tr": "t3", "i": 0}, n=16)["n"] == 16
+
+
+def test_clip_peaks_does_not_block_ticks(h):
+    import threading
+    gate = threading.Event()
+    orig = h.core.peaks._compute
+
+    def slow(path, n):
+        gate.wait(5)
+        return orig(path, n)
+
+    h.core.peaks._compute = slow
+    c = h.client()
+    c.wait(lambda x: "tracks" in x.sections)
+    rid = c.next_id
+    c.next_id += 1
+    c.send_json({"t": "req", "id": rid, "op": "clip.peaks", "a": {"loc": SLOT("t3", 0), "n": 32}})
+    # while the job is parked on the worker, ordinary requests are answered promptly
+    t0 = time.monotonic()
+    c.ok("song.set", k="tempo", v=133.0)
+    assert c.req("sys.info")["ok"]
+    assert time.monotonic() - t0 < 1.0
+    assert not any(m.get("t") == "res" and m.get("id") == rid for m in c.msgs)
+    gate.set()
+    r = c.take(lambda m: m.get("t") == "res" and m.get("id") == rid)
+    assert r["ok"] and r["d"]["n"] == 32
+
+
+def test_clip_peaks_errors(c, h, tmp_path):
+    assert c.req("clip.peaks", loc=SLOT("t3", 0), n=4)["ok"] is False          # n out of range
+    assert c.req("clip.peaks", loc=SLOT("t3", 0), n=99999)["ok"] is False
+    assert c.req("clip.peaks", loc=SLOT("t3", 0))["ok"] is False
+    assert c.req("clip.peaks", loc={"w": "slot", "tr": "t3", "i": 99}, n=64)["ok"] is False
+    assert c.req("clip.peaks", loc={"w": "nope"}, n=64)["ok"] is False
+    assert c.req("clip.peaks", n=64)["ok"] is False
+    assert c.req("clip.peaks", loc=SLOT("t0", 0), n=64)["err"] == "not an audio clip"
+    clip = h.song.tracks[3].clip_slots[0].clip
+    old = clip.file_path
+    try:
+        f = tmp_path / "x.mp3"
+        f.write_bytes(b"ID3" + b"\0" * 64)
+        clip.file_path = str(f)
+        r = c.req("clip.peaks", loc=SLOT("t3", 0), n=64)
+        assert r["ok"] is False and "unsupported format" in r["err"]
+        clip.file_path = str(tmp_path / "missing.wav")
+        assert c.req("clip.peaks", loc=SLOT("t3", 0), n=64)["ok"] is False
+        clip.file_path = ""
+        assert c.req("clip.peaks", loc=SLOT("t3", 0), n=64)["ok"] is False
+    finally:
+        clip.file_path = old

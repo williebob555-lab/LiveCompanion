@@ -1,0 +1,65 @@
+{
+ "d": {
+  "slots": [
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 0,
+    "status": "empty"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 1,
+    "status": "empty"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 2,
+    "status": "empty"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 3,
+    "status": "empty"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 4,
+    "status": "empty"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 5,
+    "status": "empty"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 6,
+    "status": "empty"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 7,
+    "status": "empty"
+   }
+  ],
+  "tr": "t5"
+ },
+ "s": "slots",
+ "t": "sec"
+}

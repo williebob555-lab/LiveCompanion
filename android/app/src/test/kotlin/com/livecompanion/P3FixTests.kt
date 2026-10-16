@@ -24,7 +24,7 @@ class P3FixTests {
         v.setLimits(contentEnd = 32.0, dens = 2f)
         // whole content (+ margin) fills the width at the minimum zoom, never less
         val min = v.minPpb
-        assertEquals(1000f / 34.56f, min, 1e-3f)
+        assertEquals(1000f / (4f * (32f + 32f)), min, 1e-3f)
         assertEquals(min, v.clampPpb(0.0001f), 1e-6f)
         // maximum: 1/64 note (1/16 beat) is ~24dp wide
         assertEquals(24f * 2f / 0.0625f, v.maxPpb, 1e-3f)
@@ -39,7 +39,7 @@ class P3FixTests {
         v.leftW = 100f
         v.width = 1100f
         v.setLimits(span = 8.0, unitsPer64 = 0.0625, dens = 3f)
-        assertEquals(1000f / (8f * 1.08f), v.minPpu, 1e-3f)
+        assertEquals(1000f / (8f * 4f), v.minPpu, 1e-3f) // clip fills ~1/4 of the width
         assertEquals(24f * 3f / 0.0625f, v.maxPpu, 1e-3f)
         v.zoomX(0.0001f)
         assertEquals(v.minPpu, v.ppu, 1e-3f)

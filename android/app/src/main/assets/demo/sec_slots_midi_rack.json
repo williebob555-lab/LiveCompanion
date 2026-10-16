@@ -1,0 +1,93 @@
+{
+ "d": {
+  "slots": [
+   {
+    "clip": {
+     "audio": false,
+     "color": 5538020,
+     "len": 8.0,
+     "looping": true,
+     "muted": false,
+     "name": "Chords 1"
+    },
+    "has_clip": true,
+    "has_stop": true,
+    "i": 0,
+    "status": "stopped"
+   },
+   {
+    "clip": {
+     "audio": false,
+     "color": 5538020,
+     "len": 8.0,
+     "looping": true,
+     "muted": false,
+     "name": "Chords 2"
+    },
+    "has_clip": true,
+    "has_stop": true,
+    "i": 1,
+    "status": "stopped"
+   },
+   {
+    "clip": {
+     "audio": false,
+     "color": 5538020,
+     "len": 8.0,
+     "looping": true,
+     "muted": false,
+     "name": "Chords 3"
+    },
+    "has_clip": true,
+    "has_stop": true,
+    "i": 2,
+    "status": "stopped"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 3,
+    "status": "empty"
+   },
+   {
+    "clip": {
+     "audio": false,
+     "color": 5538020,
+     "len": 8.0,
+     "looping": true,
+     "muted": false,
+     "name": "Chords 5"
+    },
+    "has_clip": true,
+    "has_stop": true,
+    "i": 4,
+    "status": "stopped"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 5,
+    "status": "empty"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 6,
+    "status": "empty"
+   },
+   {
+    "clip": null,
+    "has_clip": false,
+    "has_stop": true,
+    "i": 7,
+    "status": "empty"
+   }
+  ],
+  "tr": "t2"
+ },
+ "s": "slots",
+ "t": "sec"
+}

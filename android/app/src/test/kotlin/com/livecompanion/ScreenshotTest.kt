@@ -126,6 +126,33 @@ class ScreenshotTest(private val wDp: Int, private val hDp: Int, private val lan
         rule.onRoot().captureRoboImage(name("shell_arrange"))
     }
 
+    @Test fun shellDemo() {
+        val store = com.livecompanion.state.LiveStore()
+        val dir = java.io.File("src/main/assets/demo")
+        val client = com.livecompanion.net.DemoClient(store, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            { n -> java.io.File(dir, "$n.json").takeIf { it.exists() }?.readText() }, tickMs = 0)
+        client.connect("demo", 0)
+        launch { MainShell(store, client, Modifier.fillMaxSize(), cutoutOverride = 44.dp to 0.dp) }
+        rule.onRoot().captureRoboImage(name("shell_demo"))
+    }
+
+    @Test fun shellRoundedCorners() {
+        // Simulated 40dp display corners + left cutout: strip, rail and bars must keep clear of the arcs.
+        val store = fakeStore()
+        val client = LiveClient(store, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
+        val c = 40.dp
+        launch {
+            MainShell(store, client, Modifier.fillMaxSize(), statusOverride = ConnStatus.CONNECTED, cutoutOverride = 44.dp to 0.dp,
+                cornersOverride = com.livecompanion.ui.screens.Corners(c, c, c, c))
+        }
+        rule.onRoot().captureRoboImage(name("shell_corners"))
+    }
+
+    @Test fun settingsOffline() {
+        launch { com.livecompanion.ui.screens.SettingsScreen(onBack = {}) }
+        rule.onRoot().captureRoboImage(name("settings_offline"))
+    }
+
     @Test fun shellDisconnected() {
         // Idle client = not connected: top bar replaced in place by the status strip, body dimmed.
         val store = fakeStore()

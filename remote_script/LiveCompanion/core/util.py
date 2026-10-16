@@ -6,6 +6,10 @@ class OpError(Exception):
     """Operation failed; message goes to the client as `err`."""
 
 
+class Deferred(object):
+    """Returned by an op whose `res` is sent later (from a tick) by Core; the worker finishes off-thread."""
+
+
 class BadArgs(OpError):
     pass
 

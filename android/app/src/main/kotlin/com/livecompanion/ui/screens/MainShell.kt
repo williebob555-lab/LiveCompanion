@@ -46,6 +46,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.livecompanion.data.Prefs
 import com.livecompanion.net.ConnStatus
 import com.livecompanion.net.LiveClient
@@ -94,8 +95,9 @@ private val STRIP_MIN = 28.dp
 @Composable
 fun MainShell(
     store: LiveStore, client: LiveClient, modifier: Modifier = Modifier, initialTab: Tab = Tab.Arrange,
-    statusOverride: ConnStatus? = null, cutoutOverride: Pair<Dp, Dp>? = null,
+    statusOverride: ConnStatus? = null, cutoutOverride: Pair<Dp, Dp>? = null, cornersOverride: Corners? = null,
 ) {
+    val corners = cornersOverride ?: rememberCorners()
     var selected by rememberSaveable { mutableStateOf(initialTab) }
     val conn by client.state.collectAsState()
     val live = (statusOverride ?: conn.status) == ConnStatus.CONNECTED
@@ -107,7 +109,15 @@ fun MainShell(
         }
     }
 
+    val demo = client is com.livecompanion.net.DemoClient
     val noticeBar: @Composable () -> Unit = {
+        if (notice == null && demo) {
+            LiveText(
+                "DEMO - built-in sample set, nothing is sent to Live",
+                Modifier.fillMaxWidth().background(LiveColors.Panel).padding(horizontal = 8.dp, vertical = 1.dp),
+                LiveType.Small.copy(fontSize = 10.sp, lineHeight = 12.sp), LiveColors.Accent,
+            )
+        }
         notice?.let { n ->
             LiveText(
                 n,
@@ -135,8 +145,16 @@ fun MainShell(
         val padR = if (stripR > 0.dp) 0.dp else cutR.coerceAtLeast(2.dp)
         val contentW = maxWidth - stripL - stripR - padL - padR
         val rail = contentW >= TWO_PANE_MIN_WIDTH || land
+        // Rounded display corners: top/bottom bars start/end clear of the arc not already covered by the rail / strips.
+        val railOcc = if (rail) (52.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)).coerceIn(52.dp, 80.dp) else 0.dp
+        val leftOcc = stripL + padL + railOcc
+        val rightOcc = stripR + padR
+        val insStart = (corners.tl - leftOcc).coerceAtLeast(0.dp)
+        val insEnd = (corners.tr - rightOcc).coerceAtLeast(0.dp)
+        val botStart = (corners.bl - leftOcc).coerceAtLeast(0.dp)
+        val botEnd = (corners.br - rightOcc).coerceAtLeast(0.dp)
         Row(Modifier.fillMaxSize()) {
-            if (stripL > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripL).fillMaxHeight())
+            if (stripL > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripL).fillMaxHeight().padding(top = corners.tl, bottom = corners.bl))
             Box(Modifier.width(padL))
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 // Back: any non-home tab returns to Arrange first; only home asks to disconnect (MainActivity).
@@ -145,32 +163,49 @@ fun MainShell(
                     val fs = LocalDensity.current.fontScale.coerceAtLeast(1f)
                     val railW = (52.dp * fs).coerceIn(52.dp, 80.dp)
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-                        TabRail(Tab.entries, selected, Modifier.width(railW).fillMaxHeight()) { selected = it }
+                        TabRail(Tab.entries, selected, Modifier.width(railW).fillMaxHeight().padding(top = if (stripL > 0.dp) 0.dp else corners.tl, bottom = if (stripL > 0.dp) 0.dp else corners.bl)) { selected = it }
                         Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                            TopChrome(live, client) { CompactTopBar(store, client) }
+                            Box(Modifier.padding(start = insStart, end = insEnd)) { TopChrome(live, client) { CompactTopBar(store, client) } }
                             Gated(live, Modifier.fillMaxWidth().weight(1f)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
-                            noticeBar()
+                            Box(Modifier.padding(start = botStart, end = botEnd)) { noticeBar() }
                         }
                     }
                 } else {
                     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        TopChrome(live, client) {
+                        Box(Modifier.padding(start = insStart, end = insEnd)) { TopChrome(live, client) {
                             if (contentW >= 340.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) PortraitTopBar(store, client)
                             else Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                 TransportBar(store, client)
                                 TrackHeader(store, client)
                             }
-                        }
+                        } }
                         TabRow(Tab.entries, selected) { selected = it }
                         Gated(live, Modifier.fillMaxWidth().weight(1f)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
-                        noticeBar()
+                        Box(Modifier.padding(start = botStart, end = botEnd)) { noticeBar() }
                     }
                 }
             }
             Box(Modifier.width(padR))
-            if (stripR > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripR).fillMaxHeight())
+            if (stripR > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripR).fillMaxHeight().padding(top = corners.tr, bottom = corners.br))
         }
     }
+    }
+}
+
+/** Rounded display-corner radii (dp). */
+data class Corners(val tl: Dp = 0.dp, val tr: Dp = 0.dp, val bl: Dp = 0.dp, val br: Dp = 0.dp)
+
+/** Reads the real corner radii (API 31+); 0 when the device reports none. */
+@Composable
+fun rememberCorners(): Corners {
+    val view = androidx.compose.ui.platform.LocalView.current
+    val d = LocalDensity.current
+    return remember(view, d.density) {
+        if (android.os.Build.VERSION.SDK_INT < 31) return@remember Corners()
+        val ins = view.rootWindowInsets ?: return@remember Corners()
+        fun r(pos: Int) = with(d) { (ins.getRoundedCorner(pos)?.radius ?: 0).toDp() }
+        Corners(r(android.view.RoundedCorner.POSITION_TOP_LEFT), r(android.view.RoundedCorner.POSITION_TOP_RIGHT),
+            r(android.view.RoundedCorner.POSITION_BOTTOM_LEFT), r(android.view.RoundedCorner.POSITION_BOTTOM_RIGHT))
     }
 }
 

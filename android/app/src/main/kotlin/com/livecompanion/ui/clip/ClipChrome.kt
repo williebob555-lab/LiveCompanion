@@ -96,7 +96,7 @@ class ClipView(var minPpu: Float = 3f, var maxPpu: Float = 1200f) {
     fun setLimits(span: Double, unitsPer64: Double, dens: Float) {
         if (width <= leftW || span < 1e-3) return
         val gw = max(width - leftW, 50f)
-        val lo = (gw / (span * 1.08)).toFloat()
+        val lo = clipZoomOutPpu(gw, span)
         minPpu = lo
         maxPpu = max(lo, (24f * dens / unitsPer64).toFloat())
     }
@@ -466,3 +466,6 @@ fun rememberPlayhead(
         }
     }
 }
+
+/** Clip editor zoom-out limit: the clip ([span] axis units) occupies ~1/4 of the content width [gw] px. */
+fun clipZoomOutPpu(gw: Float, span: Double): Float = (gw / (span * 4.0)).toFloat()

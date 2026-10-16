@@ -73,10 +73,12 @@ import com.livecompanion.ui.theme.LiveColors
 import com.livecompanion.ui.theme.LiveShapes
 import com.livecompanion.ui.theme.LiveType
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
@@ -159,21 +161,23 @@ fun ArrangeScreen(
     // ---- waveform peaks for audio clips (helper, cached)
     val peaks: SnapshotStateMap<String, Peaks> = remember { mutableStateMapOf() }
     val host = conn.target?.host.orEmpty()
-    val paths = clips.filter { it.audio && it.filePath.isNotBlank() }.map { it.filePath }.distinct()
-    LaunchedEffect(paths, host) {
-        for (p in paths) {
+    SideEffect { PeaksClient.shared.live = client }
+    val peakSrc = clips.filter { it.audio && it.filePath.isNotBlank() }.distinctBy { it.filePath }
+        .map { it.filePath to buildJsonObject { put("w", "arr"); put("tr", tr); put("i", it.i) } }
+    LaunchedEffect(peakSrc, host) {
+        for ((p, loc) in peakSrc) {
             if (p in peaks) continue
             val cached = PeaksClient.shared.cached(p, PEAK_N)
             if (cached != null) { peaks[p] = cached; continue }
-            val r = PeaksClient.shared.get(host, p, PEAK_N)
+            val r = PeaksClient.shared.get(host, p, PEAK_N, loc)
             if (r is PeaksResult.Ok) peaks[p] = r.peaks
         }
     }
 
     // Zoom limits: whole arrangement (+ margin) fills the width .. 1/64 note per ~24dp.
     val dens = LocalDensity.current.density
-    val contentEnd = max(clips.maxOfOrNull { it.end } ?: 0.0, bpb * 4)
-    SideEffect { view.setLimits(contentEnd, dens) }
+    val contentEnd = max(max(clips.maxOfOrNull { it.end } ?: 0.0, bpb * 4), max(session.songLen, session.loopStart + session.loopLen))
+    SideEffect { view.setLimits(contentEnd, dens, bpb) }
 
     // Fit once content (or at least a few bars) is known; refit on track change.
     var fitKey by remember { mutableStateOf("") }

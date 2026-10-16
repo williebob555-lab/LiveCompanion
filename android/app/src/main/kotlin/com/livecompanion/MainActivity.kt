@@ -26,6 +26,7 @@ import com.livecompanion.ui.screens.AppActions
 import com.livecompanion.ui.screens.ConnectScreen
 import com.livecompanion.ui.screens.LocalAppActions
 import com.livecompanion.ui.screens.MainShell
+import com.livecompanion.ui.screens.SettingsScreen
 import com.livecompanion.ui.theme.LiveTheme
 
 /** Applies the orientation setting: "land" (default), "port" or "auto". */
@@ -65,10 +66,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             LiveTheme {
                 val active by vm.active.collectAsState()
-                val conn by vm.client.state.collectAsState()
+                val conn by vm.liveClient.state.collectAsState()
+                var showSettings by remember { mutableStateOf(false) }
                 val actions = remember { AppActions(disconnect = vm::disconnect, prefs = vm.prefs) }
                 CompositionLocalProvider(LocalAppActions provides actions) {
-                    if (active == null) {
+                    if (active == null && showSettings) {
+                        BackHandler { showSettings = false }
+                        SettingsScreen(onBack = { showSettings = false }, modifier = Modifier.safeDrawingPadding())
+                    } else if (active == null) {
                         val discovered by vm.discovered.collectAsState()
                         val recents by vm.recents.collectAsState()
                         ConnectScreen(
@@ -80,12 +85,14 @@ class MainActivity : ComponentActivity() {
                             error = conn.lastError?.takeIf { conn.status == ConnStatus.IDLE },
                             connecting = conn.target?.takeIf { conn.status == ConnStatus.CONNECTING },
                             onCancel = vm::disconnect,
+                            onSettings = { showSettings = true },
+                            onDemo = vm::startDemo,
                         )
                     } else {
                         var confirmBack by remember { mutableStateOf(false) }
                         BackHandler { confirmBack = true }
                         if (confirmBack) {
-                            ConfirmDialog("Disconnect", "Disconnect from Live and return to the host list?", "Disconnect",
+                            ConfirmDialog("Disconnect", if (vm.demo.value) "Leave the demo and return to the host list?" else "Disconnect from Live and return to the host list?", "Disconnect",
                                 { confirmBack = false; vm.disconnect() }, { confirmBack = false })
                         }
                         MainShell(vm.store, vm.client)

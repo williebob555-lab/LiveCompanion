@@ -63,6 +63,8 @@ fun ConnectScreen(
     connecting: HostTarget? = null,
     onCancel: () -> Unit = {},
     initialManual: String = "",
+    onSettings: () -> Unit = {},
+    onDemo: () -> Unit = {},
 ) {
     var manual by rememberSaveable { mutableStateOf(initialManual) }
     val parsed = parseHostPort(manual)
@@ -103,6 +105,7 @@ fun ConnectScreen(
                     { go(HostTarget("10.0.2.2", 9010)) },
                     Modifier.fillMaxWidth(), enabled = !busy,
                 )
+                LiveTextButton("Try demo (no Live needed)", onDemo, Modifier.fillMaxWidth())
                 status()
             }
         }
@@ -123,7 +126,10 @@ fun ConnectScreen(
             }
         }
         Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            LiveText("LiveCompanion", style = LiveType.Title, color = LiveColors.Accent)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LiveText("LiveCompanion", Modifier.weight(1f), LiveType.Title, LiveColors.Accent, maxLines = 1)
+                LiveTextButton("Settings & updates", onSettings, minHeight = 36.dp)
+            }
             if (wide) {
                 Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     LazyColumn(Modifier.weight(1f).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp), content = listItems)

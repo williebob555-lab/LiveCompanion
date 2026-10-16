@@ -1,0 +1,644 @@
+{
+ "d": {
+  "devices": [
+   {
+    "chains": [],
+    "cls": "MidiArpeggiator",
+    "macros": null,
+    "name": "Arpeggiator",
+    "on": true,
+    "path": "0",
+    "pp": [
+     {
+      "def": 0.5,
+      "i": 1,
+      "items": null,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Rate",
+      "quant": false,
+      "str": "0.50",
+      "v": 0.5
+     },
+     {
+      "def": 0.55,
+      "i": 2,
+      "items": null,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Gate",
+      "quant": false,
+      "str": "0.55",
+      "v": 0.55
+     },
+     {
+      "def": 0.6,
+      "i": 3,
+      "items": null,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Steps",
+      "quant": false,
+      "str": "0.60",
+      "v": 0.6
+     }
+    ],
+    "type": "midi_fx",
+    "var": null
+   },
+   {
+    "chains": [
+     {
+      "devices": [
+       {
+        "chains": [],
+        "cls": "InstrumentVector",
+        "macros": null,
+        "name": "Wavetable",
+        "on": true,
+        "path": "1.c0.0",
+        "pp": [
+         {
+          "def": 0.5,
+          "i": 1,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 1",
+          "quant": false,
+          "str": "0.50",
+          "v": 0.5
+         },
+         {
+          "def": 0.55,
+          "i": 2,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 2",
+          "quant": false,
+          "str": "0.55",
+          "v": 0.55
+         },
+         {
+          "def": 0.6,
+          "i": 3,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 3",
+          "quant": false,
+          "str": "0.60",
+          "v": 0.6
+         },
+         {
+          "def": 0.65,
+          "i": 4,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 4",
+          "quant": false,
+          "str": "0.65",
+          "v": 0.65
+         },
+         {
+          "def": 1.0,
+          "i": 5,
+          "items": [
+           "Low",
+           "Mid",
+           "High"
+          ],
+          "max": 2.0,
+          "min": 0.0,
+          "name": "Mode",
+          "quant": true,
+          "str": "Mid",
+          "v": 1.0
+         },
+         {
+          "def": 0.5,
+          "i": 6,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 6",
+          "quant": false,
+          "str": "0.50",
+          "v": 0.5
+         }
+        ],
+        "type": "instrument",
+        "var": null
+       },
+       {
+        "chains": [],
+        "cls": "AutoFilter2",
+        "macros": null,
+        "name": "Auto Filter",
+        "on": true,
+        "path": "1.c0.1",
+        "pp": [
+         {
+          "def": 0.5,
+          "i": 1,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 1",
+          "quant": false,
+          "str": "0.50",
+          "v": 0.5
+         },
+         {
+          "def": 0.55,
+          "i": 2,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 2",
+          "quant": false,
+          "str": "0.55",
+          "v": 0.55
+         },
+         {
+          "def": 0.6,
+          "i": 3,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 3",
+          "quant": false,
+          "str": "0.60",
+          "v": 0.6
+         },
+         {
+          "def": 0.65,
+          "i": 4,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 4",
+          "quant": false,
+          "str": "0.65",
+          "v": 0.65
+         },
+         {
+          "def": 1.0,
+          "i": 5,
+          "items": [
+           "Low",
+           "Mid",
+           "High"
+          ],
+          "max": 2.0,
+          "min": 0.0,
+          "name": "Mode",
+          "quant": true,
+          "str": "Mid",
+          "v": 1.0
+         },
+         {
+          "def": 0.5,
+          "i": 6,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 6",
+          "quant": false,
+          "str": "0.50",
+          "v": 0.5
+         }
+        ],
+        "type": "audio_fx",
+        "var": null
+       }
+      ],
+      "i": 0,
+      "name": "Soft Pad"
+     },
+     {
+      "devices": [
+       {
+        "chains": [],
+        "cls": "UltraAnalog",
+        "macros": null,
+        "name": "Analog",
+        "on": true,
+        "path": "1.c1.0",
+        "pp": [
+         {
+          "def": 0.5,
+          "i": 1,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 1",
+          "quant": false,
+          "str": "0.50",
+          "v": 0.5
+         },
+         {
+          "def": 0.55,
+          "i": 2,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 2",
+          "quant": false,
+          "str": "0.55",
+          "v": 0.55
+         },
+         {
+          "def": 0.6,
+          "i": 3,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 3",
+          "quant": false,
+          "str": "0.60",
+          "v": 0.6
+         },
+         {
+          "def": 0.65,
+          "i": 4,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 4",
+          "quant": false,
+          "str": "0.65",
+          "v": 0.65
+         },
+         {
+          "def": 1.0,
+          "i": 5,
+          "items": [
+           "Low",
+           "Mid",
+           "High"
+          ],
+          "max": 2.0,
+          "min": 0.0,
+          "name": "Mode",
+          "quant": true,
+          "str": "Mid",
+          "v": 1.0
+         },
+         {
+          "def": 0.5,
+          "i": 6,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 6",
+          "quant": false,
+          "str": "0.50",
+          "v": 0.5
+         }
+        ],
+        "type": "instrument",
+        "var": null
+       },
+       {
+        "chains": [],
+        "cls": "ChorusEnsemble",
+        "macros": null,
+        "name": "Chorus-Ensemble",
+        "on": true,
+        "path": "1.c1.1",
+        "pp": [
+         {
+          "def": 0.5,
+          "i": 1,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 1",
+          "quant": false,
+          "str": "0.50",
+          "v": 0.5
+         },
+         {
+          "def": 0.55,
+          "i": 2,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 2",
+          "quant": false,
+          "str": "0.55",
+          "v": 0.55
+         },
+         {
+          "def": 0.6,
+          "i": 3,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 3",
+          "quant": false,
+          "str": "0.60",
+          "v": 0.6
+         },
+         {
+          "def": 0.65,
+          "i": 4,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 4",
+          "quant": false,
+          "str": "0.65",
+          "v": 0.65
+         },
+         {
+          "def": 1.0,
+          "i": 5,
+          "items": [
+           "Low",
+           "Mid",
+           "High"
+          ],
+          "max": 2.0,
+          "min": 0.0,
+          "name": "Mode",
+          "quant": true,
+          "str": "Mid",
+          "v": 1.0
+         },
+         {
+          "def": 0.5,
+          "i": 6,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 6",
+          "quant": false,
+          "str": "0.50",
+          "v": 0.5
+         }
+        ],
+        "type": "audio_fx",
+        "var": null
+       }
+      ],
+      "i": 1,
+      "name": "Bright Saw"
+     },
+     {
+      "devices": [
+       {
+        "chains": [],
+        "cls": "Operator",
+        "macros": null,
+        "name": "Operator",
+        "on": true,
+        "path": "1.c2.0",
+        "pp": [
+         {
+          "def": 0.5,
+          "i": 1,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 1",
+          "quant": false,
+          "str": "0.50",
+          "v": 0.5
+         },
+         {
+          "def": 0.55,
+          "i": 2,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 2",
+          "quant": false,
+          "str": "0.55",
+          "v": 0.55
+         },
+         {
+          "def": 0.6,
+          "i": 3,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 3",
+          "quant": false,
+          "str": "0.60",
+          "v": 0.6
+         },
+         {
+          "def": 0.65,
+          "i": 4,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 4",
+          "quant": false,
+          "str": "0.65",
+          "v": 0.65
+         },
+         {
+          "def": 1.0,
+          "i": 5,
+          "items": [
+           "Low",
+           "Mid",
+           "High"
+          ],
+          "max": 2.0,
+          "min": 0.0,
+          "name": "Mode",
+          "quant": true,
+          "str": "Mid",
+          "v": 1.0
+         },
+         {
+          "def": 0.5,
+          "i": 6,
+          "items": null,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "Param 6",
+          "quant": false,
+          "str": "0.50",
+          "v": 0.5
+         }
+        ],
+        "type": "instrument",
+        "var": null
+       }
+      ],
+      "i": 2,
+      "name": "Sub"
+     }
+    ],
+    "cls": "InstrumentGroupDevice",
+    "macros": [
+     {
+      "i": 0,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Cutoff",
+      "str": "0.80",
+      "v": 0.8
+     },
+     {
+      "i": 1,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Resonance",
+      "str": "0.50",
+      "v": 0.5
+     },
+     {
+      "i": 2,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Attack",
+      "str": "0.50",
+      "v": 0.5
+     },
+     {
+      "i": 3,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Release",
+      "str": "0.50",
+      "v": 0.5
+     },
+     {
+      "i": 4,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Drive",
+      "str": "0.90",
+      "v": 0.9
+     },
+     {
+      "i": 5,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Chorus",
+      "str": "0.50",
+      "v": 0.5
+     },
+     {
+      "i": 6,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Level",
+      "str": "0.50",
+      "v": 0.5
+     },
+     {
+      "i": 7,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Space",
+      "str": "0.50",
+      "v": 0.5
+     }
+    ],
+    "name": "Layer Pad",
+    "on": true,
+    "path": "1",
+    "pp": [],
+    "type": "rack",
+    "var": {
+     "count": 3,
+     "sel": 1
+    }
+   },
+   {
+    "chains": [],
+    "cls": "Eq8",
+    "macros": null,
+    "name": "EQ Eight",
+    "on": true,
+    "path": "2",
+    "pp": [
+     {
+      "def": 0.5,
+      "i": 1,
+      "items": null,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Param 1",
+      "quant": false,
+      "str": "0.50",
+      "v": 0.5
+     },
+     {
+      "def": 0.55,
+      "i": 2,
+      "items": null,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Param 2",
+      "quant": false,
+      "str": "0.55",
+      "v": 0.55
+     },
+     {
+      "def": 0.6,
+      "i": 3,
+      "items": null,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Param 3",
+      "quant": false,
+      "str": "0.60",
+      "v": 0.6
+     },
+     {
+      "def": 0.65,
+      "i": 4,
+      "items": null,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Param 4",
+      "quant": false,
+      "str": "0.65",
+      "v": 0.65
+     },
+     {
+      "def": 1.0,
+      "i": 5,
+      "items": [
+       "Low",
+       "Mid",
+       "High"
+      ],
+      "max": 2.0,
+      "min": 0.0,
+      "name": "Mode",
+      "quant": true,
+      "str": "Mid",
+      "v": 1.0
+     },
+     {
+      "def": 0.5,
+      "i": 6,
+      "items": null,
+      "max": 1.0,
+      "min": 0.0,
+      "name": "Param 6",
+      "quant": false,
+      "str": "0.50",
+      "v": 0.5
+     }
+    ],
+    "type": "audio_fx",
+    "var": null
+   }
+  ],
+  "tr": "t2"
+ },
+ "s": "devices",
+ "t": "sec"
+}

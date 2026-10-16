@@ -53,7 +53,7 @@ import com.livecompanion.ui.theme.LiveType
  * MIDI / return tracks from the top bar. Reordering is NOT possible: Live's API has no move_track (docs/LOM_NOTES.md).
  */
 @Composable
-fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier) {
+fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier, onFocused: (() -> Unit)? = null) {
     val tracks by store.tracks.collectAsState()
     val focus by store.focus.collectAsState()
     var expanded by remember { mutableStateOf<String?>(null) }
@@ -65,6 +65,7 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
             store.focusPending(ref)
             client.op("focus.set", "tr" to ref)
         }
+        onFocused?.invoke()
     }
 
     fun insertIndex(): Int {
@@ -116,7 +117,7 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
         )
     }
 
-    Column(modifier.fillMaxSize().background(LiveColors.Bg), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+    Column(modifier.then(if (onFocused == null) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).background(LiveColors.Bg), verticalArrangement = Arrangement.spacedBy(1.dp)) {
         Row(
             Modifier.fillMaxWidth().background(LiveColors.Panel).padding(1.dp),
             horizontalArrangement = Arrangement.spacedBy(1.dp),
@@ -127,7 +128,7 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
             LiveTextButton("+ Return", { client.op("track.create", "kind" to "return") }, Modifier.weight(1f))
         }
         LiveText(
-            "Order is fixed here: Live's API has no move-track, so reorder tracks in Live itself.",
+            "To reorder, drag tracks in Live (its API has no move-track).",
             Modifier.fillMaxWidth().background(LiveColors.Panel).padding(horizontal = 8.dp, vertical = 3.dp),
             LiveType.Label, LiveColors.TextDim, maxLines = 2,
         )
@@ -139,7 +140,7 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
         } else {
             val master = rows.firstOrNull { it.kind == "master" }
             val scrolling = if (master != null) rows.filter { it !== master } else rows
-            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+            BoxWithConstraints(Modifier.fillMaxWidth().then(if (onFocused == null) Modifier.weight(1f) else Modifier.heightIn(max = 420.dp))) {
                 // Wide screens (tablets): rows flow into 2-3 columns instead of ~1800px-wide rows.
                 val cols = (maxWidth / 440.dp).toInt().coerceIn(1, 3)
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {

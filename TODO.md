@@ -4,8 +4,7 @@ Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (wh
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
 ## NOW (2026-10-16, owner testing on phone)
-- [~] Agent 1: Connect-screen settings/updates, demo mode, editable track picker, more zoom-out, bigger top bar,
-      optimistic drags everywhere, rounded-corner safe insets.
+- [x] Agent 1 (code done, gate run pending review): Connect settings/updates, demo mode (DemoClient), editable track picker (TracksScreen reused), zoom-out limits, 40dp top bar, OptimisticDrag helper (faders/knobs/loop brace only so far; note/clip/marker/device-param drags still server-echo driven), rounded-corner insets (Corners).
 - [~] Agent 2: waveforms without helper (clip.peaks in remote script, background thread).
 - [ ] AFTER agent 1: take lanes hold-drag promote/demote/move (track view + Takes tab), server ops for demote.
 - [ ] Then: build gate → CONFORMANCE REVIEW (reviewer agent fills qa/CONFORMANCE.md on emulator; FAILs fixed)
@@ -13,6 +12,7 @@ Rule: update this file when starting/finishing anything. If interrupted, resume 
 - Process rule (owner, 2026-10-16): "do more reviewing with my obvious preferences" — every release gated on
   qa/CONFORMANCE.md; derive and apply Core principles proactively.
 
+2026-10-16 waveforms without helper: `clip.peaks` op (remote_script core/peaks.py, background thread, deferred res) + Android PeaksClient WS-first/helper-fallback DONE, uncommitted. Pytest green; real-Live check pending (Wine path, large AIFF).
 ## RESUME HERE — Milestone 2 "UI lock-in" (owner feedback recorded in PREFERENCES 2026-10-15; owner asleep)
 2026-10-16 P4 fix pass DONE, uncommitted (see qa/REVIEW_LOG P4 "fixed(pending commit)"): note-bar MIDI clips, selected-on-top, updater resume + test-channel UI, icon gap/scale, 3-row portrait chrome, browser chip fade, tracks multi-column + pinned master, device cell scaling + tablet scale, shared 300ms hold-drag. Next: commit, release test8, emulator re-check (icon, updater resume, device drag).
 2026-10-16 night: QA passes 4–6 + fixes → test8, test9, test10; updater verified end-to-end incl. resume after

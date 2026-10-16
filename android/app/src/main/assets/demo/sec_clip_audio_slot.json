@@ -1,0 +1,57 @@
+{
+ "d": {
+  "audio": true,
+  "color": 15029152,
+  "end_marker": 6.0,
+  "file_path": "C:\\LiveCompanion\\mock\\media\\sine_a.wav",
+  "gain": 0.4,
+  "gain_str": "0.0 dB",
+  "launch_mode": 0,
+  "launch_quant": 0,
+  "legato": false,
+  "len": 6.0,
+  "loc": {
+   "i": 0,
+   "tr": "t3",
+   "w": "slot"
+  },
+  "loop_end": 6.0,
+  "loop_start": 0.0,
+  "looping": true,
+  "muted": false,
+  "name": "Vox A",
+  "pitch_coarse": 0,
+  "pitch_fine": 0.0,
+  "rec": false,
+  "sample_len": 66150.0,
+  "sample_rate": 22050.0,
+  "signature": [
+   4,
+   4
+  ],
+  "start": 0.0,
+  "start_marker": 0.0,
+  "warp_markers": [
+   {
+    "beat": 0.0,
+    "sample_time": 0.0
+   },
+   {
+    "beat": 6.0,
+    "sample_time": 3.0
+   }
+  ],
+  "warp_mode": "Beats",
+  "warp_modes": [
+   "Beats",
+   "Tones",
+   "Texture",
+   "Re-Pitch",
+   "Complex",
+   "Complex Pro"
+  ],
+  "warping": true
+ },
+ "s": "clip",
+ "t": "sec"
+}

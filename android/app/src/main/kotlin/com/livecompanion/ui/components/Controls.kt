@@ -129,10 +129,11 @@ fun LiveFader(
     enabled: Boolean = true,
     onFinished: () -> Unit = {},
 ) {
-    var local by remember { mutableStateOf<Float?>(null) }
+    val opt = rememberOptimistic<Float>(same = { x, y -> kotlin.math.abs(x - y) < (valueRange.endInclusive - valueRange.start) * 0.003f })
+    opt.SettleEffect(value)
     var fine by remember { mutableStateOf(false) }
     val span = (valueRange.endInclusive - valueRange.start).coerceAtLeast(1e-6f)
-    val shown = (local ?: value).coerceIn(valueRange.start, valueRange.endInclusive)
+    val shown = opt.display(value).coerceIn(valueRange.start, valueRange.endInclusive)
     val frac = (shown - valueRange.start) / span
     val bg = LiveColors.PanelHi
     val fill = if (enabled) color else LiveColors.TextDim
@@ -142,14 +143,14 @@ fun LiveFader(
             .liveDrag(
                 vertical = vertical,
                 enabled = enabled,
-                onStart = { local = value },
-                onEnd = { local = null; onFinished() },
+                onStart = { opt.begin(opt.display(value)) },
+                onEnd = { opt.release(); onFinished() },
                 onFine = { fine = it },
-                onReset = { local = null; onValueChange(defaultValue) },
+                onReset = { opt.begin(defaultValue); opt.release(); onValueChange(defaultValue) },
             ) { d ->
-                val cur = (local ?: value) + d * span
+                val cur = opt.display(value) + d * span
                 val next = cur.coerceIn(valueRange.start, valueRange.endInclusive)
-                local = next
+                opt.move(next)
                 onValueChange(next)
             },
         contentAlignment = Alignment.Center,
@@ -203,10 +204,11 @@ fun LiveKnob(
     enabled: Boolean = true,
     onFinished: () -> Unit = {},
 ) {
-    var local by remember { mutableStateOf<Float?>(null) }
+    val opt = rememberOptimistic<Float>(same = { x, y -> kotlin.math.abs(x - y) < (valueRange.endInclusive - valueRange.start) * 0.003f })
+    opt.SettleEffect(value)
     var fine by remember { mutableStateOf(false) }
     val span = (valueRange.endInclusive - valueRange.start).coerceAtLeast(1e-6f)
-    val frac = (((local ?: value) - valueRange.start) / span).coerceIn(0f, 1f)
+    val frac = ((opt.display(value) - valueRange.start) / span).coerceIn(0f, 1f)
     Column(modifier.widthIn(min = knobSize), horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(
             Modifier
@@ -215,13 +217,13 @@ fun LiveKnob(
                     vertical = true,
                     enabled = enabled,
                     travelPx = 160f * 2.5f,
-                    onStart = { local = value },
-                    onEnd = { local = null; onFinished() },
+                    onStart = { opt.begin(opt.display(value)) },
+                    onEnd = { opt.release(); onFinished() },
                     onFine = { fine = it },
-                    onReset = { local = null; onValueChange(defaultValue) },
+                    onReset = { opt.begin(defaultValue); opt.release(); onValueChange(defaultValue) },
                 ) { d ->
-                    val next = ((local ?: value) + d * span).coerceIn(valueRange.start, valueRange.endInclusive)
-                    local = next
+                    val next = (opt.display(value) + d * span).coerceIn(valueRange.start, valueRange.endInclusive)
+                    opt.move(next)
                     onValueChange(next)
                 },
         ) {

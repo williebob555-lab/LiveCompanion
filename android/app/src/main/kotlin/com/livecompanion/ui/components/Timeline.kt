@@ -73,9 +73,9 @@ class TimelineView {
     }
 
     /** Limits for a track view whose content ends at [contentEnd] beats; [dens] = px per dp. */
-    fun setLimits(contentEnd: Double, dens: Float) {
+    fun setLimits(contentEnd: Double, dens: Float, bpb: Double = 4.0) {
         if (widthPx <= 0f) return
-        val lo = fitPpb(0.0, contentEnd).coerceIn(MIN_PPB, MAX_PPB)
+        val lo = zoomOutPpb(widthPx, contentEnd, bpb).coerceIn(MIN_PPB, MAX_PPB)
         minPpb = lo
         maxPpb = max(lo, 24f * dens / 0.0625f).coerceAtMost(MAX_PPB * 4f)
     }
@@ -94,8 +94,18 @@ class TimelineView {
     fun xOf(beat: Double): Float = ((beat - start) * ppb).toFloat()
 
     companion object {
-        const val MIN_PPB = 0.3f
+        const val MIN_PPB = 0.1f
         const val MAX_PPB = 900f
+
+        /**
+         * Zoom-out limit of a track view: the whole song ([contentEnd] beats + 8 bars) occupies ~1/4 of the width, but a
+         * bar never gets narrower than 2 px.
+         */
+        fun zoomOutPpb(widthPx: Float, contentEnd: Double, bpb: Double): Float {
+            val b = bpb.coerceAtLeast(1.0)
+            val quarter = (widthPx / (4.0 * (contentEnd + 8.0 * b))).toFloat()
+            return max(quarter, (2.0 / b).toFloat())
+        }
     }
 }
 

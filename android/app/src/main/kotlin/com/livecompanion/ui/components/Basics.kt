@@ -153,7 +153,7 @@ enum class LiveIconKind { Play, Stop, Rec, SessionRec, Overdub, Loop, Metronome,
 
 /** Vector-drawn icons (no font glyph dependence). */
 @Composable
-fun LiveIcon(kind: LiveIconKind, color: Color, modifier: Modifier = Modifier, size: Dp = 14.dp) {
+fun LiveIcon(kind: LiveIconKind, color: Color, modifier: Modifier = Modifier, size: Dp = 18.dp) {
     Canvas(modifier.size(size)) { drawIcon(kind, color) }
 }
 

@@ -71,7 +71,7 @@ fun TrackHeader(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
 
 /** prev / name picker / next. Owns the picker dialog. */
 @Composable
-internal fun RowScope.TrackNav(store: LiveStore, client: LiveClient, nameModifier: Modifier, h: Dp = 32.dp, btnW: Dp = 32.dp) {
+internal fun RowScope.TrackNav(store: LiveStore, client: LiveClient, nameModifier: Modifier, h: Dp = 40.dp, btnW: Dp = 40.dp) {
     val focus by store.focus.collectAsState()
     val tracks by store.tracks.collectAsState()
     var picker by remember { mutableStateOf(false) }
@@ -92,17 +92,13 @@ internal fun RowScope.TrackNav(store: LiveStore, client: LiveClient, nameModifie
     }
     LiveIconButton(LiveIconKind.Next, { goto(if (idx < 0 || idx >= all.lastIndex) 0 else idx + 1) }, minWidth = btnW, minHeight = h, enabled = all.size > 1)
     if (picker) {
-        TrackPickerDialog(store, focus.ref, onDismiss = { picker = false }) { ref ->
-            picker = false
-            store.focusPending(ref)
-            client.op("focus.set", "tr" to ref)
-        }
+        TrackPickerDialog(store, client, onDismiss = { picker = false })
     }
 }
 
 /** arm / mute / solo / monitor of the focused track. */
 @Composable
-internal fun RowScope.TrackToggles(store: LiveStore, client: LiveClient, h: Dp = 32.dp, btnW: Dp = 32.dp) {
+internal fun RowScope.TrackToggles(store: LiveStore, client: LiveClient, h: Dp = 40.dp, btnW: Dp = 40.dp) {
     val focus by store.focus.collectAsState()
     val m = Modifier
     val ref = focus.ref
@@ -123,14 +119,14 @@ internal fun RowScope.TrackToggles(store: LiveStore, client: LiveClient, h: Dp =
                 val nxt = (mon + 1) % 3
                 set("monitor", nxt, { it.copy(monitor = nxt) }, { it.copy(monitor = nxt) })
             },
-            m, mon == 0, LiveColors.Accent, minHeight = h, minWidth = 62.dp,
+            m, mon == 0, LiveColors.Accent, minHeight = h, minWidth = 70.dp,
         )
     }
 }
 
 /** vol / pan mini faders and the focused meter, filling the remaining width of the row. */
 @Composable
-internal fun RowScope.TrackFaders(store: LiveStore, client: LiveClient, h: Dp = 28.dp) {
+internal fun RowScope.TrackFaders(store: LiveStore, client: LiveClient, h: Dp = 34.dp) {
     val focus by store.focus.collectAsState()
     val rt = store.rt.collectAsState() // read only in draw lambdas below: meters never recompose this
     VolFader(store, client, focus, Modifier.weight(2f), h)
@@ -178,30 +174,11 @@ private fun PanFader(store: LiveStore, client: LiveClient, focus: FocusState, mo
     )
 }
 
-/** Simple dialog list of tracks, returns and master. No drawer. */
+/** Track list dialog = the Tracks-tab editor (focus, rename, colour, arm/M/S, duplicate, delete, add), closes on focus. */
 @Composable
-fun TrackPickerDialog(store: LiveStore, selected: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
-    val tracks by store.tracks.collectAsState()
-    LiveDialog("Track", onDismiss) {
-        LazyColumn(Modifier.weight(1f, fill = false)) {
-            items(tracks.all, key = { it.ref }) { t ->
-                val sel = t.ref == selected
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 40.dp)
-                        .background(if (sel) LiveColors.PanelHi else LiveColors.Panel)
-                        .clickable { onPick(t.ref) }
-                        .padding(start = if (t.group != null) 20.dp else 8.dp, end = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    ColorChip(t.color)
-                    LiveText(t.name, Modifier.weight(1f), LiveType.Body, if (sel) LiveColors.Accent else LiveColors.Text)
-                    if (t.kind == "return" || t.kind == "master" || t.kind == "group") LiveLabel(t.kind)
-                }
-            }
-        }
+fun TrackPickerDialog(store: LiveStore, client: LiveClient, onDismiss: () -> Unit) {
+    LiveDialog("Tracks", onDismiss) {
+        TracksScreen(store, client, Modifier.weight(1f, fill = false), onFocused = onDismiss)
         LiveDialogButtons { LiveTextButton("Close", onDismiss, minWidth = 64.dp) }
     }
 }

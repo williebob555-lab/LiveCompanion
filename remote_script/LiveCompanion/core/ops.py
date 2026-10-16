@@ -141,6 +141,7 @@ class Ops(object):
         t["clip.crop"] = lambda c, a: _call(self._clip(a).clip, "crop")
         t["clip.quantize"] = self.clip_quantize
         t["clip.to_arr"] = self.clip_to_arr
+        t["clip.peaks"] = self.clip_peaks
         t["arr.create_midi"] = self.arr_create_midi
         t["arr.move"] = self.arr_move
         t["arr.trim"] = self.arr_trim
@@ -616,6 +617,18 @@ class Ops(object):
         grid = _i(need(a, "grid"), "grid", 0, 13)
         amount = float(_n(a.get("amount", 1.0), "amount", 0.0, 1.0))
         _call(cr.clip, "quantize", grid, amount)
+
+    def clip_peaks(self, c, a):
+        """Waveform min/max peaks, computed on the core's worker thread; the reply is sent later by Core.
+        Only the file path is read here (main thread); the worker does pure file I/O."""
+        n = _i(need(a, "n"), "n", 16, 8192)
+        cr = self._clip(a)
+        if not g(cr.clip, "is_audio_clip", False):
+            raise BadArgs("not an audio clip")
+        path = g(cr.clip, "file_path", "")
+        if not isinstance(path, str) or not path:
+            raise OpError("no audio file")
+        return self.core.defer_peaks(c, path, n)
 
     def clip_to_arr(self, c, a):
         cr = self._clip(a)

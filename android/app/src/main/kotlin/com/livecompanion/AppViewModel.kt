@@ -9,6 +9,7 @@ import com.livecompanion.net.DiscoveredHost
 import com.livecompanion.net.HostTarget
 import com.livecompanion.net.ConnStatus
 import com.livecompanion.net.LiveClient
+import com.livecompanion.net.DemoClient
 import com.livecompanion.state.LiveStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,7 +22,15 @@ import kotlinx.coroutines.launch
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     val prefs = Prefs(app)
     val store = LiveStore()
-    val client = LiveClient(store, viewModelScope)
+    val liveClient = LiveClient(store, viewModelScope)
+    val demoClient = DemoClient(store, viewModelScope, { name ->
+        runCatching { app.assets.open("demo/$name.json").bufferedReader(Charsets.UTF_8).use { it.readText() } }.getOrNull()
+    })
+    private val _demo = MutableStateFlow(false)
+    /** True while the built-in demo set is shown instead of a real Live connection. */
+    val demo: StateFlow<Boolean> = _demo.asStateFlow()
+    /** The client the UI should talk to right now. */
+    val client: LiveClient get() = if (_demo.value) demoClient else liveClient
 
     private val _recents = MutableStateFlow(prefs.recents())
     val recents: StateFlow<List<HostTarget>> = _recents.asStateFlow()
@@ -38,9 +47,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         Beacon.hosts(app).stateIn(viewModelScope, SharingStarted.WhileSubscribed(2000), emptyList())
 
     init {
-        client.followPref = if (prefs.followLive) true else null
+        liveClient.followPref = if (prefs.followLive) true else null
+        demoClient.followPref = null
         viewModelScope.launch {
-            client.state.collect { st ->
+            liveClient.state.collect { st ->
                 val t = st.target
                 if (st.status == ConnStatus.CONNECTED && t != null && _active.value == null) {
                     // Only a successful hello makes a host "known".
@@ -56,12 +66,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun connect(t: HostTarget) {
-        client.connect(t.host, t.port)
+        liveClient.connect(t.host, t.port)
+    }
+
+    /** Opens the main shell on the built-in fake set; nothing touches the network. */
+    fun startDemo() {
+        liveClient.disconnect()
+        demoClient.connect("demo", 0)
+        _demo.value = true
+        _active.value = DemoClient.DEMO_TARGET
     }
 
     fun disconnect() {
-        prefs.lastHost = null
-        client.disconnect()
+        if (_demo.value) {
+            demoClient.disconnect()
+            _demo.value = false
+        } else {
+            prefs.lastHost = null
+        }
+        liveClient.disconnect()
         _active.value = null
     }
 

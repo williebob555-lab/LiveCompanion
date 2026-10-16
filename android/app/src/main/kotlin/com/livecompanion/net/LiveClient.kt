@@ -68,7 +68,7 @@ class LiveException(message: String) : Exception(message)
  * - Reconnects with backoff (0.5, 1, 2, 4, 5 s ...) and fully resyncs: the server re-sends every
  *   global section after `hello`; this client then restores focus, follow and the open clip.
  */
-class LiveClient(
+open class LiveClient(
     val store: LiveStore,
     private val scope: CoroutineScope,
     private val http: OkHttpClient = OkHttpClient.Builder()
@@ -81,7 +81,7 @@ class LiveClient(
     private val pingMs: Long = PING_MS,
     private val silenceMs: Long = SILENCE_MS,
 ) {
-    private val _state = MutableStateFlow(ConnState())
+    protected val _state = MutableStateFlow(ConnState())
     val state: StateFlow<ConnState> = _state.asStateFlow()
 
     private var loopJob: Job? = null
@@ -96,7 +96,7 @@ class LiveClient(
     @Volatile var followPref: Boolean? = null
 
     // ---------------------------------------------------------------- connection
-    fun connect(host: String, port: Int) {
+    open fun connect(host: String, port: Int) {
         stopLoop()
         store.reset()
         lastFocus = ""
@@ -105,7 +105,7 @@ class LiveClient(
         loopJob = scope.launch(Dispatchers.IO) { runLoop(target) }
     }
 
-    fun disconnect() {
+    open fun disconnect() {
         stopLoop()
         store.reset()
         lastFocus = ""
@@ -291,7 +291,7 @@ class LiveClient(
 
     // ---------------------------------------------------------------- requests
     /** Sends a request and suspends for the reply. Throws [LiveException] on `ok:false`, timeout or no connection. */
-    suspend fun request(op: String, args: JsonObject = JsonObject(emptyMap()), timeoutMs: Long = 8000): JsonElement {
+    open suspend fun request(op: String, args: JsonObject = JsonObject(emptyMap()), timeoutMs: Long = 8000): JsonElement {
         val ws = socket ?: throw LiveException("Not connected")
         val id = nextId.getAndIncrement()
         val def = CompletableDeferred<JsonObject>()
@@ -348,7 +348,7 @@ class LiveClient(
      * For continuous controls (faders/knobs): at most one request per [intervalMs] per [key], and the
      * final value is always sent.
      */
-    fun sendThrottled(key: String, op: String, args: JsonObject, intervalMs: Long = 60) {
+    fun sendThrottled(key: String, op: String, args: JsonObject, intervalMs: Long = 33) {
         throttle[key] = op to args
         if (throttleRunning.putIfAbsent(key, true) != null) return
         scope.launch {

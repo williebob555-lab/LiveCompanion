@@ -117,5 +117,6 @@ Every release must pass qa/CONFORMANCE.md (a reviewer agent audits each screen a
 - Coalesce: listener callbacks only mark sections dirty; serialization happens once per tick.
 - Meters/playhead: realtime channel at <= 20 Hz, only while a client is connected.
 - MIDI notes: send only for the clip open in the editor; cap note count per message (chunk if needed).
-- Waveform peaks: computed by the helper (not Live), cached on disk keyed by path+mtime.
+- Waveform peaks: remote script `clip.peaks` decodes WAV/AIFF on ONE background thread (file I/O only, LOM never touched
+  off-thread; path read on main thread; reply sent from the tick). Helper is only the fallback for mp3/flac/ogg.
 - Android: Compose recomposition — state flows per section; avoid recomposing whole screen on meter ticks.

@@ -1,0 +1,43 @@
+{
+ "d": {
+  "lanes": [
+   {
+    "clips": [
+     {
+      "color": 12581632,
+      "end": 6.0,
+      "i": 0,
+      "name": "Gtr take 1",
+      "start": 0.0
+     }
+    ],
+    "i": 0,
+    "name": "Take Lane 1"
+   },
+   {
+    "clips": [
+     {
+      "color": 16249980,
+      "end": 6.0,
+      "i": 0,
+      "name": "Gtr take 2",
+      "start": 0.0
+     },
+     {
+      "color": 16249980,
+      "end": 14.0,
+      "i": 1,
+      "name": "Gtr take 2b",
+      "start": 8.0
+     }
+    ],
+    "i": 1,
+    "name": "Take Lane 2"
+   }
+  ],
+  "supported": true,
+  "tr": "t4"
+ },
+ "s": "takes",
+ "t": "sec"
+}

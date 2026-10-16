@@ -54,7 +54,8 @@ fun InfoStrip(store: LiveStore, statusOverride: ConnStatus?, client: LiveClient,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Column(Modifier.fillMaxWidth(), Arrangement.spacedBy(4.dp), Alignment.CenterHorizontally) {
-            Box(Modifier.size(7.dp).background(dot, CircleShape))
+            if (client is com.livecompanion.net.DemoClient) LiveText("DEMO", style = StripLabel.copy(color = LiveColors.Accent), textAlign = TextAlign.Center)
+            else Box(Modifier.size(7.dp).background(dot, CircleShape))
             Cell("POS", formatPosition(pos, s.sigNum, s.sigDen))
             Cell("BPM", formatTempo(s.tempo))
             Cell("SIG", "${s.sigNum}/${s.sigDen}")

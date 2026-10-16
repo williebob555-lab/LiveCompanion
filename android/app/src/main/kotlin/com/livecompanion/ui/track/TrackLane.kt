@@ -105,6 +105,9 @@ class RecState {
 }
 
 /** In-flight clip edit shown while dragging / until the server section catches up. */
+/** Loop brace being dragged (or released and waiting for the server echo): drawn instead of the server value. */
+private class LoopPrev(val loop: TLoop, val done: Boolean)
+
 private class DragEdit(val i: Int, val start: Double, val end: Double, val committed: Boolean, val serial: Int)
 
 private enum class Zone { Scrub, Brace, Main, Take, None }
@@ -157,6 +160,13 @@ fun TrackLane(
     var heightPx by remember { mutableStateOf(0f) }
     var drag by remember { mutableStateOf<DragEdit?>(null) }
     var dragSerial by remember { mutableStateOf(0) }
+    var loopPrev by remember { mutableStateOf<LoopPrev?>(null) }
+    LaunchedEffect(model.loop, loopPrev) {
+        val lp = loopPrev
+        if (lp != null && lp.done) {
+            if (lp.loop == model.loop) loopPrev = null else { delay(600); if (loopPrev === lp) loopPrev = null }
+        }
+    }
     val lastTap = remember { longArrayOf(0L, 0L) } // time ns, key (clip index or -1)
     val lastTapX = remember { floatArrayOf(0f) }
 
@@ -311,7 +321,7 @@ fun TrackLane(
 
                     fun cancelEdits() {
                         if (mode == Mode.Scrub) a.onScrub(max(0.0, snapTo(view.beatAt(lastPos.x), grid)), true)
-                        if (mode == Mode.LoopL || mode == Mode.LoopR || mode == Mode.LoopBody) a.onLoop(loopOrig.start, loopOrig.len, true)
+                        if (mode == Mode.LoopL || mode == Mode.LoopR || mode == Mode.LoopBody) { loopPrev = null; a.onLoop(loopOrig.start, loopOrig.len, true) }
                         if (mode == Mode.Move || mode == Mode.TrimL || mode == Mode.TrimR) drag = null
                     }
 
@@ -360,7 +370,7 @@ fun TrackLane(
                             // ---------------------------------------------------- release
                             when (mode) {
                                 Mode.Scrub -> scrubAt(c.position.x, true)
-                                Mode.LoopL, Mode.LoopR, Mode.LoopBody -> a.onLoop(loopNow.start, loopNow.len, true)
+                                Mode.LoopL, Mode.LoopR, Mode.LoopBody -> { loopPrev = LoopPrev(loopNow, true); a.onLoop(loopNow.start, loopNow.len, true) }
                                 Mode.Move -> drag?.let { d -> drag = DragEdit(d.i, d.start, d.end, true, d.serial); a.onMove(d.i, d.start) }
                                 Mode.TrimL -> drag?.let { d -> drag = DragEdit(d.i, d.start, d.end, true, d.serial); a.onTrim(d.i, d.start, null) }
                                 Mode.TrimR -> drag?.let { d -> drag = DragEdit(d.i, d.start, d.end, true, d.serial); a.onTrim(d.i, null, d.end) }
@@ -446,17 +456,17 @@ fun TrackLane(
                                     val end = loopOrig.start + loopOrig.len
                                     val s = snapTo(view.beatAt(x), g).coerceIn(0.0, end - g)
                                     val nl = TLoop(loopOrig.enabled, s, end - s)
-                                    if (nl != loopNow) { loopNow = nl; a.onLoop(nl.start, nl.len, false) }
+                                    if (nl != loopNow) { loopNow = nl; loopPrev = LoopPrev(nl, false); a.onLoop(nl.start, nl.len, false) }
                                 }
                                 Mode.LoopR -> {
                                     val e = snapTo(view.beatAt(x), g)
                                     val nl = TLoop(loopOrig.enabled, loopOrig.start, max(g, e - loopOrig.start))
-                                    if (nl != loopNow) { loopNow = nl; a.onLoop(nl.start, nl.len, false) }
+                                    if (nl != loopNow) { loopNow = nl; loopPrev = LoopPrev(nl, false); a.onLoop(nl.start, nl.len, false) }
                                 }
                                 Mode.LoopBody -> {
                                     val s = max(0.0, snapTo(view.beatAt(x) - loopGrab, g))
                                     val nl = TLoop(loopOrig.enabled, s, loopOrig.len)
-                                    if (nl != loopNow) { loopNow = nl; a.onLoop(nl.start, nl.len, false) }
+                                    if (nl != loopNow) { loopNow = nl; loopPrev = LoopPrev(nl, false); a.onLoop(nl.start, nl.len, false) }
                                 }
                                 else -> Unit
                             }
@@ -472,7 +482,7 @@ fun TrackLane(
             val takesN = if (model.showTakes) min(model.takes.size, 4) else 0
             val takeH = takeHFor(size.height, rulerPx, takesN, takeH0)
             val mh = max(size.height - rulerPx - takesN * takeH, 40f * dens)
-            drawBase(view, model, drag, peaks, scrubPx, rulerPx, mh, takeH, tm, dens)
+            drawBase(view, model, loopPrev?.loop, drag, peaks, scrubPx, rulerPx, mh, takeH, tm, dens)
         }
         // Overlay: recording region + playhead (reads clock.shown per frame; nothing recomposes).
         Canvas(Modifier.fillMaxSize()) {
@@ -515,7 +525,7 @@ private fun lighten(c: Color, t: Float): Color =
 private fun barPxOf(ppb: Float, bpb: Double): Float = (ppb * bpb).toFloat()
 
 private fun DrawScope.drawBase(
-    view: TimelineView, m: LaneModel, drag: DragEdit?, peaks: Map<String, Peaks>,
+    view: TimelineView, m: LaneModel, loopOverride: TLoop?, drag: DragEdit?, peaks: Map<String, Peaks>,
     scrubPx: Float, rulerPx: Float, mainH: Float, takeH: Float, tm: TextMeasurer, dens: Float,
 ) {
     val w = size.width
@@ -615,7 +625,7 @@ private fun DrawScope.drawBase(
     }
 
     // ---- loop brace + punch
-    val lp = m.loop
+    val lp = loopOverride ?: m.loop
     if (lp.len > 0) {
         val ls = view.xOf(lp.start)
         val le = view.xOf(lp.start + lp.len)

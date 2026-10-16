@@ -58,6 +58,7 @@ import kotlinx.serialization.json.jsonPrimitive
 @Composable
 fun ClipScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier) {
     val clip by store.clip.collectAsState()
+    LaunchedEffect(client) { com.livecompanion.net.PeaksClient.shared.live = client }
     val focus by store.focus.collectAsState()
     val slots by store.slots.collectAsState()
     // P2-1-15: the Clip tab follows focus. A clip open on another track is closed; then the new track's playing /

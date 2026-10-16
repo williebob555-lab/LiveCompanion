@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -51,14 +52,63 @@ private sealed interface UpdateUi {
     data class Failed(val msg: String) : UpdateUi
 }
 
-/** "More" tab = settings: host info, follow-Live-selection, update channel + in-app updates. */
+/** "More" tab = settings: host info, follow-Live-selection, plus the connection-free [SettingsContent]. */
 @Composable
 fun MoreScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
     val actions = LocalAppActions.current
     val conn by client.state.collectAsState()
     val hello by store.hello.collectAsState()
     val session by store.session.collectAsState()
+    val demo = client is com.livecompanion.net.DemoClient
+    SettingsContent(modifier) {
+        Section("Host") {
+            Info("Address", conn.target?.label ?: "-")
+            Info("Status", conn.status.name.lowercase())
+            Info("Ableton Live", if (demo) "Demo (built-in set)" else hello?.live?.ifEmpty { null } ?: "-")
+            Info("Host type", hello?.host?.ifEmpty { null } ?: "-")
+            LiveTextButton(if (demo) "Leave demo" else "Disconnect", actions.disconnect, Modifier.fillMaxWidth())
+        }
+
+        Section("Selection") {
+            LiveTextButton(
+                if (session.follow) "Follow Live's selected track: ON" else "Follow Live's selected track: OFF",
+                {
+                    val v = !session.follow
+                    actions.prefs?.followLive = v
+                    client.followPref = v
+                    client.op("focus.follow", "on" to v)
+                    store.updateSession { it.copy(follow = v) }
+                },
+                Modifier.fillMaxWidth(), on = session.follow,
+            )
+        }
+
+    }
+}
+
+/** Full-screen settings for the Connect screen (no Live connection needed): updates, orientation, help. */
+@Composable
+fun SettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxSize().background(LiveColors.Bg)) {
+        Row(
+            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            LiveTextButton("< Back", onBack, minHeight = 36.dp, minWidth = 64.dp)
+            LiveText("Settings & updates", Modifier.weight(1f), LiveType.Body, LiveColors.Accent)
+        }
+        SettingsContent(Modifier.weight(1f))
+    }
+}
+
+/**
+ * App settings that need no Live connection: updater (internet only), orientation, help. [connected] is inserted
+ * after the update section (MoreScreen puts the Host / Follow sections there).
+ */
+@Composable
+fun SettingsContent(modifier: Modifier = Modifier, connected: (@Composable ColumnScope.() -> Unit)? = null) {
+    val context = LocalContext.current
+    val actions = LocalAppActions.current
     val scope = rememberCoroutineScope()
     val installedIsTest = remember { com.livecompanion.update.Version.parse(AppUpdates.installedVersion(context))?.preRelease != null }
     var test by remember { mutableStateOf(installedIsTest || (actions.prefs?.testChannel ?: false)) }
@@ -172,27 +222,7 @@ fun MoreScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifi
             }
         }
 
-        Section("Host") {
-            Info("Address", conn.target?.label ?: "-")
-            Info("Status", conn.status.name.lowercase())
-            Info("Ableton Live", hello?.live?.ifEmpty { null } ?: "-")
-            Info("Host type", hello?.host?.ifEmpty { null } ?: "-")
-            LiveTextButton("Disconnect", actions.disconnect, Modifier.fillMaxWidth())
-        }
-
-        Section("Selection") {
-            LiveTextButton(
-                if (session.follow) "Follow Live's selected track: ON" else "Follow Live's selected track: OFF",
-                {
-                    val v = !session.follow
-                    actions.prefs?.followLive = v
-                    client.followPref = v
-                    client.op("focus.follow", "on" to v)
-                    store.updateSession { it.copy(follow = v) }
-                },
-                Modifier.fillMaxWidth(), on = session.follow,
-            )
-        }
+        if (connected != null) connected()
 
         Section("Screen") {
             LiveLabel("Orientation")

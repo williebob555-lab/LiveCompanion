@@ -70,7 +70,7 @@ fun TransportBar(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
 }
 
 @Composable
-internal fun RowScope.TransportButtons(store: LiveStore, client: LiveClient, h: Dp = 32.dp, minW: Dp = 30.dp) {
+internal fun RowScope.TransportButtons(store: LiveStore, client: LiveClient, h: Dp = 40.dp, minW: Dp = 36.dp) {
     val s by store.session.collectAsState()
     fun toggle(k: String, cur: Boolean, patch: (SessionState, Boolean) -> SessionState) {
         client.op("song.set", "k" to k, "v" to !cur)
@@ -91,7 +91,7 @@ internal fun RowScope.TransportButtons(store: LiveStore, client: LiveClient, h: 
 }
 
 @Composable
-internal fun RowScope.TempoPos(store: LiveStore, client: LiveClient, tempoWeight: Float, posWeight: Float, h: Dp = 32.dp) {
+internal fun RowScope.TempoPos(store: LiveStore, client: LiveClient, tempoWeight: Float, posWeight: Float, h: Dp = 40.dp) {
     val s by store.session.collectAsState()
     var tempoDialog by remember { mutableStateOf(false) }
     LiveButton(
@@ -116,7 +116,7 @@ internal fun RowScope.TempoPos(store: LiveStore, client: LiveClient, tempoWeight
 }
 
 @Composable
-internal fun RowScope.UndoRedo(store: LiveStore, client: LiveClient, h: Dp = 32.dp, minW: Dp = 30.dp) {
+internal fun RowScope.UndoRedo(store: LiveStore, client: LiveClient, h: Dp = 40.dp, minW: Dp = 36.dp) {
     val s by store.session.collectAsState()
     W(LiveIconKind.Undo, false, LiveColors.Accent, enabled = s.canUndo, h = h, minW = minW) { client.op("song.undo") }
     W(LiveIconKind.Redo, false, LiveColors.Accent, enabled = s.canRedo, h = h, minW = minW) { client.op("song.redo") }
@@ -128,8 +128,8 @@ private fun RowScope.W(
     on: Boolean,
     color: Color,
     enabled: Boolean = true,
-    h: Dp = 32.dp,
-    minW: Dp = 30.dp,
+    h: Dp = 40.dp,
+    minW: Dp = 36.dp,
     onClick: () -> Unit,
 ) = LiveIconButton(icon, onClick, Modifier.weight(1f), on, color, enabled, minHeight = h, minWidth = minW)
 
@@ -139,7 +139,7 @@ internal fun formatTempo(t: Float): String =
 
 /** Bar.beat.sixteenth readout. Reads the realtime flow itself so only this leaf recomposes at 20 Hz. */
 @Composable
-fun PositionReadout(store: LiveStore, modifier: Modifier = Modifier, minHeight: Dp = 32.dp) {
+fun PositionReadout(store: LiveStore, modifier: Modifier = Modifier, minHeight: Dp = 40.dp) {
     val rt by store.rt.collectAsState()
     val s by store.session.collectAsState()
     val pos = if (rt.playing || rt.pos != 0.0) rt.pos else s.pos

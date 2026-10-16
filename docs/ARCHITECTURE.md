@@ -12,7 +12,7 @@ Android app (Kotlin/Compose) ──WebSocket JSON :9010──► LiveCompanion r
 | Remote script | `remote_script/LiveCompanion/` | Live 12's embedded Python 3.11, stdlib only | Subclasses `_Framework.ControlSurface`. Same code on Windows & Wine. |
 | Core handlers | `remote_script/LiveCompanion/core/` | pure Python | Protocol + serializers + ops. Takes a `song`/`app` object — real LOM or fake. |
 | Mock Live | `mock/` | desktop Python 3.11+ | Fake LOM objects + standalone server running the SAME core. Used by QA & dev. |
-| Helper | `helper/` | desktop Python 3.11+ | Peaks for audio files (wav/aiff native; others via ffmpeg if present), launch Live. |
+| Helper | `helper/` | desktop Python 3.11+ | OPTIONAL. Peaks for exotic formats (mp3/flac/ogg via ffmpeg) and launching Live. WAV/AIFF waveforms come from the remote script itself (`core/peaks.py`, op `clip.peaks`, background thread; `helper.py` keeps its own copy of the decoder). |
 | App | `android/` | minSdk 26, target latest | Compose, single-activity, OkHttp WebSocket, kotlinx.serialization. |
 
 ## Threading / tick model (remote script)
