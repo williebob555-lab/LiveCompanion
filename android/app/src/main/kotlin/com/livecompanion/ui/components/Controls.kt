@@ -33,6 +33,7 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.livecompanion.ui.theme.LiveColors
 import com.livecompanion.ui.theme.LiveShapes
 import com.livecompanion.ui.theme.LiveType
@@ -234,7 +235,15 @@ fun LiveKnob(
             val r = size.minDimension / 2 - stroke * 1.6f
             drawLine(if (fine) color else LiveColors.Text, c, Offset(c.x + (r * Math.cos(ang)).toFloat(), c.y + (r * Math.sin(ang)).toFloat()), 2.5f, StrokeCap.Round)
         }
-        if (label != null) LiveText(label, Modifier.widthIn(max = knobSize + 16.dp), LiveType.Label)
+        if (label != null) {
+            // Large font scale: tighter tracking + a second line so "Parameter 1..4" stay distinguishable (P2-2-5).
+            val big = androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.15f
+            LiveText(
+                label, Modifier.widthIn(max = knobSize + 16.dp),
+                if (big) LiveType.Label.copy(letterSpacing = 0.sp) else LiveType.Label,
+                maxLines = if (big) 2 else 1, textAlign = if (big) androidx.compose.ui.text.style.TextAlign.Center else null,
+            )
+        }
         if (valueText != null) LiveText(valueText, Modifier.widthIn(max = knobSize + 16.dp), LiveType.Small)
     }
 }

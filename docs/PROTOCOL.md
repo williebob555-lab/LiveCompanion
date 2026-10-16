@@ -77,8 +77,8 @@ Scenes/tracks: `scene.fire {i}`, `scene.create {i}`, `track.create {kind:"audio"
 Focus: `focus.set {tr}`, `focus.follow {on}`, `view.select {tr}` (select track in Live).
 Track: `track.set {tr,k,v}` k ∈ name,color,arm,mute,solo,monitor,folded,vol,pan,send(+`i`),in_type,in_ch,out_type;
 `track.stop {tr}`.
-Slots: `slot.fire {tr,i}`, `slot.create {tr,i,len}`, `slot.delete {tr,i}`, `slot.duplicate {tr,i}` (to next slot),
-`slot.copy {tr,i,to_tr,to_i}`, `slot.move {tr,i,to_tr,to_i}`,
+Slots: `slot.fire {tr,i}`, `slot.create {tr,i,len}`, `slot.delete {tr,i}`, `slot.duplicate {tr,i}` (to the next FREE slot below, new scene if none),
+`slot.copy {tr,i,to_tr,to_i,replace?}`, `slot.move {tr,i,to_tr,to_i,replace?|swap?}` — an OCCUPIED target is REFUSED (`err` contains "occupied") unless `replace:true` (overwrite) or, for move only, `swap:true` (exchange both clips via a scratch slot),
 `take.next {tr}` — take loop: arms track, fires first empty slot at/after last recorded one (creates scene if none).
 Names the new clip "Take N" (N = highest existing "Take n" on the track + 1; a newly created scene gets the same name). Returns `{i, name}`.
 Clips: `clip.fire {loc}`, `clip.stop {loc}`, `clip.open {loc}`, `clip.close`, `clip.set {loc,k,v}`
@@ -86,7 +86,7 @@ k ∈ name,color,sig_num (1-99),sig_den (1,2,4,8,16),looping,loop_start,loop_end
 launch_mode,launch_quant,legato,muted; `clip.delete {loc}`, `clip.duplicate_loop {loc}`, `clip.crop {loc}`,
 `clip.quantize {loc,grid,amount}`, `clip.to_arr {loc,time}`, `arr.create_midi {tr,start,len}`,
 `arr.move {loc,start}` (duplicate_clip_to_arrangement + delete original; returns `{i}` = new index),
-`arr.trim {loc, start?, end?}` (absolute beats; edits clip markers, verifies start_time/end_time, reverts + unsupported err if Live ignores it; unverified on real Live).
+`arr.trim {loc, start?, end?}` (absolute beats; refuses a result shorter than 1/16 beat; edits clip markers, verifies start_time/end_time, reverts + unsupported err if Live ignores it; unverified on real Live).
 Notes (opened MIDI clip): `notes.add {notes:[N without id]}`, `notes.modify {notes:[N]}`, `notes.remove {ids}`,
 `notes.clear`, `notes.transpose {ids,semis}`, `notes.duplicate {ids,offset}`.
 Warp (opened audio clip): `warp.add {beat,sample_time?}`, `warp.move {beat,to_beat}`, `warp.remove {beat}`.

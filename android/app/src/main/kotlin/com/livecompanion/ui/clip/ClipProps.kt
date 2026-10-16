@@ -107,7 +107,7 @@ fun ClipProps(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
                 DenseTextField(
                     name, { name = it; lastSent = it; ops.set("name", it) { c -> c.copy(name = it) } },
-                    Modifier.weight(1f).height(DenseH), placeholder = "Clip name",
+                    Modifier.weight(1f).height(DenseH), placeholder = if (clip.audio) "Audio" else "MIDI",
                 )
                 androidx.compose.foundation.layout.Box(
                     Modifier.size(DenseH).background(liveColor(clip.color), LiveShapes.Small).clickable { palette = true },

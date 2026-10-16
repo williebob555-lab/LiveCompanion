@@ -111,6 +111,10 @@ private enum class Mode { Pending, Hold, Pan, Move, TrimL, TrimR, Scrub, LoopL, 
 private const val HOLD_MS = 230L
 private const val TAKE_H_DP = 24f
 private const val BRACE_H_DP = 18f
+/** Visible trim handle width == edge grab zone (selected clip only). */
+private const val EDGE_DP = 14f
+/** No clip may be trimmed shorter than 1/16 beat (also enforced by the server). */
+const val MIN_CLIP_BEATS = 0.0625
 
 /** Minimum lane height needed for the main lane to stay usable (dp). */
 const val MIN_MAIN_LANE_DP = 56f
@@ -136,7 +140,7 @@ fun TrackLane(
     val rulerPx = scrubPx + bracePx
     val takeH = TAKE_H_DP * dens
     val edgeHit = 22f * dens
-    val clipEdge = 16f * dens
+    val clipEdge = EDGE_DP * dens
     val tapPad = 4f * dens
 
     val curM by rememberUpdatedState(model)
@@ -381,9 +385,9 @@ fun TrackLane(
                                 }
                                 Mode.Hold -> {
                                     val hc = hitClip
-                                    mode = if (hc != null) {
-                                        if (hitEdge < 0) Mode.TrimL else if (hitEdge > 0) Mode.TrimR else Mode.Move
-                                    } else Mode.Pan
+                                    // Hold-drag on an UNSELECTED clip always MOVES; only the selected clip's handles trim
+                                    // (and those arm immediately on press, see above).
+                                    mode = if (hc != null) Mode.Move else Mode.Pan
                                 }
                                 else -> Unit
                             }
@@ -405,12 +409,12 @@ fun TrackLane(
                                 }
                                 Mode.TrimL -> {
                                     val hc = hitClip!!
-                                    val ns = snapTo(view.beatAt(x), grid).coerceIn(0.0, origEnd - g)
+                                    val ns = max(0.0, min(snapTo(view.beatAt(x), grid), origEnd - max(g, MIN_CLIP_BEATS)))
                                     drag = DragEdit(hc.i, ns, origEnd, false, ++dragSerial)
                                 }
                                 Mode.TrimR -> {
                                     val hc = hitClip!!
-                                    val ne = max(origStart + g, snapTo(view.beatAt(x), grid))
+                                    val ne = max(origStart + max(g, MIN_CLIP_BEATS), snapTo(view.beatAt(x), grid))
                                     drag = DragEdit(hc.i, origStart, ne, false, ++dragSerial)
                                 }
                                 Mode.LoopL -> {
@@ -614,13 +618,41 @@ private fun DrawScope.drawBase(
     // ---- main lane clips
     val top = rulerPx + 2f * dens
     val h = mainH - 4f * dens
-    for (c in m.clips) {
+    // the clip being dragged is drawn last (on top); anything it would overwrite is flagged in red
+    val ordered = if (drag == null) m.clips else m.clips.filter { it.i != drag.i } + m.clips.filter { it.i == drag.i }
+    for (c in ordered) {
         var s = c.start; var e = c.end
-        if (drag != null && drag.i == c.i) { s = drag.start; e = drag.end }
+        val dragging = drag != null && drag.i == c.i
+        if (dragging) { s = drag!!.start; e = drag.end }
         val sx = view.xOf(s); val ex = view.xOf(e)
         if (ex < 0f || sx > w) continue
-        drawClip(c, s, e, sx, ex, top, h, c.i == m.sel, drag != null && drag.i == c.i && !drag.committed,
+        if (dragging) {
+            for (o in m.clips) {
+                if (o.i == c.i) continue
+                val os = max(o.start, s); val oe = min(o.end, e)
+                if (oe - os <= 1e-6) continue
+                val ox0 = max(view.xOf(os), 0f); val ox1 = min(view.xOf(oe), w)
+                if (ox1 <= ox0) continue
+                drawRect(LiveColors.Rec.copy(alpha = 0.6f), Offset(ox0, top), Size(ox1 - ox0, h))
+                drawRect(LiveColors.Rec, Offset(ox0, top), Size(ox1 - ox0, h), style = Stroke(2f * dens))
+                if (ox1 - ox0 > 70f * dens) {
+                    val l = tm.measure("Overwrites", BeatText.copy(color = Color.White), maxLines = 1)
+                    drawText(l, topLeft = Offset(ox0 + 4f * dens, top + h - l.size.height - 3f * dens))
+                }
+            }
+        }
+        drawClip(c, s, e, sx, ex, top, h, c.i == m.sel, dragging && !drag!!.committed,
             peaks[c.filePath], view, m.tempo, tm, dens)
+    }
+    if (drag != null && !drag.committed) {
+        // red outline on the covered parts again, above the dragged clip, so the overlap stays visible through it
+        for (o in m.clips) {
+            if (o.i == drag.i) continue
+            val os = max(o.start, drag.start); val oe = min(o.end, drag.end)
+            if (oe - os <= 1e-6) continue
+            val ox0 = max(view.xOf(os), 0f); val ox1 = min(view.xOf(oe), w)
+            if (ox1 > ox0) drawRect(LiveColors.Rec.copy(alpha = 0.45f), Offset(ox0, top), Size(ox1 - ox0, h))
+        }
     }
 
     // ---- take lanes
@@ -733,11 +765,15 @@ private fun DrawScope.drawClip(
     }
     if (selected) {
         drawRect(LiveColors.Accent, Offset(x0, top), Size(cw, h), style = Stroke(2f * dens))
-        val hw = min(6f * dens, cw / 4f)
-        val hy = top + h * 0.2f
-        val hh = h * 0.6f
-        drawRect(LiveColors.Accent, Offset(x0, hy), Size(hw, hh))
-        drawRect(LiveColors.Accent, Offset(x0 + cw - hw, hy), Size(hw, hh))
+        // trim handles = the edge grab zones (same width), full clip height with grip lines
+        val hw = min(EDGE_DP * dens, cw * 0.3f)
+        if (hw >= 4f) {
+            drawRect(LiveColors.Accent, Offset(x0, top), Size(hw, h))
+            drawRect(LiveColors.Accent, Offset(x0 + cw - hw, top), Size(hw, h))
+            val gy0 = top + h * 0.3f; val gy1 = top + h * 0.7f
+            for (gx in listOf(x0 + hw * 0.35f, x0 + hw * 0.65f, x0 + cw - hw * 0.35f, x0 + cw - hw * 0.65f))
+                drawLine(Color.Black.copy(alpha = 0.55f), Offset(gx, gy0), Offset(gx, gy1), 1f * dens)
+        }
     } else {
         drawRect(Color.Black.copy(alpha = 0.5f), Offset(x0, top), Size(cw, h), style = Stroke(1f))
     }
@@ -751,11 +787,25 @@ private fun DrawScope.drawRec(
     var to = ph
     if (rec.punchIn) from = max(from, rec.loopStart)
     if (rec.punchOut) to = min(to, rec.loopEnd)
+    if (to < from && rec.loopEnd > rec.loopStart + 1e-6) {
+        // the playhead wrapped round the loop: the recorded region is [start..loop end] + [loop start..playhead]
+        drawRecSpan(view, from, rec.loopEnd, scrubPx, rulerPx, mainH, tm, dens)
+        drawRecSpan(view, rec.loopStart, ph, scrubPx, rulerPx, mainH, tm, dens)
+        return
+    }
+    drawRecSpan(view, from, to, scrubPx, rulerPx, mainH, tm, dens)
+}
+
+private fun DrawScope.drawRecSpan(
+    view: TimelineView, from: Double, to: Double, scrubPx: Float, rulerPx: Float, mainH: Float,
+    tm: TextMeasurer, dens: Float,
+) {
     if (to <= from) return
     val x0 = max(view.xOf(from), 0f)
     val x1 = min(view.xOf(to), size.width)
     if (x1 <= x0) return
-    drawRect(LiveColors.Rec.copy(alpha = 0.32f), Offset(x0, rulerPx), Size(x1 - x0, mainH))
+    // semi-transparent red on top of whatever is on the lane (existing clips stay readable underneath)
+    drawRect(LiveColors.Rec.copy(alpha = 0.38f), Offset(x0, rulerPx), Size(x1 - x0, mainH))
     drawRect(LiveColors.Rec, Offset(x0, rulerPx), Size(x1 - x0, 3f * dens))
     drawRect(LiveColors.Rec, Offset(x0, scrubPx - 3f * dens), Size(x1 - x0, 3f * dens))
     if (x1 - x0 > 40f * dens) {

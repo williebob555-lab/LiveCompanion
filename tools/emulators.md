@@ -59,3 +59,8 @@ avdmanager create avd -n lc_phone -k "system-images;android-35;google_apis;x86_6
 avdmanager create avd -n lc_tablet -k "system-images;android-35;google_apis;x86_64" -d pixel_tablet
 ```
 Add `--force` to replace an existing AVD of the same name.
+
+## Known gotchas
+- NTKDaemon (Native Instruments) can hold TCP 5563, which the emulator needs for its console port. Start with
+  `-port 5554 -no-window -gpu swiftshader_indirect` (e.g. `emulator.exe -avd lc_phone -port 5554 -no-window -no-audio -no-snapshot -gpu swiftshader_indirect`).
+- Hold-drag (long-press then move) via adb: `adb shell input draganddrop x1 y1 x2 y2 1500` (last arg = duration in ms).

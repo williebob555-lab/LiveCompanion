@@ -110,8 +110,21 @@ def test_slot_ops(c):
     c.until("slots", lambda d: d["slots"][3]["has_clip"])
     c.ok("slot.move", tr="t7", i=3, to_tr="t7", to_i=4)
     c.until("slots", lambda d: d["slots"][4]["has_clip"] and not d["slots"][3]["has_clip"])
-    c.ok("slot.delete", tr="t7", i=4)
-    c.until("slots", lambda d: not d["slots"][4]["has_clip"])
+    # occupied target: refused unless replace/swap (no silent data loss)
+    s = c.until("slots", lambda d: d["slots"][5]["has_clip"])
+    assert s["slots"][4]["clip"]["len"] == 2.0 and s["slots"][5]["clip"]["len"] == 4.0
+    r = c.req("slot.move", tr="t7", i=4, to_tr="t7", to_i=5)
+    assert r["ok"] is False and "occupied" in r["err"]
+    assert c.req("slot.copy", tr="t7", i=4, to_tr="t7", to_i=5)["ok"] is False
+    s = c.until("slots", lambda d: d["slots"][4]["has_clip"] and d["slots"][5]["has_clip"])
+    assert s["slots"][5]["clip"]["len"] == 4.0                                # untouched (pre-existing "Lead", 4 beats)
+    c.ok("slot.move", tr="t7", i=4, to_tr="t7", to_i=5, swap=True)
+    c.until("slots", lambda d: d["slots"][4]["clip"]["len"] == 4.0 and d["slots"][5]["clip"]["len"] == 2.0)
+    c.ok("slot.move", tr="t7", i=4, to_tr="t7", to_i=5, replace=True)
+    c.until("slots", lambda d: not d["slots"][4]["has_clip"] and d["slots"][5]["clip"]["len"] == 4.0)
+    c.ok("slot.delete", tr="t7", i=5)
+    c.until("slots", lambda d: not d["slots"][5]["has_clip"])
+    assert c.req("slot.delete", tr="t7", i=5)["ok"] is False
     assert c.req("slot.delete", tr="t7", i=4)["ok"] is False
 
 
@@ -344,6 +357,8 @@ def test_arr_section_preview_and_trim(c, h):
     c.until("arr", lambda d: any(y["start"] == 102 and y["end"] == 106 for y in d["clips"]))
     assert c.req("arr.trim", loc=loc)["ok"] is False
     assert c.req("arr.trim", loc=loc, start=105.999, end=106)["ok"] is False
+    assert c.req("arr.trim", loc=loc, start=105.95, end=106)["ok"] is False      # < 1/16 beat
+    assert c.req("arr.trim", loc=loc, start=107, end=106)["ok"] is False         # negative
     assert c.req("arr.trim", loc={"w": "slot", "tr": "t0", "i": 0}, end=5)["ok"] is False
     r = c.ok("arr.move", loc=loc, start=120)
     assert r is not None

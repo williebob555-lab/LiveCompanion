@@ -280,7 +280,7 @@ fun AudioEditor(
                 }
                 if (peaks == null && !rec) {
                     Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                        val msg = if (err != null) "Helper not running" else "Loading waveform..."
+                        val msg = if (clip.filePath.isBlank()) "No audio file yet" else if (err != null) "Helper not running" else "Loading waveform..."
                         Box(Modifier.background(LiveColors.PanelHi).padding(horizontal = 10.dp, vertical = 6.dp)) {
                             LiveText(msg, style = LiveType.Small, color = LiveColors.TextDim)
                         }

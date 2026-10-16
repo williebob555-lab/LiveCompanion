@@ -33,6 +33,12 @@ Port note: stop any mock on 9010 before using real Live (it blocked the script o
   first-run tip per process + More -> Help). Devices: server preview params 8 -> 16, panels fill rows of 4 by height.
 - Next: owner review of screenshots, then commit and tag v0.1.0-test3.
 
+
+### P2-R1b/R2/R3 fix pass (uncommitted)
+- [x] fixed(pending commit): P2-1-8 (slot.move/copy refuse occupied unless replace:true / swap:true; slot.duplicate uses next FREE slot; app asks Replace/Swap/Cancel, drag preview red), P2-1-9, P2-1-10, P2-1-11, P2-1-15, P2-1-16, P2-2-1, P2-2-2, P2-2-3, P2-2-5; arr.trim refuses < 1/16 beat.
+- Still open (nits): P2-1-12 (new track colour/scroll-to), P2-1-13 (arrange initial fit), P2-1-14 (ruler label overlap), P2-1-17 (keyboard push), P2-1-18, P2-2-4 (pos rounding), P2-2-7 (tablet device panels).
+- Gate run: assembleDebug, testDebugUnitTest, recordRoborazziDebug, pytest (71) green; gradle stopped. Real-Live check of swap/arr.trim pending.
+
 ## Earlier resume notes
 - Released v0.1.0-test1 then v0.1.0-test2 (prerelease, tag on 8ca7296) with APK + remote-script zip + helper zip. SETUP.md written.
 - QA R3/R4 + session-pane toggle fixed and released as v0.1.0-test2 (CI-built; not yet re-QA'd on emulator).

@@ -58,6 +58,28 @@ import kotlinx.serialization.json.jsonPrimitive
 @Composable
 fun ClipScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier) {
     val clip by store.clip.collectAsState()
+    val focus by store.focus.collectAsState()
+    val slots by store.slots.collectAsState()
+    // P2-1-15: the Clip tab follows focus. A clip open on another track is closed; then the new track's playing /
+    // recording slot clip opens if there is one, else the clip picker shows.
+    var followFor by remember { mutableStateOf<String?>(null) }
+    var seenFocus by remember { mutableStateOf(focus.ref) }
+    LaunchedEffect(focus.ref) {
+        val l = clip.loc
+        val ct = l?.get("tr")?.jsonPrimitive?.content
+        val stale = l != null && ct != null && ct != focus.ref
+        if (stale) client.op("clip.close")
+        if (stale || focus.ref != seenFocus) followFor = focus.ref
+        seenFocus = focus.ref
+    }
+    LaunchedEffect(followFor, slots.tr, slots.slots) {
+        val f = followFor ?: return@LaunchedEffect
+        if (slots.tr != f) return@LaunchedEffect
+        followFor = null
+        if (clip.loc != null) return@LaunchedEffect
+        val live = slots.slots.firstOrNull { it.hasClip && (it.status == "recording" || it.status == "playing") }
+        if (live != null) client.op("clip.open", "loc" to Loc.slot(f, live.i))
+    }
     if (clip.loc == null) ClipPicker(store, client, modifier) else ClipEditor(clip, store, client, modifier)
 }
 

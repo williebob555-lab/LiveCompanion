@@ -9,6 +9,7 @@ from .util import (OpError, BadArgs, Unsupported, g, num, intv, seq, need, need_
 BROWSER_ROOTS = ("instruments", "audio_effects", "midi_effects", "drums", "sounds", "samples", "packs",
                  "user_library", "plugins", "clips")
 MAX_OP_NOTES = 4000
+MIN_ARR_LEN = 0.0625   # 1/16 beat: arr.trim refuses shorter clips
 MAX_BROWSER_ITEMS = 2000
 
 _SPEC = [None, False]
@@ -432,10 +433,14 @@ class Ops(object):
         if not g(s, "has_clip", False):
             raise OpError("slot is empty")
         sl = slots_of(t)
-        if i + 1 >= len(sl):
+        j = i + 1
+        while j < len(sl) and g(sl[j], "has_clip", False):
+            j += 1          # never overwrite: use the next FREE slot
+        if j >= len(sl):
             _call(self.song, "create_scene", len(seq(g(self.song, "scenes", ()))))
             sl = slots_of(t)
-        _call(s, "duplicate_clip_to", sl[i + 1])
+            j = len(sl) - 1
+        _call(s, "duplicate_clip_to", sl[j])
 
     def slot_copy(self, c, a, move):
         _, s = resolve_slot(self.song, need(a, "tr", str), need_int(a, "i"))
@@ -444,9 +449,34 @@ class Ops(object):
             raise OpError("source slot is empty")
         if s is d or s == d:
             return
+        swap = bool(a.get("swap")) and move
+        if g(d, "has_clip", False) and not swap and a.get("replace") is not True:
+            # Never silently destroy the clip that is already there (owner: data loss).
+            raise OpError("target slot is occupied (pass replace:true to overwrite or swap:true to swap)")
+        if swap and g(d, "has_clip", False):
+            self._swap_slots(s, d, resolve_track(self.song, need(a, "tr", str)))
+            return
         _call(s, "duplicate_clip_to", d)
         if move:
             _call(s, "delete_clip")
+
+    def _swap_slots(self, s, d, track):
+        """Swap two occupied slots via a free scratch slot on the source track (new scene if none is free)."""
+        sl = slots_of(track)
+        tmp = None
+        for x in sl:
+            if x is not s and x is not d and not g(x, "has_clip", False):
+                tmp = x
+                break
+        if tmp is None:
+            _call(self.song, "create_scene", len(seq(g(self.song, "scenes", ()))))
+            tmp = slots_of(track)[-1]
+        _call(d, "duplicate_clip_to", tmp)
+        _call(d, "delete_clip")
+        _call(s, "duplicate_clip_to", d)
+        _call(s, "delete_clip")
+        _call(tmp, "duplicate_clip_to", s)
+        _call(tmp, "delete_clip")
 
     def take_next(self, c, a):
         tr = need(a, "tr", str)
@@ -632,8 +662,8 @@ class Ops(object):
         cs, ce = num(g(clip, "start_time", 0.0)), num(g(clip, "end_time", 0.0))
         ns = float(_n(a["start"], "start", 0.0)) if "start" in a else cs
         ne = float(_n(a["end"], "end", 0.0)) if "end" in a else ce
-        if ne - ns < 0.01:
-            raise BadArgs("clip would be empty")
+        if ne - ns < MIN_ARR_LEN - 1e-9:
+            raise BadArgs("clip would be shorter than 1/16 beat")
         for attr in ("start_marker", "end_marker"):
             if not hasattr(clip, attr):
                 raise Unsupported("trimming arrangement clips")

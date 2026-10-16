@@ -97,7 +97,7 @@ internal fun RowScope.TempoPos(store: LiveStore, client: LiveClient, tempoWeight
     LiveButton(
         onClick = { tempoDialog = true },
         modifier = Modifier.weight(tempoWeight),
-        minWidth = 58.dp, minHeight = h,
+        minWidth = 58.dp * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f), minHeight = h,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp),
     ) { c -> LiveText(formatTempo(s.tempo), style = LiveType.Mono, color = c) }
     PositionReadout(store, Modifier.weight(posWeight), h)
@@ -133,7 +133,9 @@ private fun RowScope.W(
     onClick: () -> Unit,
 ) = LiveIconButton(icon, onClick, Modifier.weight(1f), on, color, enabled, minHeight = h, minWidth = minW)
 
-internal fun formatTempo(t: Float): String = String.format(java.util.Locale.US, "%.2f", t)
+/** "120", "128.5", "93.25": no trailing zeros, so it fits the narrow top-bar button even at font scale 1.3. */
+internal fun formatTempo(t: Float): String =
+    String.format(java.util.Locale.US, "%.2f", t).trimEnd('0').trimEnd('.')
 
 /** Bar.beat.sixteenth readout. Reads the realtime flow itself so only this leaf recomposes at 20 Hz. */
 @Composable

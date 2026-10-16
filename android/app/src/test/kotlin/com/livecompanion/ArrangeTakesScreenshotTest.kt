@@ -127,6 +127,37 @@ class ArrangeTakesScreenshotTest(private val wDp: Int, private val hDp: Int, pri
         rule.onRoot().captureRoboImage(name("arrange_rec"))
     }
 
+    @Test fun arrangeRecordingOverClipsLoopWrap() {
+        // Recording over existing clips with the loop on: playhead started at bar 7, wrapped to bar 5 (loop 4..12 beats).
+        val s = store(true)
+        s.handleSection("session", LiveJson.parseToJsonElement("""{"tempo":120,"sig":[4,4],"playing":true,"pos":26,"rec":true,"loop":true,"loop_start":16,"loop_len":16}"""))
+        s.handleRt(LiveJson.parseToJsonElement("""{"pos":26,"playing":true}"""))
+        val c = client(s)
+        launch { ArrangeScreen(s, c, Modifier.fillMaxSize()) }
+        rule.waitForIdle()
+        s.handleRt(LiveJson.parseToJsonElement("""{"pos":30,"playing":true}"""))
+        rule.waitForIdle()
+        s.handleRt(LiveJson.parseToJsonElement("""{"pos":20,"playing":true}"""))
+        rule.waitForIdle()
+        rule.onRoot().captureRoboImage(name("arrange_rec_over_loopwrap"))
+    }
+
+    @Test fun replaceDialog() {
+        launch {
+            com.livecompanion.ui.screens.ReplaceMoveDialog(
+                com.livecompanion.ui.screens.PendingMove("t1", 0, "t1", 2, true, "Beat 3"), {}, {}, {})
+        }
+        rule.onRoot().captureRoboImage(name("slot_replace_dialog"))
+    }
+
+    @Test fun moveToDialog() {
+        val s = store(true)
+        launch {
+            com.livecompanion.ui.screens.TargetDialog("Move to", "t1", 0, s.tracks.value, {}, { _, _ -> })
+        }
+        rule.onRoot().captureRoboImage(name("slot_moveto_dialog"))
+    }
+
     @Test fun takesSupported() {
         val s = store(true)
         val c = client(s)

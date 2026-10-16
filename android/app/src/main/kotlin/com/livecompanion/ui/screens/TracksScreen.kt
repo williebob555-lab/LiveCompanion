@@ -103,8 +103,9 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
                         open = expanded == t.ref,
                         renaming = renaming == t.ref,
                         onFocus = { focusOn(t.ref) },
-                        onToggleOpen = { expanded = if (expanded == t.ref) null else t.ref },
-                        onStartRename = { focusOn(t.ref); renaming = t.ref },
+                        onToggleOpen = { renaming = null; expanded = if (expanded == t.ref) null else t.ref },
+                        // one editor at a time (exclusive with the Edit panel); renaming never changes the focused track
+                        onStartRename = { expanded = null; renaming = t.ref },
                         onRename = { name ->
                             renaming = null
                             val n = name.trim()
@@ -129,11 +130,12 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
                             }
                         },
                         onColor = { c ->
+                            expanded = null   // the panel closes after the action; colour pick never moves focus
                             client.op("track.set", "tr" to t.ref, "k" to "color", "v" to c)
                             store.patchTrack(t.ref) { it.copy(color = c) }
                             if (t.ref == focus.ref) store.updateFocus { it.copy(color = c) }
                         },
-                        onDuplicate = { client.op("track.duplicate", "tr" to t.ref) },
+                        onDuplicate = { expanded = null; client.op("track.duplicate", "tr" to t.ref) },
                         onDelete = { deleting = t },
                     )
                 }

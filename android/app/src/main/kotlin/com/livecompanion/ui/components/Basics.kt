@@ -255,6 +255,7 @@ fun LiveDialog(
     title: String,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    buttons: (@Composable RowScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -272,7 +273,17 @@ fun LiveDialog(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             LiveText(title, style = LiveType.Title)
-            content()
+            if (buttons == null) {
+                content()
+            } else {
+                // Body scrolls when the dialog is taller than the screen (phone landscape); [buttons] stay pinned below.
+                // (Do not put a LazyColumn in [content] here: it is measured with unbounded height.)
+                Column(
+                    Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) { content() }
+                LiveDialogButtons(buttons)
+            }
         }
     }
 }

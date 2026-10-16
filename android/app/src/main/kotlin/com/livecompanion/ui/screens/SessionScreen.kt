@@ -43,6 +43,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.livecompanion.net.LiveClient
+import com.livecompanion.net.jsonArgs
+import kotlinx.coroutines.launch
 import com.livecompanion.state.Loc
 import com.livecompanion.state.LiveStore
 import com.livecompanion.state.SlotInfo
@@ -83,6 +85,21 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
     var dragDy by remember { mutableFloatStateOf(0f) }
     var pitchPx by remember { mutableFloatStateOf(0f) }
     var action by remember { mutableStateOf<SlotAction?>(null) }
+    var pending by remember { mutableStateOf<PendingMove?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // Move/copy; an occupied target never gets silently overwritten: ask (Replace / Swap / Cancel) first.
+    fun transfer(fromTr: String, fromI: Int, toTr: String, toI: Int, move: Boolean) {
+        val known = if (toTr == slotsState.tr) slotsState.slots.firstOrNull { it.i == toI } else null
+        if (known?.hasClip == true) { pending = PendingMove(fromTr, fromI, toTr, toI, move, known.clip?.name ?: ""); return }
+        scope.launch {
+            try {
+                client.request(if (move) "slot.move" else "slot.copy", jsonArgs("tr" to fromTr, "i" to fromI, "to_tr" to toTr, "to_i" to toI))
+            } catch (e: com.livecompanion.net.LiveException) {
+                if (e.message?.contains("occupied") == true) pending = PendingMove(fromTr, fromI, toTr, toI, move, "")
+                else store.notice(e.message ?: "Move failed")
+            }
+        }
+    }
     val tr = slotsState.tr.ifEmpty { focus.ref }
     val goTab = LocalTabNavigator.current
 
@@ -148,12 +165,13 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                         onMenu = { menuSlot = slot.i },
                         dragOffset = if (dragFrom == slot.i) dragDy else 0f,
                         isDropTarget = dragFrom >= 0 && dragFrom != slot.i && slot.i == dragTarget(dragFrom, dragDy, pitchPx, slots.size),
+                        dropReplaces = slot.hasClip,
                         onMeasured = { pitchPx = it },
                         onDragStart = { dragFrom = slot.i; dragDy = 0f },
                         onDrag = { dragDy += it },
                         onDragEnd = {
                             val to = dragTarget(dragFrom, dragDy, pitchPx, slots.size)
-                            if (dragFrom >= 0 && to != dragFrom) client.op("slot.move", "tr" to tr, "i" to dragFrom, "to_tr" to tr, "to_i" to to)
+                            if (dragFrom >= 0 && to != dragFrom) transfer(tr, dragFrom, tr, to, true)
                             dragFrom = -1; dragDy = 0f
                         },
                     )
@@ -180,7 +198,7 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                 menuSlot = -1
                 when (a) {
                     is SlotAction.Duplicate -> client.op("slot.duplicate", "tr" to tr, "i" to menu.i)
-                    is SlotAction.Delete -> client.op("slot.delete", "tr" to tr, "i" to menu.i)
+                    is SlotAction.Delete -> action = SlotAction.ConfirmDelete(menu.i)
                     is SlotAction.Edit -> { client.op("clip.open", "loc" to Loc.slot(tr, menu.i)); goTab(Tab.Clip) }
                     is SlotAction.Create -> client.op("slot.create", "tr" to tr, "i" to menu.i, "len" to a.len)
                     else -> action = a
@@ -198,19 +216,55 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
             }
         }
         is SlotAction.CopyTo -> TargetDialog("Copy to", tr, a.i, tracks, onDismiss = { action = null }) { toTr, toI ->
-            client.op("slot.copy", "tr" to tr, "i" to a.i, "to_tr" to toTr, "to_i" to toI); action = null
+            transfer(tr, a.i, toTr, toI, false); action = null
         }
         is SlotAction.MoveTo -> TargetDialog("Move to", tr, a.i, tracks, onDismiss = { action = null }) { toTr, toI ->
-            client.op("slot.move", "tr" to tr, "i" to a.i, "to_tr" to toTr, "to_i" to toI); action = null
+            transfer(tr, a.i, toTr, toI, true); action = null
         }
+        is SlotAction.ConfirmDelete -> com.livecompanion.ui.components.ConfirmDialog("Delete clip", "Delete this clip from slot ${a.i + 1}? You can undo this in Live.", "Delete",
+            onConfirm = { client.op("slot.delete", "tr" to tr, "i" to a.i); action = null }, onDismiss = { action = null })
         else -> Unit
     }
+    pending?.let { p ->
+        ReplaceMoveDialog(
+            p, onCancel = { pending = null },
+            onSwap = {
+                client.op("slot.move", "tr" to p.fromTr, "i" to p.fromI, "to_tr" to p.toTr, "to_i" to p.toI, "swap" to true); pending = null
+            },
+            onReplace = {
+                client.op(if (p.move) "slot.move" else "slot.copy", "tr" to p.fromTr, "i" to p.fromI, "to_tr" to p.toTr, "to_i" to p.toI, "replace" to true)
+                pending = null
+            },
+        )
+    }
 }
+
+/** Asked once when a move/copy lands on an occupied slot (never overwrite silently). */
+@Composable
+internal fun ReplaceMoveDialog(p: PendingMove, onCancel: () -> Unit, onSwap: () -> Unit, onReplace: () -> Unit) {
+    LiveDialog(
+        "Replace?", onDismiss = onCancel,
+        buttons = {
+            LiveTextButton("Cancel", onCancel, minWidth = 64.dp)
+            if (p.move) LiveTextButton("Swap", onSwap, minWidth = 64.dp)
+            LiveTextButton("Replace", onReplace, on = true, onColor = LiveColors.Rec, minWidth = 64.dp)
+        },
+    ) {
+        LiveText(
+            "Slot ${p.toI + 1}" + (if (p.toName.isNotEmpty()) " (${p.toName})" else "") + " already has a clip." +
+                if (p.move) " Replace it (the old clip is lost), swap the two clips, or cancel?" else " Replace it (the old clip is lost) or cancel?",
+            style = LiveType.Body, maxLines = 4,
+        )
+    }
+}
+
+internal data class PendingMove(val fromTr: String, val fromI: Int, val toTr: String, val toI: Int, val move: Boolean, val toName: String)
 
 sealed interface SlotAction {
     data object Duplicate : SlotAction
     data object Delete : SlotAction
     data object Edit : SlotAction
+    data class ConfirmDelete(val i: Int) : SlotAction
     data class Create(val len: Double) : SlotAction
     data class Rename(val i: Int) : SlotAction
     data class CopyTo(val i: Int) : SlotAction
@@ -234,6 +288,7 @@ private fun SlotRow(
     onMenu: () -> Unit,
     dragOffset: Float,
     isDropTarget: Boolean,
+    dropReplaces: Boolean,
     onMeasured: (Float) -> Unit,
     onDragStart: () -> Unit,
     onDrag: (Float) -> Unit,
@@ -254,7 +309,8 @@ private fun SlotRow(
         Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = 32.dp)
             .onSizeChanged { onMeasured(it.height + with(density) { 1.dp.toPx() }) }
             .graphicsLayer { translationY = dragOffset; alpha = if (dragOffset != 0f) 0.85f else 1f }
-            .then(if (isDropTarget) Modifier.border(2.dp, LiveColors.Accent, LiveShapes.Small) else Modifier),
+            .then(if (isDropTarget) Modifier.border(2.dp, if (dropReplaces) LiveColors.Rec else LiveColors.Accent, LiveShapes.Small) else Modifier)
+            .then(if (isDropTarget && dropReplaces) Modifier.background(LiveColors.Rec.copy(alpha = 0.25f)) else Modifier),
         horizontalArrangement = Arrangement.spacedBy(1.dp),
     ) {
         if (showScene) {
@@ -317,6 +373,7 @@ private fun SlotRow(
                     LiveType.Small,
                     fg,
                 )
+                if (isDropTarget && dropReplaces) LiveText("Replace?", style = LiveType.Title, color = Color.White, modifier = Modifier.background(LiveColors.Rec, LiveShapes.Small).padding(horizontal = 4.dp))
                 if (status == SlotStatus.RECORDING) {
                     // Elapsed recording length in bars (4/4 assumed for the label), from rt or the clip length.
                     val beats = slotPos() ?: clip?.len ?: 0.0
@@ -369,7 +426,7 @@ private fun RenameDialog(initial: String, onDismiss: () -> Unit, onOk: (String) 
 
 /** Pick a destination track and slot number for copy/move. */
 @Composable
-private fun TargetDialog(
+internal fun TargetDialog(
     title: String,
     fromTr: String,
     fromI: Int,
@@ -379,9 +436,15 @@ private fun TargetDialog(
 ) {
     var toTr by remember { mutableStateOf(fromTr) }
     var toI by remember { mutableIntStateOf(fromI + 1) }
-    LiveDialog(title, onDismiss) {
+    LiveDialog(
+        title, onDismiss,
+        buttons = {
+            LiveTextButton("Cancel", onDismiss, minWidth = 72.dp)
+            LiveTextButton("OK", { onOk(toTr, toI) }, on = true, minWidth = 72.dp)
+        },
+    ) {
         LiveLabel("Track")
-        LazyColumn(Modifier.heightIn(max = 220.dp)) {
+        LazyColumn(Modifier.heightIn(max = if (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp < 500) 120.dp else 220.dp)) {
             items(tracks.tracks, key = { it.ref }) { t ->
                 val sel = t.ref == toTr
                 Row(
@@ -404,10 +467,6 @@ private fun TargetDialog(
                 LiveText("${toI + 1}", style = LiveType.Mono)
             }
             LiveTextButton("+", { toI += 1 })
-        }
-        LiveDialogButtons {
-            LiveTextButton("Cancel", onDismiss, minWidth = 72.dp)
-            LiveTextButton("OK", { onOk(toTr, toI) }, on = true, minWidth = 72.dp)
         }
     }
 }
