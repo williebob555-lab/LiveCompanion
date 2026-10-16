@@ -54,8 +54,14 @@ import com.livecompanion.ui.theme.LiveShapes
 import com.livecompanion.ui.theme.LiveType
 import kotlin.math.roundToInt
 
-private val CELL_W = 50.dp
-private val KNOB = 34.dp
+private val CELL_W0 = 50.dp
+/** Cell width follows the font scale so labels never run together (P4-3-4). */
+private val LocalCellW = androidx.compose.runtime.compositionLocalOf { CELL_W0 }
+private val CELL_W: Dp @Composable get() = LocalCellW.current
+private val KNOB0 = 34.dp
+/** Extra size factor on big screens (tablets): knobs, cells and rows grow so panels fill the space. */
+val LocalDeviceScale = androidx.compose.runtime.compositionLocalOf { 1f }
+private val KNOB: Dp @Composable get() = KNOB0 * LocalDeviceScale.current
 private val ROW_H = 62.dp
 internal val HEADER_H = 26.dp
 
@@ -79,8 +85,8 @@ private fun columnsFor(n: Int) = when {
 }
 
 /** Panel width from the number of inline controls (4 per row, like Live's compact device view). */
-private fun panelWidth(d: Device): Dp {
-    val base = columnsFor(controlCount(d)) * CELL_W.value + 10
+private fun panelWidth(d: Device, cell: Dp): Dp {
+    val base = columnsFor(controlCount(d)) * cell.value + 10
     return maxOf(base, if (d.chains.isNotEmpty()) 160f else 124f).dp
 }
 
@@ -180,17 +186,22 @@ fun DevicePanel(
     }
 
     // Panels are sized to their CONTENT (height too); the first controls that fit the available height are shown inline.
+    val fs = androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceIn(1f, 1.4f)
+    val ds = LocalDeviceScale.current
+    val cw = CELL_W0 * fs * ds
+    val rowH = ROW_H * (1f + (fs - 1f) * 0.6f) * ds
+    androidx.compose.runtime.CompositionLocalProvider(LocalCellW provides cw) {
     androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
         val avail = maxHeight
         val actionsH = 30.dp
         val selH = if (selected) 28.dp else 0.dp
         val cols = columnsFor(controlCount(d))
         val reserve = (if (d.variations != null) 28 else 0) + (if (d.chains.isNotEmpty()) 28 + 26 * d.chains.size else 0)
-        val knobMax = (avail - HEADER_H - 2.dp - actionsH - selH - 6.dp).coerceAtLeast(ROW_H)
-        val rowsFit = ((knobMax.value - reserve) / ROW_H.value).toInt().coerceAtLeast(1)
+        val knobMax = (avail - HEADER_H - 2.dp - actionsH - selH - 6.dp).coerceAtLeast(rowH)
+        val rowsFit = ((knobMax.value - reserve) / rowH.value).toInt().coerceAtLeast(1)
         val shown = (rowsFit * cols).coerceAtLeast(cols)
         Column(
-            Modifier.width(panelWidth(d))
+            Modifier.width(panelWidth(d, cw))
                 .background(LiveColors.Panel, LiveShapes.Small).border(1.dp, border, LiveShapes.Small),
         ) {
             Box(Modifier.fillMaxWidth().height(2.dp).background(typeColor(d.type)))
@@ -261,6 +272,7 @@ fun DevicePanel(
                 SmallBtn("Del", { confirmDelete = true }, color = LiveColors.Rec)
             }
         }
+    }
     }
     if (confirmDelete) {
         ConfirmDialog("Delete device", "Delete \"${d.name}\" from the track?", "Delete", {

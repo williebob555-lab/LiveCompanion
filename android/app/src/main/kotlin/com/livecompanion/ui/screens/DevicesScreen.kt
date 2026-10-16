@@ -88,8 +88,12 @@ fun DevicesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
             if (tr.isEmpty()) {
                 Box(m, contentAlignment = Alignment.Center) { LiveText("No track selected", color = LiveColors.TextDim) }
             } else {
-                Box(m.horizontalScroll(scroll).padding(2.dp)) {
-                    ChainRow(devs.devices, tr, "", ui, store, client, focus.kind, scroll, viewportPx, mine)
+                // Tablets: scale knobs / cells / rows with the available height so panels fill the screen.
+                val scale = if (maxWidth >= 600.dp) (maxHeight / 330.dp).coerceIn(1f, 1.7f) else 1f
+                androidx.compose.runtime.CompositionLocalProvider(com.livecompanion.ui.devices.LocalDeviceScale provides scale) {
+                    Box(m.horizontalScroll(scroll).padding(2.dp)) {
+                        ChainRow(devs.devices, tr, "", ui, store, client, focus.kind, scroll, viewportPx, mine)
+                    }
                 }
             }
         }

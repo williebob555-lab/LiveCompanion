@@ -4,6 +4,7 @@ Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (wh
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
 ## RESUME HERE — Milestone 2 "UI lock-in" (owner feedback recorded in PREFERENCES 2026-10-15; owner asleep)
+2026-10-16 P4 fix pass DONE, uncommitted (see qa/REVIEW_LOG P4 "fixed(pending commit)"): note-bar MIDI clips, selected-on-top, updater resume + test-channel UI, icon gap/scale, 3-row portrait chrome, browser chip fade, tracks multi-column + pinned master, device cell scaling + tablet scale, shared 300ms hold-drag. Next: commit, release test8, emulator re-check (icon, updater resume, device drag).
 2026-10-16 evening: test6 (pass-3 fixes + design polish) and test7 (full-height lane, one-row toolbar, nits)
 RELEASED, signed. [~] QA pass 4 running: updater end-to-end test5→test7, icon verdict, portrait/tablet/small matrix.
 Still pending owner: real-Live run of tools/live_verify.py --mutate (empty set).

@@ -110,7 +110,7 @@ private class DragEdit(val i: Int, val start: Double, val end: Double, val commi
 private enum class Zone { Scrub, Brace, Main, Take, None }
 private enum class Mode { Pending, Hold, Pan, Move, TrimL, TrimR, Scrub, LoopL, LoopR, LoopBody, Multi }
 
-private const val HOLD_MS = 230L
+private const val HOLD_MS = com.livecompanion.ui.components.HOLD_DRAG_MS
 private const val TAKE_H_DP = 24f
 private const val BRACE_H_DP = 9f
 /** Scrub (bar number) row height. */
@@ -509,6 +509,9 @@ private val BeatText = LiveType.Label.copy(fontSize = 9.sp, letterSpacing = 0.sp
 private val ClipText = LiveType.Small.copy(fontSize = 11.sp)
 private val CueText = LiveType.Label.copy(fontSize = 9.sp, letterSpacing = 0.sp, color = LiveColors.Text)
 
+private fun lighten(c: Color, t: Float): Color =
+    Color(c.red + (1f - c.red) * t, c.green + (1f - c.green) * t, c.blue + (1f - c.blue) * t, c.alpha)
+
 private fun barPxOf(ppb: Float, bpb: Double): Float = (ppb * bpb).toFloat()
 
 private fun DrawScope.drawBase(
@@ -665,7 +668,9 @@ private fun DrawScope.drawBase(
     val top = rulerPx + 2f * dens
     val h = mainH - 4f * dens
     // the clip being dragged is drawn last (on top); anything it would overwrite is flagged in red
-    val ordered = if (drag == null) m.clips else m.clips.filter { it.i != drag.i } + m.clips.filter { it.i == drag.i }
+    // z-order: unselected, then the SELECTED clip (labels + handles stay visible over neighbours), then the dragged one
+    val ordered = m.clips.filter { it.i != m.sel && it.i != drag?.i } +
+        m.clips.filter { it.i == m.sel && it.i != drag?.i } + m.clips.filter { it.i == drag?.i }
     for (c in ordered) {
         var s = c.start; var e = c.end
         val dragging = drag != null && drag.i == c.i
@@ -739,7 +744,7 @@ private fun DrawScope.drawClip(
     val base = liveColor(c.color)
     val headH = min(15f * dens, h * 0.35f)
     var head = base
-    var body = dim(base, 0.42f)
+    var body = dim(base, 0.36f)
     if (c.muted) { head = dim(base, 0.4f); body = dim(base, 0.2f) }
     val alpha = if (ghost) 0.8f else 1f
     drawRect(body.copy(alpha = alpha), Offset(x0, top), Size(cw, h))
@@ -774,22 +779,29 @@ private fun DrawScope.drawClip(
                 x += stepPx
             }
         } else if (!c.audio && c.pn.isNotEmpty() && bodyH > 6f * dens) {
-            // Live-style mini piano roll: thin horizontal note lines spread over the clip's own pitch range
-            // (at least an octave so a 2-note clip does not stretch to the full height), filling the clip body.
+            // Live-style mini piano roll: solid rounded note bars whose HEIGHT scales with the lane
+            // (row = body height / pitch span, clamped 2..10dp). Span = used range padded, at least one octave;
+            // the group is centred vertically in the clip body.
             var lo = 127; var hi = 0
             for (n in c.pn) { if (n.size >= 3) { val p = n[2].toInt(); if (p < lo) lo = p; if (p > hi) hi = p } }
-            if (hi - lo < 11) { val mid = (hi + lo) / 2; lo = mid - 5; hi = lo + 11 }
-            val pad = 5f * dens
+            lo -= 1; hi += 1
+            if (hi - lo + 1 < 12) { val mid = (hi + lo) / 2; lo = mid - 5; hi = lo + 11 }
             val rows = hi - lo + 1
-            val rowH = ((bodyH - 2 * pad) / rows).coerceAtLeast(1f)
-            val nh = (rowH * 0.45f).coerceIn(1.5f * dens, 4f * dens).coerceAtMost(rowH)
-            val nc = onColor(body).copy(alpha = if (c.muted) 0.35f else 0.9f)
+            val avail = bodyH - 6f * dens
+            val rowH = (avail / rows).coerceIn(2f * dens, 10f * dens)
+            val used = min(rowH * rows, bodyH)
+            val y0 = bodyTop + (bodyH - used) / 2f
+            val nh = max(rowH * 0.86f, 1.5f * dens)
+            val fill = lighten(base, 0.55f).copy(alpha = if (c.muted) 0.4f else 1f)
+            val edge = dim(base, 0.35f).copy(alpha = if (c.muted) 0.5f else 0.9f)
+            val rad = androidx.compose.ui.geometry.CornerRadius(min(nh / 2f, 2f * dens))
             placeNotes(c, clipLen) { rel, dur, pitch ->
                 val nx = view.xOf(s + rel)
                 val nw = max((dur * view.ppb).toFloat() - 0.5f * dens, 3f * dens)
                 if (nx + nw >= 0f && nx <= w) {
-                    val ny = bodyTop + pad + (hi - pitch) * rowH + (rowH - nh) / 2f
-                    drawRect(nc, Offset(nx, ny), Size(nw, nh))
+                    val ny = y0 + (hi - pitch) * rowH + (rowH - nh) / 2f
+                    drawRoundRect(fill, Offset(nx, ny), Size(nw, nh), rad)
+                    drawRoundRect(edge, Offset(nx, ny), Size(nw, nh), rad, style = Stroke(max(0.8f * dens, 1f)))
                 }
             }
         }

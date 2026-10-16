@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -111,14 +113,28 @@ fun BrowserScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
     LaunchedEffect(m.status) { if (m.status != null) { kotlinx.coroutines.delay(3500); m.status = null } }
 
     Column(modifier.fillMaxSize().background(LiveColors.Bg).padding(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        // ONE scrolling category row (no second full-width row of chips)
-        Row(
-            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(2.dp).horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val roots = m.roots
-            if (roots == null) LiveText(m.error ?: "Loading categories...", color = LiveColors.TextDim, modifier = Modifier.padding(4.dp))
-            else for (r in roots) DenseButton(r.name, { m.path = listOf(r.name); m.query = "" }, on = m.path.firstOrNull() == r.name)
+        // ONE scrolling category row; a fade + chevron at the right edge shows there are more chips (no clipped chip)
+        val chipScroll = rememberScrollState()
+        Box(Modifier.fillMaxWidth().background(LiveColors.Panel)) {
+            Row(
+                Modifier.fillMaxWidth().padding(2.dp).horizontalScroll(chipScroll),
+                horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val roots = m.roots
+                if (roots == null) LiveText(m.error ?: "Loading categories...", color = LiveColors.TextDim, modifier = Modifier.padding(4.dp))
+                else {
+                    for (r in roots) DenseButton(r.name, { m.path = listOf(r.name); m.query = "" }, on = m.path.firstOrNull() == r.name)
+                    Box(Modifier.width(22.dp))
+                }
+            }
+            if (chipScroll.canScrollForward) {
+                Box(
+                    Modifier.align(Alignment.CenterEnd).width(28.dp).height(34.dp).background(
+                        androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color.Transparent, LiveColors.Panel)),
+                    ),
+                    contentAlignment = Alignment.CenterEnd,
+                ) { LiveText(">", Modifier.padding(end = 4.dp), LiveType.Body, LiveColors.TextDim) }
+            }
         }
         // breadcrumb (every segment taps back to that level) + compact search on the same row
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {

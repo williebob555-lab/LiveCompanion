@@ -239,12 +239,12 @@ fun LiveKnob(
             // Large font scale: tighter tracking + a second line so "Parameter 1..4" stay distinguishable (P2-2-5).
             val big = androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.15f
             LiveText(
-                label, Modifier.widthIn(max = knobSize + 16.dp),
+                label, Modifier.widthIn(max = knobSize + 10.dp),
                 if (big) LiveType.Label.copy(letterSpacing = 0.sp) else LiveType.Label,
                 maxLines = if (big) 2 else 1, textAlign = if (big) androidx.compose.ui.text.style.TextAlign.Center else null,
             )
         }
-        if (valueText != null) LiveText(valueText, Modifier.widthIn(max = knobSize + 16.dp), LiveType.Small)
+        if (valueText != null) LiveText(valueText, Modifier.widthIn(max = knobSize + 10.dp), LiveType.Small)
     }
 }
 

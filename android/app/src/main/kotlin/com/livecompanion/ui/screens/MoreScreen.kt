@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,10 +70,108 @@ fun MoreScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifi
         if (ui !is UpdateUi.Checking && ui !is UpdateUi.Downloading) ui = UpdateUi.Idle
     }
 
+    val scrollState = rememberScrollState()
+    fun startDownload(asset: UpdateCheck.Asset) {
+        scope.launch { downloadAndInstall(context, asset) { ui = it } }
+    }
+    fun startCheck() {
+        ui = UpdateUi.Checking
+        scope.launch {
+            val channel = if (test) UpdateCheck.Channel.TEST else UpdateCheck.Channel.STABLE
+            ui = when (val r = withContext(Dispatchers.IO) { AppUpdates.check(context, channel) }) {
+                is UpdateCheck.Result.Available -> UpdateUi.Available(r.release, r.download)
+                is UpdateCheck.Result.AvailableWithoutDownload -> UpdateUi.Available(r.release, null)
+                is UpdateCheck.Result.UpToDate -> UpdateUi.UpToDate(r.installed.toString())
+                is UpdateCheck.Result.NoStable -> UpdateUi.NoStable(r.testAvailable)
+                is UpdateCheck.Result.NoReleases -> UpdateUi.NoReleases
+                is UpdateCheck.Result.Failed -> UpdateUi.Failed(r.message)
+            }
+        }
+    }
+    // The update section is the first thing on the page, but a result must never be off-screen.
+    LaunchedEffect(ui) { if (ui !is UpdateUi.Idle) scrollState.animateScrollTo(0) }
+    // Back from the "Install unknown apps" screen: continue the pending download automatically.
+    val lifecycleOwner = context as? androidx.lifecycle.LifecycleOwner
+    DisposableEffect(lifecycleOwner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, ev ->
+            if (ev == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                val pa = pendingInstallAsset
+                if (pa != null && AppUpdates.canInstall(context) && ui !is UpdateUi.Downloading) {
+                    pendingInstallAsset = null
+                    startDownload(pa)
+                }
+            }
+        }
+        lifecycleOwner?.lifecycle?.addObserver(obs)
+        onDispose { lifecycleOwner?.lifecycle?.removeObserver(obs) }
+    }
+
     Column(
-        modifier.fillMaxSize().background(LiveColors.Bg).verticalScroll(rememberScrollState()).padding(8.dp),
+        modifier.fillMaxSize().background(LiveColors.Bg).verticalScroll(scrollState).padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        Section("App updates") {
+            Info("Installed", installed)
+            LiveTextButton(
+                "Check for updates", { startCheck() },
+                Modifier.fillMaxWidth(), enabled = ui !is UpdateUi.Checking && ui !is UpdateUi.Downloading,
+            )
+            when (val u = ui) {
+                UpdateUi.Idle -> Unit
+                UpdateUi.Checking -> LiveText("Checking...", style = LiveType.Small, color = LiveColors.TextDim)
+                is UpdateUi.UpToDate -> LiveText("Up to date (${u.v}).", style = LiveType.Small, color = LiveColors.Play)
+                is UpdateUi.NoStable -> {
+                    LiveText("No stable release yet.", style = LiveType.Small, color = LiveColors.Text)
+                    if (u.testAvailable) LiveText("Test builds exist - switch the channel to Test to get them.", style = LiveType.Small, color = LiveColors.TextDim, maxLines = 3)
+                }
+                UpdateUi.NoReleases -> LiveText("No releases have been published yet.", style = LiveType.Small, color = LiveColors.TextDim)
+                is UpdateUi.Failed -> LiveText(u.msg, style = LiveType.Small, color = LiveColors.Rec, maxLines = 3)
+                is UpdateUi.Downloading -> {
+                    LiveText(
+                        if (u.progress >= 0) "Downloading ${(u.progress * 100).toInt()}%" else "Downloading...",
+                        style = LiveType.Small,
+                    )
+                    Box(Modifier.fillMaxWidth().height(6.dp).background(LiveColors.PanelHi, LiveShapes.Small)) {
+                        Box(Modifier.fillMaxWidth(u.progress.coerceIn(0f, 1f)).height(6.dp).background(LiveColors.Accent, LiveShapes.Small))
+                    }
+                }
+                is UpdateUi.Available -> {
+                    LiveText("Version ${u.release.version} available", style = LiveType.Body, color = LiveColors.Accent)
+                    if (u.release.notes.isNotBlank()) LiveText(u.release.notes, style = LiveType.Small, color = LiveColors.TextDim, maxLines = 6)
+                    if (u.asset != null) {
+                        LiveTextButton(
+                            "Download and install",
+                            { startDownload(u.asset) },
+                            Modifier.fillMaxWidth(), on = true,
+                        )
+                    } else {
+                        LiveText("This release has no APK yet.", style = LiveType.Small, color = LiveColors.TextDim)
+                    }
+                    LiveTextButton("Open release page", { AppUpdates.openInBrowser(context, u.release.pageUrl) }, Modifier.fillMaxWidth())
+                }
+            }
+            LiveLabel("Channel")
+            if (installedIsTest) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    LiveTextButton("Stable", {}, Modifier.weight(1f), enabled = false)
+                    LiveTextButton("Test (automatic for test builds)", {}, Modifier.weight(2f), on = true)
+                }
+                LiveText(
+                    "This is a test build, so it always follows the Test channel. Stable is only selectable on a stable build.",
+                    style = LiveType.Small, color = LiveColors.TextDim, maxLines = 3,
+                )
+            } else {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    LiveTextButton("Stable", { pickChannel(false) }, Modifier.weight(1f), on = !test)
+                    LiveTextButton("Test", { pickChannel(true) }, Modifier.weight(1f), on = test)
+                }
+                LiveText(
+                    if (test) "Test builds (pre-releases) are offered as well." else "Only stable releases are offered.",
+                    style = LiveType.Small, color = LiveColors.TextDim, maxLines = 2,
+                )
+            }
+        }
+
         Section("Host") {
             Info("Address", conn.target?.label ?: "-")
             Info("Status", conn.status.name.lowercase())
@@ -112,82 +212,21 @@ fun MoreScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifi
             LiveLabel("Arrange")
             LiveText(ARRANGE_HELP, style = LiveType.Small, color = LiveColors.TextDim, maxLines = 4)
         }
-
-        Section("App updates") {
-            Info("Installed", installed)
-            LiveLabel("Channel")
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                LiveTextButton("Stable", { pickChannel(false) }, Modifier.weight(1f), on = !test)
-                LiveTextButton("Test", { pickChannel(true) }, Modifier.weight(1f), on = test)
-            }
-            LiveText(
-                if (installedIsTest) "This is a test build, so it always follows the Test channel."
-                else if (test) "Test builds (pre-releases) are offered as well." else "Only stable releases are offered.",
-                style = LiveType.Small, color = LiveColors.TextDim, maxLines = 2,
-            )
-            LiveTextButton(
-                "Check for updates",
-                {
-                    ui = UpdateUi.Checking
-                    scope.launch {
-                        val channel = if (test) UpdateCheck.Channel.TEST else UpdateCheck.Channel.STABLE
-                        ui = when (val r = withContext(Dispatchers.IO) { AppUpdates.check(context, channel) }) {
-                            is UpdateCheck.Result.Available -> UpdateUi.Available(r.release, r.download)
-                            is UpdateCheck.Result.AvailableWithoutDownload -> UpdateUi.Available(r.release, null)
-                            is UpdateCheck.Result.UpToDate -> UpdateUi.UpToDate(r.installed.toString())
-                            is UpdateCheck.Result.NoStable -> UpdateUi.NoStable(r.testAvailable)
-                            is UpdateCheck.Result.NoReleases -> UpdateUi.NoReleases
-                            is UpdateCheck.Result.Failed -> UpdateUi.Failed(r.message)
-                        }
-                    }
-                },
-                Modifier.fillMaxWidth(), enabled = ui !is UpdateUi.Checking && ui !is UpdateUi.Downloading,
-            )
-            when (val u = ui) {
-                UpdateUi.Idle -> Unit
-                UpdateUi.Checking -> LiveText("Checking...", style = LiveType.Small, color = LiveColors.TextDim)
-                is UpdateUi.UpToDate -> LiveText("Up to date (${u.v}).", style = LiveType.Small, color = LiveColors.Play)
-                is UpdateUi.NoStable -> {
-                    LiveText("No stable release yet.", style = LiveType.Small, color = LiveColors.Text)
-                    if (u.testAvailable) LiveText("Test builds exist - switch the channel to Test to get them.", style = LiveType.Small, color = LiveColors.TextDim, maxLines = 3)
-                }
-                UpdateUi.NoReleases -> LiveText("No releases have been published yet.", style = LiveType.Small, color = LiveColors.TextDim)
-                is UpdateUi.Failed -> LiveText(u.msg, style = LiveType.Small, color = LiveColors.Rec, maxLines = 3)
-                is UpdateUi.Downloading -> {
-                    LiveText(
-                        if (u.progress >= 0) "Downloading ${(u.progress * 100).toInt()}%" else "Downloading...",
-                        style = LiveType.Small,
-                    )
-                    Box(Modifier.fillMaxWidth().height(6.dp).background(LiveColors.PanelHi, LiveShapes.Small)) {
-                        Box(Modifier.fillMaxWidth(u.progress.coerceIn(0f, 1f)).height(6.dp).background(LiveColors.Accent, LiveShapes.Small))
-                    }
-                }
-                is UpdateUi.Available -> {
-                    LiveText("Version ${u.release.version} available", style = LiveType.Body, color = LiveColors.Accent)
-                    if (u.release.notes.isNotBlank()) LiveText(u.release.notes, style = LiveType.Small, color = LiveColors.TextDim, maxLines = 6)
-                    if (u.asset != null) {
-                        LiveTextButton(
-                            "Download and install",
-                            { scope.launch { downloadAndInstall(context, u.asset) { ui = it } } },
-                            Modifier.fillMaxWidth(), on = true,
-                        )
-                    } else {
-                        LiveText("This release has no APK yet.", style = LiveType.Small, color = LiveColors.TextDim)
-                    }
-                    LiveTextButton("Open release page", { AppUpdates.openInBrowser(context, u.release.pageUrl) }, Modifier.fillMaxWidth())
-                }
-            }
-        }
     }
 }
+
+/** Asset waiting for the "install unknown apps" permission; resumed on ON_RESUME once it is granted. */
+private var pendingInstallAsset: UpdateCheck.Asset? = null
 
 private suspend fun downloadAndInstall(context: Context, asset: UpdateCheck.Asset, set: (UpdateUi) -> Unit) {
     if (!AppUpdates.canInstall(context)) {
         // Takes the person to the "install unknown apps" switch for this app; they press the button again after.
-        set(UpdateUi.Failed("Allow installs from LiveCompanion in the settings screen that just opened, then try again."))
+        pendingInstallAsset = asset
+        set(UpdateUi.Failed("Allow installs from LiveCompanion in the settings screen that just opened - the download continues when you come back."))
         runCatching { context.startActivity(AppUpdates.unknownSourcesIntent(context)) }
         return
     }
+    pendingInstallAsset = null
     set(UpdateUi.Downloading(0f))
     try {
         val apk = withContext(Dispatchers.IO) {

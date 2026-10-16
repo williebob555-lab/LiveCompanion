@@ -155,7 +155,8 @@ fun MainShell(
                 } else {
                     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         TopChrome(live, client) {
-                            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            if (contentW >= 340.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) PortraitTopBar(store, client)
+                            else Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                 TransportBar(store, client)
                                 TrackHeader(store, client)
                             }
@@ -260,7 +261,7 @@ fun TabRail(tabs: List<Tab>, selected: Tab, modifier: Modifier = Modifier, onSel
                 ) {
                     LiveText(
                         t.label, Modifier.padding(horizontal = 2.dp), style,
-                        if (on) LiveColors.Accent else if (t.lowPriority) LiveColors.TextDim else LiveColors.Text,
+                        if (on) LiveColors.Accent else if (t.lowPriority) LiveColors.Text.copy(alpha = 0.7f) else LiveColors.Text,
                         textAlign = TextAlign.Center,
                     )
                     if (on) Box(Modifier.align(Alignment.CenterStart).width(2.dp).fillMaxHeight(0.6f).background(LiveColors.Accent))
@@ -286,7 +287,7 @@ private fun TabBody(tab: Tab, store: LiveStore, client: LiveClient, modifier: Mo
 }
 
 /**
- * Portrait tab row, 32dp per line, full labels always: one line when all tabs fit at the current font scale,
+ * Portrait tab row, 28dp per line, full labels always: one line when all tabs fit at the current font scale,
  * otherwise two balanced lines (never abbreviated).
  */
 @Composable
@@ -302,7 +303,7 @@ fun TabRow(tabs: List<Tab>, selected: Tab, modifier: Modifier = Modifier, onSele
                     Box(
                         Modifier
                             .weight(1f)
-                            .height(32.dp)
+                            .height(28.dp)
                             .clip(LiveShapes.Small)
                             .background(if (on) LiveColors.PanelHi else LiveColors.Panel)
                             .clickable { onSelect(t) }
@@ -312,7 +313,7 @@ fun TabRow(tabs: List<Tab>, selected: Tab, modifier: Modifier = Modifier, onSele
                         LiveText(
                             t.label,
                             style = LiveType.Small,
-                            color = if (on) LiveColors.Accent else if (t.lowPriority) LiveColors.TextDim else LiveColors.Text,
+                            color = if (on) LiveColors.Accent else if (t.lowPriority) LiveColors.Text.copy(alpha = 0.7f) else LiveColors.Text,
                             textAlign = TextAlign.Center,
                         )
                         if (on) Box(Modifier.align(Alignment.BottomCenter).width(24.dp).height(2.dp).background(LiveColors.Accent))

@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -71,6 +71,50 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
         return if (i >= 0) i + 1 else -1
     }
 
+    val rowFor: @Composable (TrackInfo) -> Unit = { t ->
+        TrackRow(
+            t = t,
+            focused = t.ref == focus.ref,
+            open = expanded == t.ref,
+            renaming = renaming == t.ref,
+            onFocus = { focusOn(t.ref) },
+            onToggleOpen = { renaming = null; expanded = if (expanded == t.ref) null else t.ref },
+            // one editor at a time (exclusive with the Edit panel); renaming never changes the focused track
+            onStartRename = { expanded = null; renaming = t.ref },
+            onRename = { name ->
+                renaming = null
+                val n = name.trim()
+                if (n.isNotEmpty() && n != t.name) {
+                    client.op("track.set", "tr" to t.ref, "k" to "name", "v" to n)
+                    store.patchTrack(t.ref) { it.copy(name = n) }
+                    if (t.ref == focus.ref) store.updateFocus { it.copy(name = n) }
+                }
+            },
+            onCancelRename = { renaming = null },
+            onToggle = { k, v ->
+                client.op("track.set", "tr" to t.ref, "k" to k, "v" to v)
+                store.patchTrack(t.ref) {
+                    when (k) {
+                        "arm" -> it.copy(arm = v); "mute" -> it.copy(mute = v); else -> it.copy(solo = v)
+                    }
+                }
+                if (t.ref == focus.ref) store.updateFocus {
+                    when (k) {
+                        "arm" -> it.copy(arm = v); "mute" -> it.copy(mute = v); else -> it.copy(solo = v)
+                    }
+                }
+            },
+            onColor = { c ->
+                expanded = null   // the panel closes after the action; colour pick never moves focus
+                client.op("track.set", "tr" to t.ref, "k" to "color", "v" to c)
+                store.patchTrack(t.ref) { it.copy(color = c) }
+                if (t.ref == focus.ref) store.updateFocus { it.copy(color = c) }
+            },
+            onDuplicate = { expanded = null; client.op("track.duplicate", "tr" to t.ref) },
+            onDelete = { deleting = t },
+        )
+    }
+
     Column(modifier.fillMaxSize().background(LiveColors.Bg), verticalArrangement = Arrangement.spacedBy(1.dp)) {
         Row(
             Modifier.fillMaxWidth().background(LiveColors.Panel).padding(1.dp),
@@ -92,53 +136,23 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
                 LiveText("No tracks", style = LiveType.Body, color = LiveColors.TextDim)
             }
         } else {
-            LazyColumn(
-                Modifier.fillMaxWidth().weight(1f),
-                verticalArrangement = Arrangement.spacedBy(1.dp),
-                contentPadding = PaddingValues(1.dp),
-            ) {
-                items(rows, key = { it.ref }) { t ->
-                    TrackRow(
-                        t = t,
-                        focused = t.ref == focus.ref,
-                        open = expanded == t.ref,
-                        renaming = renaming == t.ref,
-                        onFocus = { focusOn(t.ref) },
-                        onToggleOpen = { renaming = null; expanded = if (expanded == t.ref) null else t.ref },
-                        // one editor at a time (exclusive with the Edit panel); renaming never changes the focused track
-                        onStartRename = { expanded = null; renaming = t.ref },
-                        onRename = { name ->
-                            renaming = null
-                            val n = name.trim()
-                            if (n.isNotEmpty() && n != t.name) {
-                                client.op("track.set", "tr" to t.ref, "k" to "name", "v" to n)
-                                store.patchTrack(t.ref) { it.copy(name = n) }
-                                if (t.ref == focus.ref) store.updateFocus { it.copy(name = n) }
-                            }
-                        },
-                        onCancelRename = { renaming = null },
-                        onToggle = { k, v ->
-                            client.op("track.set", "tr" to t.ref, "k" to k, "v" to v)
-                            store.patchTrack(t.ref) {
-                                when (k) {
-                                    "arm" -> it.copy(arm = v); "mute" -> it.copy(mute = v); else -> it.copy(solo = v)
-                                }
-                            }
-                            if (t.ref == focus.ref) store.updateFocus {
-                                when (k) {
-                                    "arm" -> it.copy(arm = v); "mute" -> it.copy(mute = v); else -> it.copy(solo = v)
-                                }
-                            }
-                        },
-                        onColor = { c ->
-                            expanded = null   // the panel closes after the action; colour pick never moves focus
-                            client.op("track.set", "tr" to t.ref, "k" to "color", "v" to c)
-                            store.patchTrack(t.ref) { it.copy(color = c) }
-                            if (t.ref == focus.ref) store.updateFocus { it.copy(color = c) }
-                        },
-                        onDuplicate = { expanded = null; client.op("track.duplicate", "tr" to t.ref) },
-                        onDelete = { deleting = t },
-                    )
+            val master = rows.firstOrNull { it.kind == "master" }
+            val scrolling = if (master != null) rows.filter { it !== master } else rows
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                // Wide screens (tablets): rows flow into 2-3 columns instead of ~1800px-wide rows.
+                val cols = (maxWidth / 440.dp).toInt().coerceIn(1, 3)
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                        androidx.compose.foundation.lazy.grid.GridCells.Fixed(cols),
+                        Modifier.fillMaxWidth().weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(1.dp),
+                        horizontalArrangement = Arrangement.spacedBy(1.dp),
+                        contentPadding = PaddingValues(1.dp),
+                    ) {
+                        items(scrolling, key = { it.ref }) { t -> rowFor(t) }
+                    }
+                    // Master stays pinned below the list so it is never below the fold.
+                    if (master != null) Box(Modifier.fillMaxWidth().padding(1.dp)) { rowFor(master) }
                 }
             }
         }
@@ -204,7 +218,7 @@ private fun TrackRow(
                 }
                 LiveText(
                     when (t.kind) { "midi" -> "MIDI"; "audio" -> "AUDIO"; "group" -> "GROUP"; "return" -> "RET"; else -> "MAIN" },
-                    Modifier.width(40.dp), style = LiveType.Label, color = LiveColors.Text, maxLines = 1,
+                    Modifier.width(40.dp * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceIn(1f, 1.5f)), style = LiveType.Label, color = LiveColors.Text, maxLines = 1,
                 )
                 if (t.armable) {
                     LiveIconButton(LiveIconKind.Rec, { onToggle("arm", !t.arm) }, Modifier, t.arm, LiveColors.Rec, minHeight = 32.dp, minWidth = 32.dp)

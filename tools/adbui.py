@@ -17,6 +17,12 @@ import subprocess
 import sys
 import time
 
+for _s in (sys.stdout, sys.stderr):  # labels contain non-cp1252 glyphs (e.g. U+22EF)
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ADB = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Android", "Sdk", "platform-tools", "adb.exe")
 if not os.path.exists(ADB):
     ADB = "adb"
@@ -72,6 +78,7 @@ def main(argv):
         adb(serial, "shell", "input", "swipe", *rest[:4], rest[4] if len(rest) > 4 else "300"); time.sleep(0.6)
     elif cmd == "type":
         adb(serial, "shell", "input", "text", rest[0].replace(" ", "%s"))
+        adb(serial, "shell", "input", "keyevent", "111")  # ESC: close the soft keyboard so later taps hit the screen
     elif cmd == "shot":
         data = adb(serial, "exec-out", "screencap", "-p", binary=True)
         os.makedirs(os.path.dirname(rest[0]) or ".", exist_ok=True)

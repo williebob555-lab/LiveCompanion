@@ -149,4 +149,4 @@ fun ZoomPad(modifier: Modifier, onH: (Float) -> Unit, onV: ((Float) -> Unit)?, o
 }
 
 @Composable
-private fun ZoomBtn(label: String, onClick: () -> Unit) = LiveTextButton(label, onClick, minHeight = 24.dp, minWidth = 26.dp)
+private fun ZoomBtn(label: String, onClick: () -> Unit) = LiveTextButton(label, onClick, minHeight = 22.dp, minWidth = 26.dp)

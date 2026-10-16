@@ -4,7 +4,6 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import com.livecompanion.ui.components.detectHoldDrag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -74,9 +74,15 @@ fun ChainRow(
 
     fun targetFor(f: Int): Int {
         if (f < 0) return -1
-        val center = (lefts[f] ?: 0f) + dx + (widths[f] ?: 0f) / 2
+        // A neighbour is passed as soon as the dragged panel's LEADING edge crosses its centre (short drags follow).
+        val left = (lefts[f] ?: 0f) + dx
+        val right = left + (widths[f] ?: 0f)
         var t = 0
-        for (j in devices.indices) if (j != f && (lefts[j] ?: 0f) + (widths[j] ?: 0f) / 2 < center) t++
+        for (j in devices.indices) {
+            if (j == f) continue
+            val c = (lefts[j] ?: 0f) + (widths[j] ?: 0f) / 2
+            if (if (j > f) right > c else left > c) t++
+        }
         return t
     }
     val target = targetFor(from)
@@ -102,7 +108,7 @@ fun ChainRow(
                     else -> 0f
                 }
                 val handle = Modifier.pointerInput(d.path, devices.size) {
-                    detectDragGesturesAfterLongPress(
+                    detectHoldDrag(
                         onDragStart = { from = i; dx = 0f },
                         onDrag = { ch, delta ->
                             ch.consume()

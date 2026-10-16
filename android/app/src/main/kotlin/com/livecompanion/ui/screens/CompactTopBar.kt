@@ -58,3 +58,27 @@ fun CompactTopBar(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
         }
     }
 }
+
+/**
+ * Portrait phone chrome in THREE 28dp rows (~12% of a 915dp screen): transport + undo/redo / tempo + position + track
+ * prev-name-next / arm M S monitor + vol/pan/meter. Used by the shell when the width is >= 340dp * fontScale;
+ * narrower or larger-font screens keep the roomier [TransportBar] + [TrackHeader].
+ */
+@Composable
+fun PortraitTopBar(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier) {
+    val h = 28.dp
+    Column(modifier.fillMaxWidth().background(LiveColors.Panel).padding(1.dp), Arrangement.spacedBy(1.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
+            TransportButtons(store, client, h, 24.dp)
+            UndoRedo(store, client, h, 24.dp)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
+            TempoPos(store, client, 1.3f, 1.7f, h)
+            TrackNav(store, client, Modifier.weight(2.4f), h, 28.dp)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
+            TrackToggles(store, client, h, 30.dp)
+            TrackFaders(store, client, 24.dp)
+        }
+    }
+}

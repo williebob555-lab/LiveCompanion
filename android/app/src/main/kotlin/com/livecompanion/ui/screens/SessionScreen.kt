@@ -4,7 +4,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
@@ -24,9 +23,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import com.livecompanion.ui.components.detectHoldDrag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -146,7 +148,7 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
         }
     }
 
-    val slotList: @Composable (Modifier, Boolean) -> Unit = { m, showAddScene ->
+    val slotList: @Composable (Modifier, Boolean, Dp) -> Unit = { m, showAddScene, sceneBase ->
         val slots = slotsState.slots
         if (slots.isEmpty()) {
             Box(m, contentAlignment = Alignment.Center) {
@@ -162,6 +164,7 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                 items(slots, key = { it.i }) { slot ->
                     SlotRow(
                         slot = slot,
+                        sceneBase = sceneBase,
                         sceneLabel = tracks.scenes.getOrNull(slot.i)?.name?.ifBlank { null } ?: "${slot.i + 1}",
                         showScene = showScenes,
                         armed = focus.arm,
@@ -211,14 +214,17 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
         val wide = mw >= 560.dp && mw > maxHeight
         if (wide) {
             Row(Modifier.fillMaxSize()) {
-                slotList(Modifier.width(minOf(mw - 150.dp, 380.dp)).fillMaxHeight(), false)
+                slotList(Modifier.width(minOf(mw - 150.dp, 560.dp)).fillMaxHeight(), false, 46.dp)
                 Box(Modifier.width(1.dp).fillMaxHeight().background(LiveColors.Line))
                 Column(Modifier.width(150.dp).fillMaxHeight()) { controls(true) }
             }
         } else {
+            // portrait: tiles keep a sensible max width (not edge-to-edge on tablets); wider scene column so names fit
             Column(Modifier.fillMaxSize()) {
                 controls(false)
-                slotList(Modifier.fillMaxWidth().weight(1f), true)
+                Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.Center) {
+                    slotList(Modifier.widthIn(max = 460.dp).fillMaxHeight().weight(1f, fill = false), true, 64.dp)
+                }
             }
         }
     }
@@ -312,6 +318,7 @@ private fun dragTarget(from: Int, dy: Float, pitch: Float, count: Int): Int =
 @Composable
 private fun SlotRow(
     slot: SlotInfo,
+    sceneBase: Dp,
     sceneLabel: String,
     showScene: Boolean,
     armed: Boolean,
@@ -351,7 +358,7 @@ private fun SlotRow(
     ) {
         if (showScene) {
             // narrow scene column: number / short name with a tiny play triangle
-            val sceneW = 38.dp * fs
+            val sceneW = sceneBase * fs
             LiveButton(onSceneFire, Modifier.width(sceneW).fillMaxHeight(), minHeight = rowH, minWidth = sceneW, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp)) { c ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(1.dp)) {
                     LiveIcon(LiveIconKind.Play, c, size = 8.dp)
@@ -389,7 +396,7 @@ private fun SlotRow(
                 .clickable(onClick = onFire)
                 .then(
                     if (slot.hasClip) Modifier.pointerInput(slot.i) {
-                        detectDragGesturesAfterLongPress(
+                        detectHoldDrag(
                             onDragStart = { onDragStart() },
                             onDrag = { change, amount -> change.consume(); onDrag(amount.y) },
                             onDragEnd = onDragEnd,
