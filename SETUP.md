@@ -2,8 +2,9 @@
 
 1. **Phone:** install `LiveCompanion-<version>.apk` from the GitHub release (allow "install unknown apps" once).
 2. **PC (Windows):** download `LiveCompanion-remote-script.zip` from the same release and unzip the
-   `LiveCompanion` folder into `Documents\Ableton\User Library\Remote Scripts\`.
-   (From a clone of the repo instead: run `tools\install_remote_script.ps1`.)
+   `LiveCompanion` folder into `<your User Library>\Remote Scripts\` (Live: Settings → Library shows the
+   User Library location; default `Documents\Ableton\User Library`). Restart Live afterwards.
+   (From a clone of the repo: `tools\install_remote_script.ps1` finds the User Library automatically.)
    **Fedora/Wine:** same folder inside the Wine prefix, or run `tools/install_remote_script.sh`.
 3. **Live:** Settings → Link, Tempo & MIDI → Control Surface → pick **LiveCompanion** (Input/Output: None).
    One time only — Live remembers it.
