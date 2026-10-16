@@ -69,7 +69,7 @@ slot_pos:{<slot i>:<pos>} (playing slots on focused track)}`
 ## Ops (`a` = args). Unsupported → `ok:false, err:"unsupported: ..."`.
 Song/transport: `song.play`, `song.stop`, `song.continue`, `song.tap_tempo`, `song.undo`, `song.redo`,
 `song.capture_midi`, `song.stop_all_clips`, `song.re_enable_automation`, `song.jump {beats}` (relative),
-`song.seek {beats}` (absolute), `song.scrub {beats}` (relative, LOM scrub_by),  (relative, LOM scrub_by), `song.cue {dir:1|-1}`,
+`song.seek {beats}` (absolute), `song.scrub {beats}` (relative, LOM scrub_by),  (relative, LOM scrub_by), `song.cue {dir:1|-1}`, `cue.move {i, time}` (move locator i of `session.cues` to `time`; best effort: sets CuePoint.time if settable, else jumps to the cue, `song.set_or_delete_cue()` to delete, re-creates at `time`, restores name, playhead and play state; clear `err` if impossible or another locator is there),
 `song.set {k,v}` k ∈ tempo, sig, metronome, loop, loop_start, loop_len, punch_in, punch_out, rec, session_rec,
 overdub, count_in, quant, rec_quant, auto_arm, back_to_arr, view.
 Scenes/tracks: `scene.fire {i}`, `scene.create {i}`, `track.create {kind:"audio"|"midi"|"return", i}`, `track.delete {tr}`,

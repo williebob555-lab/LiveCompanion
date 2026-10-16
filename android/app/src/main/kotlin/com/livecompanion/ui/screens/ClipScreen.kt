@@ -64,7 +64,7 @@ fun ClipScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifi
     val slots by store.slots.collectAsState()
     // P2-1-15: the Clip tab follows focus. A clip open on another track is closed; then the new track's playing /
     // recording slot clip opens if there is one, else the clip picker shows.
-    var followFor by remember { mutableStateOf<String?>(null) }
+    var followFor by remember { mutableStateOf<String?>(focus.ref.ifEmpty { null }) }   // also on entering the tab
     var seenFocus by remember { mutableStateOf(focus.ref) }
     LaunchedEffect(focus.ref) {
         val l = clip.loc
@@ -74,13 +74,19 @@ fun ClipScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifi
         if (stale || focus.ref != seenFocus) followFor = focus.ref
         seenFocus = focus.ref
     }
-    LaunchedEffect(followFor, slots.tr, slots.slots) {
+    val arrS by store.arr.collectAsState()
+    LaunchedEffect(followFor, slots.tr, slots.slots, arrS.tr, arrS.clips) {
         val f = followFor ?: return@LaunchedEffect
         if (slots.tr != f) return@LaunchedEffect
-        followFor = null
-        if (clip.loc != null) return@LaunchedEffect
+        if (clip.loc != null) { followFor = null; return@LaunchedEffect }
+        // Auto-open: the playing / recording slot clip, else the first slot clip, else the first arrangement clip;
+        // with no clip at all the picker list shows. (Arrangement may arrive a tick after the slots: wait for it.)
         val live = slots.slots.firstOrNull { it.hasClip && (it.status == "recording" || it.status == "playing") }
-        if (live != null) client.op("clip.open", "loc" to Loc.slot(f, live.i))
+            ?: slots.slots.firstOrNull { it.hasClip && it.clip != null }
+        if (live != null) { followFor = null; client.op("clip.open", "loc" to Loc.slot(f, live.i)); return@LaunchedEffect }
+        if (arrS.tr != f) return@LaunchedEffect
+        followFor = null
+        arrS.clips.firstOrNull()?.let { client.op("clip.open", "loc" to Loc.arr(f, it.i)) }
     }
     if (clip.loc == null) ClipPicker(store, client, modifier) else ClipEditor(clip, store, client, modifier)
 }

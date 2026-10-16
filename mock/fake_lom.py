@@ -725,9 +725,21 @@ class FakeSongView(Observable):
 
 
 class FakeCue(object):
+    locked = False   # class switch: simulate Live's read-only CuePoint.time
+
     def __init__(self, time, name=""):
-        self.time = time
+        self._time = time
         self.name = name
+
+    @property
+    def time(self):
+        return self._time
+
+    @time.setter
+    def time(self, v):
+        if FakeCue.locked:
+            raise AttributeError("CuePoint.time is read-only")
+        self._time = v
 
 
 class FakeSong(Observable):
@@ -735,7 +747,7 @@ class FakeSong(Observable):
                  "punch_out", "loop", "loop_start", "loop_length", "metronome", "signature_numerator",
                  "signature_denominator", "clip_trigger_quantization", "midi_recording_quantization",
                  "count_in_duration", "back_to_arranger", "exclusive_arm", "song_length", "can_undo", "can_redo",
-                 "root_note", "scale_name", "scale_intervals", "tracks", "return_tracks", "scenes")
+                 "root_note", "scale_name", "scale_intervals", "tracks", "return_tracks", "scenes", "cue_points")
 
     def __init__(self):
         Observable.__init__(self)
@@ -928,6 +940,14 @@ class FakeSong(Observable):
 
     def scrub_by(self, beats):
         self.current_song_time = max(0.0, self.current_song_time + beats)
+
+    def set_or_delete_cue(self):
+        for c in self.cue_points:
+            if abs(c.time - self.current_song_time) < 1e-6:
+                self.cue_points.remove(c)
+                return
+        self.cue_points.append(FakeCue(self.current_song_time))
+        self.cue_points.sort(key=lambda c: c.time)
 
     def jump_to_next_cue(self):
         for c in self.cue_points:

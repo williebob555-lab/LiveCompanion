@@ -61,6 +61,17 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
     var expanded by remember { mutableStateOf<String?>(null) }
     var renaming by remember { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<TrackInfo?>(null) }
+    // In the picker dialog the rename happens in its own small dialog (inline rename collapsed under the soft keyboard).
+    var renameDlg by remember { mutableStateOf<TrackInfo?>(null) }
+
+    fun applyRename(t: TrackInfo, name: String) {
+        val n = name.trim()
+        if (n.isNotEmpty() && n != t.name) {
+            client.op("track.set", "tr" to t.ref, "k" to "name", "v" to n)
+            store.patchTrack(t.ref) { it.copy(name = n) }
+            if (t.ref == focus.ref) store.updateFocus { it.copy(name = n) }
+        }
+    }
 
     fun focusOn(ref: String) {
         if (ref != focus.ref) {
@@ -84,16 +95,8 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
             onFocus = { focusOn(t.ref) },
             onToggleOpen = { renaming = null; expanded = if (expanded == t.ref) null else t.ref },
             // one editor at a time (exclusive with the Edit panel); renaming never changes the focused track
-            onStartRename = { expanded = null; renaming = t.ref },
-            onRename = { name ->
-                renaming = null
-                val n = name.trim()
-                if (n.isNotEmpty() && n != t.name) {
-                    client.op("track.set", "tr" to t.ref, "k" to "name", "v" to n)
-                    store.patchTrack(t.ref) { it.copy(name = n) }
-                    if (t.ref == focus.ref) store.updateFocus { it.copy(name = n) }
-                }
-            },
+            onStartRename = { expanded = null; if (onFocused != null) renameDlg = t else renaming = t.ref },
+            onRename = { name -> renaming = null; applyRename(t, name) },
             onCancelRename = { renaming = null },
             onToggle = { k, v ->
                 client.op("track.set", "tr" to t.ref, "k" to k, "v" to v)
@@ -170,6 +173,10 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
                 }
             }
         }
+    }
+
+    renameDlg?.let { t ->
+        com.livecompanion.ui.components.NameDialog("Rename track", t.name, { renameDlg = null }) { n -> renameDlg = null; applyRename(t, n) }
     }
 
     deleting?.let { t ->

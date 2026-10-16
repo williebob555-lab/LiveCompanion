@@ -157,3 +157,11 @@ Reviewer: owner-preference agent. lc_phone (pixel_7, 2400x1080 land / 1080x2400 
 
 ### Totals (re-check)
 Previous FAILs: 8 PASS / 0 FAIL (2 borderline/weak). Not-verified items: 6 PASS, 1 PARTIAL (TAKE), 1 FAIL (locators). New: 4 FAIL (rename-with-keyboard, MIDI ruler labels, demo notice, tablet emptiness/Clip auto-open).
+
+### Fix pass 2 (post test3 re-check) - fixed (pending re-check)
+- Locators: fixed (pending re-check) - hold-drag a flag (24dp zone, wins over ruler scrub) moves it optimistically; tap = jump; server op `cue.move {i,time}` (sets CuePoint.time, else delete + re-create fallback, clear err); fake LOM + pytest + PROTOCOL.md. Real-Live unverified.
+- Rename in picker with keyboard: fixed (pending re-check) - picker uses a small NameDialog (IME-padded, scrolling body, pinned buttons, 48dp field, autofocus, inline error).
+- Piano-roll ruler labels: fixed (pending re-check) - bar labels thinned 2/4/8/16/32 by px, finer labels only where they fit.
+- Demo notice: fixed (pending re-check) - unsupported demo ops are silent (logcat only).
+- Tablet (>= 840dp): fixed (pending re-check) - Session slot list | controls | selected-clip detail; Mix vertical send faders + routing, returns/master vertical strips; Devices scale up to 2.2x and 6 columns; Browser folders | items; Clip tab auto-opens playing/first slot clip, else first arrangement clip (phones too). Screens: build/outputs/roborazzi/tablet_*.png.
+- Borderline: fixed (pending re-check) - small-phone ruler 11dp + brace 3dp (threshold <= 380dp tall); Devices scroll chevron 24dp accent.

@@ -229,6 +229,15 @@ fun ArrangeScreen(
                 client.sendThrottled("looplen", "song.set", jsonArgs("k" to "loop_len", "v" to l), 40)
                 if (done) store.editSession({ it.copy(loopStart = s, loopLen = l) })
             },
+            onCueMove = { i, t, done ->
+                // The server fallback (delete + re-create) is not a per-frame op: only the final position is sent.
+                if (done) {
+                    client.op("cue.move", "i" to i, "time" to t)
+                    store.editSession({ ss ->
+                        ss.copy(cues = ss.cues.mapIndexed { ci, c -> if (ci == i) c.copy(t = t) else c }.sortedBy { it.t })
+                    })
+                }
+            },
             onLoopToggle = {
                 val on = !store.session.value.loop
                 client.op("song.set", "k" to "loop", "v" to on)

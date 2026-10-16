@@ -91,6 +91,8 @@ class LaneActions(
     val onMove: (i: Int, start: Double) -> Unit = { _, _ -> },
     val onTrim: (i: Int, start: Double?, end: Double?) -> Unit = { _, _, _ -> },
     val onCreate: (beat: Double) -> Unit = {},
+    /** Locator hold-drag: move locator [i] to [time] (throttled while dragging; [done] on release). */
+    val onCueMove: (i: Int, time: Double, done: Boolean) -> Unit = { _, _, _ -> },
     /** Take hold-drag: take -> main lane. */
     val onPromote: (lane: Int, i: Int) -> Unit = { _, _ -> },
     /** Take hold-drag: main-lane clip -> take lane. */
@@ -114,10 +116,12 @@ class RecState {
 /** Loop brace being dragged (or released and waiting for the server echo): drawn instead of the server value. */
 private class LoopPrev(val loop: TLoop, val done: Boolean)
 
+private class CueDrag(val i: Int, val t: Double, val committed: Boolean, val serial: Int)
+
 private class DragEdit(val i: Int, val start: Double, val end: Double, val committed: Boolean, val serial: Int)
 
 private enum class Zone { Scrub, Brace, Main, Take, None }
-private enum class Mode { Pending, Hold, Pan, Move, TrimL, TrimR, Scrub, LoopL, LoopR, LoopBody, Multi, TakeDrag }
+private enum class Mode { Pending, Hold, Pan, Move, TrimL, TrimR, Scrub, LoopL, LoopR, LoopBody, Multi, TakeDrag, CueMove }
 
 private const val HOLD_MS = com.livecompanion.ui.components.HOLD_DRAG_MS
 private const val TAKE_H_DP = 24f
@@ -152,10 +156,10 @@ fun TrackLane(
     val haptic = LocalHapticFeedback.current
     val slop = LocalViewConfiguration.current.touchSlop
     val tm = rememberTextMeasurer()
-    // Short screens (small phone landscape): slimmer ruler (12dp) + brace (4dp) so the chrome above the lane stays <= ~18%.
-    val shortScreen = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp < 360
-    val scrubPx = if (shortScreen) 12f * dens else with(density) { maxOf(SCRUB_H_DP.dp, 10.sp.toDp() + 5.dp).toPx() }
-    val bracePx = (if (shortScreen) 4f else BRACE_H_DP) * dens
+    // Short screens (small phone landscape): slimmer ruler (11dp) + brace (3dp) so the chrome above the lane stays <= ~18%.
+    val shortScreen = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp <= 380
+    val scrubPx = if (shortScreen) 11f * dens else with(density) { maxOf(SCRUB_H_DP.dp, 10.sp.toDp() + 5.dp).toPx() }
+    val bracePx = (if (shortScreen) 3f else BRACE_H_DP) * dens
     val rulerPx = scrubPx + bracePx
     val takeH0 = TAKE_H_DP * dens
     val edgeHit = 24f * dens
@@ -172,6 +176,18 @@ fun TrackLane(
     var dragSerial by remember { mutableStateOf(0) }
     var loopPrev by remember { mutableStateOf<LoopPrev?>(null) }
     var takeDrop by remember { mutableStateOf<TakeDrop?>(null) }
+    var cueDrag by remember { mutableStateOf<CueDrag?>(null) }
+    var cueSerial by remember { mutableStateOf(0) }
+    // Locator settle (OptimisticDrag rule): the moved flag stays where it was dropped until the server shows it there (or 600 ms).
+    LaunchedEffect(model.cues) {
+        val d = cueDrag
+        if (d != null && d.committed && model.cues.any { abs(it.t - d.t) < 1e-3 }) cueDrag = null
+    }
+    LaunchedEffect(Unit) {
+        snapshotFlow { cueDrag }.collectLatest { d ->
+            if (d != null && d.committed) { delay(com.livecompanion.ui.components.Optimistic.SETTLE_MS); if (cueDrag?.serial == d.serial) cueDrag = null }
+        }
+    }
     LaunchedEffect(model.loop, loopPrev) {
         val lp = loopPrev
         if (lp != null && lp.done) {
@@ -187,7 +203,7 @@ fun TrackLane(
         val d = drag
         if (d != null && d.committed && model.clips.any { abs(it.start - d.start) < 1e-3 && abs(it.end - d.end) < 1e-3 }) drag = null
     }
-    LaunchedEffect(model.trackRef) { drag = null; takeDrop = null }
+    LaunchedEffect(model.trackRef) { drag = null; takeDrop = null; cueDrag = null }
     LaunchedEffect(Unit) {
         snapshotFlow { drag }.collectLatest { d ->
             if (d != null && d.committed) { delay(com.livecompanion.ui.components.Optimistic.SETTLE_MS); if (drag?.serial == d.serial) drag = null }
@@ -293,6 +309,17 @@ fun TrackLane(
                         val nearEdge = min(abs(view.xOf(m.loop.start) - p0.x), abs(view.xOf(m.loop.start + m.loop.len) - p0.x)) <= edgeHit
                         if (nearEdge && (zone == Zone.Scrub || hitMain(p0.x, p0.y) == null)) zone = Zone.Brace
                     }
+                    // Locator flags (24dp hit zone) win over the ruler scrub (and over loop edges in the scrub row).
+                    var cueHit = -1
+                    if (p0.y < rulerPx) {
+                        var bestD = edgeHit / 2f
+                        m.cues.forEachIndexed { ci, cu ->
+                            val t = cueDrag?.takeIf { it.i == ci }?.t ?: cu.t
+                            val dd = abs(view.xOf(t) - p0.x)
+                            if (dd <= bestD) { bestD = dd; cueHit = ci }
+                        }
+                    }
+                    if (cueHit >= 0) zone = Zone.Scrub
                     var mode = Mode.Pending
                     var hitClip: ArrClip? = null
                     var hitEdge = 0
@@ -314,7 +341,7 @@ fun TrackLane(
                     }
 
                     when (zone) {
-                        Zone.Scrub -> { mode = Mode.Scrub; scrubAt(p0.x, false) }
+                        Zone.Scrub -> if (cueHit >= 0) holdable = true else { mode = Mode.Scrub; scrubAt(p0.x, false) }
                         Zone.Brace -> {
                             val lp = m.loop
                             val ds = abs(view.xOf(lp.start) - p0.x)
@@ -347,6 +374,7 @@ fun TrackLane(
 
                     fun cancelEdits() {
                         if (mode == Mode.Scrub) a.onScrub(max(0.0, snapTo(view.beatAt(lastPos.x), grid)), true)
+                        if (mode == Mode.CueMove) cueDrag = null
                         if (mode == Mode.LoopL || mode == Mode.LoopR || mode == Mode.LoopBody) { loopPrev = null; a.onLoop(loopOrig.start, loopOrig.len, true) }
                         if (mode == Mode.Move || mode == Mode.TrimL || mode == Mode.TrimR) drag = null
                         takeDrop = null
@@ -397,6 +425,7 @@ fun TrackLane(
                             // ---------------------------------------------------- release
                             when (mode) {
                                 Mode.Scrub -> scrubAt(c.position.x, true)
+                                Mode.CueMove -> cueDrag?.let { d -> cueDrag = CueDrag(d.i, d.t, true, d.serial); a.onCueMove(d.i, d.t, true) }
                                 Mode.LoopL, Mode.LoopR, Mode.LoopBody -> { loopPrev = LoopPrev(loopNow, true); a.onLoop(loopNow.start, loopNow.len, true) }
                                 Mode.Move -> {
                                     val td = takeDrop
@@ -413,7 +442,10 @@ fun TrackLane(
                                 Mode.TrimL -> drag?.let { d -> drag = DragEdit(d.i, d.start, d.end, true, d.serial); a.onTrim(d.i, d.start, null) }
                                 Mode.TrimR -> drag?.let { d -> drag = DragEdit(d.i, d.start, d.end, true, d.serial); a.onTrim(d.i, null, d.end) }
                                 Mode.Pan -> Unit
-                                Mode.Pending, Mode.Hold -> {
+                                Mode.Pending, Mode.Hold -> if (cueHit >= 0) {
+                                    // tap a locator flag = jump there
+                                    m.cues.getOrNull(cueHit)?.let { a.onScrub(it.t, true) }
+                                } else {
                                     // ---------------- tap
                                     val now = System.nanoTime()
                                     val quick = now - lastTap[0] < 330_000_000L && abs(c.position.x - lastTapX[0]) < 40f * dens
@@ -448,7 +480,7 @@ fun TrackLane(
                             moved = true
                             when (mode) {
                                 Mode.Pending -> {
-                                    mode = when (zone) {
+                                    mode = if (cueHit >= 0) Mode.Scrub else when (zone) {
                                         Zone.Brace -> when (edgeLoop) {
                                             1 -> Mode.LoopL; 2 -> Mode.LoopR; 3 -> Mode.LoopBody; else -> Mode.Scrub
                                         }
@@ -456,7 +488,7 @@ fun TrackLane(
                                     }
                                     if (mode == Mode.LoopBody) loopGrab = view.beatAt(p0.x) - m.loop.start
                                 }
-                                Mode.Hold -> {
+                                Mode.Hold -> if (cueHit >= 0) mode = Mode.CueMove else {
                                     val hc = hitClip
                                     // Hold-drag on an UNSELECTED clip always MOVES; only the selected clip's handles trim
                                     // (and those arm immediately on press, see above).
@@ -464,13 +496,17 @@ fun TrackLane(
                                 }
                                 else -> Unit
                             }
-                            if (mode == Mode.Scrub && zone == Zone.Brace) scrubAt(p0.x, false)
+                            if (mode == Mode.Scrub && (zone == Zone.Brace || cueHit >= 0)) scrubAt(p0.x, false)
                         }
                         if (moved) {
                             val x = c.position.x
                             val g = effectiveGrid(grid)
                             when (mode) {
                                 Mode.Scrub -> scrubAt(x, false)
+                                Mode.CueMove -> {
+                                    val nt = max(0.0, snapTo(view.beatAt(x), grid))
+                                    if (cueDrag?.t != nt) { cueDrag = CueDrag(cueHit, nt, false, ++cueSerial); a.onCueMove(cueHit, nt, false) }
+                                }
                                 Mode.Pan -> {
                                     view.start = max(0.0, view.start - (x - c.previousPosition.x) / view.ppb)
                                 }
@@ -536,7 +572,7 @@ fun TrackLane(
             val takesN = if (model.showTakes) min(model.takes.size, 4) else 0
             val takeH = takeHFor(size.height, rulerPx, takesN, takeH0)
             val mh = max(size.height - rulerPx - takesN * takeH, 40f * dens)
-            drawBase(view, model, loopPrev?.loop, drag, takeDrop, peaks, scrubPx, rulerPx, mh, takeH, tm, dens)
+            drawBase(view, model, cueDrag, loopPrev?.loop, drag, takeDrop, peaks, scrubPx, rulerPx, mh, takeH, tm, dens)
         }
         // Overlay: recording region + playhead (reads clock.shown per frame; nothing recomposes).
         Canvas(Modifier.fillMaxSize()) {
@@ -579,7 +615,7 @@ private fun lighten(c: Color, t: Float): Color =
 private fun barPxOf(ppb: Float, bpb: Double): Float = (ppb * bpb).toFloat()
 
 private fun DrawScope.drawBase(
-    view: TimelineView, m: LaneModel, loopOverride: TLoop?, drag: DragEdit?, drop: TakeDrop?, peaks: Map<String, Peaks>,
+    view: TimelineView, m: LaneModel, cueDrag: CueDrag?, loopOverride: TLoop?, drag: DragEdit?, drop: TakeDrop?, peaks: Map<String, Peaks>,
     scrubPx: Float, rulerPx: Float, mainH: Float, takeH: Float, tm: TextMeasurer, dens: Float,
 ) {
     val w = size.width
@@ -594,7 +630,8 @@ private fun DrawScope.drawBase(
     // locator labels are measured first so bar / beat numbers underneath them can be skipped (no collisions)
     class CueBox(val cue: CuePoint, val x: Float, val lx: Float, val layout: androidx.compose.ui.text.TextLayoutResult?)
     val cueBoxes = ArrayList<CueBox>()
-    for (cu in m.cues) {
+    for ((ci, cu0) in m.cues.withIndex()) {
+        val cu = if (cueDrag != null && cueDrag.i == ci) CuePoint(cueDrag.t, cu0.n) else cu0
         val x = view.xOf(cu.t)
         if (x < -2f || x > w) continue
         var lay: androidx.compose.ui.text.TextLayoutResult? = null

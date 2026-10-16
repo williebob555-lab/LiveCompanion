@@ -247,6 +247,7 @@ fun LiveTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     onDone: (() -> Unit)? = null,
     autoFocus: Boolean = false,
+    minHeight: androidx.compose.ui.unit.Dp = 32.dp,
 ) {
     val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
     if (autoFocus) androidx.compose.runtime.LaunchedEffect(Unit) { try { focus.requestFocus() } catch (_: Exception) {} }
@@ -262,7 +263,7 @@ fun LiveTextField(
         decorationBox = { inner ->
             Box(
                 Modifier
-                    .heightIn(min = 32.dp)
+                    .heightIn(min = minHeight)
                     .fillMaxWidth()
                     .background(LiveColors.Bg, LiveShapes.Small)
                     .border(1.dp, LiveColors.Line, LiveShapes.Small)

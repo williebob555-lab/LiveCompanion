@@ -78,15 +78,16 @@ private fun typeBadge(t: String) = when (t) {
 
 private fun controlCount(d: Device) = maxOf(d.macros?.size ?: 0, d.pp.size)
 
-private fun columnsFor(n: Int) = when {
+private fun columnsFor(n: Int, big: Boolean = false) = when {
+    big && n >= 9 -> 6   // tablets: wider panels with more parameters per row
     n >= 5 -> 4
     n >= 2 -> n
     else -> 2
 }
 
 /** Panel width from the number of inline controls (4 per row, like Live's compact device view). */
-private fun panelWidth(d: Device, cell: Dp): Dp {
-    val base = columnsFor(controlCount(d)) * cell.value + 10
+private fun panelWidth(d: Device, cell: Dp, big: Boolean = false): Dp {
+    val base = columnsFor(controlCount(d), big) * cell.value + 10
     return maxOf(base, if (d.chains.isNotEmpty()) 160f else 124f).dp
 }
 
@@ -195,13 +196,14 @@ fun DevicePanel(
         val avail = maxHeight
         val actionsH = 30.dp
         val selH = if (selected) 28.dp else 0.dp
-        val cols = columnsFor(controlCount(d))
+        val big = ds >= 1.4f
+        val cols = columnsFor(controlCount(d), big)
         val reserve = (if (d.variations != null) 28 else 0) + (if (d.chains.isNotEmpty()) 28 + 26 * d.chains.size else 0)
         val knobMax = (avail - HEADER_H - 2.dp - actionsH - selH - 6.dp).coerceAtLeast(rowH)
         val rowsFit = ((knobMax.value - reserve) / rowH.value).toInt().coerceAtLeast(1)
         val shown = (rowsFit * cols).coerceAtLeast(cols)
         Column(
-            Modifier.width(panelWidth(d, cw))
+            Modifier.width(panelWidth(d, cw, big))
                 .background(LiveColors.Panel, LiveShapes.Small).border(1.dp, border, LiveShapes.Small),
         ) {
             Box(Modifier.fillMaxWidth().height(2.dp).background(typeColor(d.type)))

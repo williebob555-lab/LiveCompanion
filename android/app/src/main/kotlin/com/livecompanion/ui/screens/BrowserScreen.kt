@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -163,24 +164,23 @@ fun BrowserScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
             DenseButton("Refresh", { m.cache.remove(m.path); m.version++ }, enabled = m.path.isNotEmpty())
             if (m.previewing != null) DenseButton("Stop", { m.previewing = null; client.op("browser.preview_stop") }, on = true, onColor = LiveColors.Play)
         }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            when {
-                m.path.isEmpty() -> Center("Pick a category above")
-                m.loading && listing.isEmpty() -> Center("Loading...")
-                m.error != null && listing.isEmpty() -> Center(m.error ?: "")
-                shown.isEmpty() -> Center(if (listing.isEmpty()) "Empty" else "No matches")
-                else -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    items(shown, key = { it.name + it.uri }) { item ->
-                        val full = m.path + item.name
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val paneW = maxWidth
+            val twoPane = paneW >= 840.dp
+            val itemList: @Composable (List<BrowserItem>, List<String>, Modifier, List<String>?) -> Unit = { items0, base, mod, highlight ->
+                LazyColumn(mod, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    items(items0, key = { it.name + it.uri }) { item ->
+                        val full = base + item.name
                         Row(
-                            Modifier.fillMaxWidth().height(32.dp).background(LiveColors.Panel, LiveShapes.Small)
+                            Modifier.fillMaxWidth().height(32.dp)
+                                .background(if (highlight != null && full == highlight) LiveColors.PanelHi else LiveColors.Panel, LiveShapes.Small)
                                 .then(if (item.folder) Modifier.clickable { m.path = full; m.query = "" } else Modifier)
                                 .padding(start = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             Box(Modifier.size(8.dp).background(if (item.folder) LiveColors.Accent else LiveColors.TextDim, LiveShapes.Small))
-                            LiveText(item.name, Modifier.weight(1f), LiveType.Body)
+                            LiveText(item.name, Modifier.weight(1f), LiveType.Body, color = if (highlight != null && full == highlight) LiveColors.Accent else LiveColors.Text)
                             if (item.loadable) {
                                 val prev = m.previewing == full
                                 DenseButton("Preview", {
@@ -207,6 +207,29 @@ fun BrowserScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                         }
                     }
                 }
+            }
+            when {
+                m.path.isEmpty() -> Center("Pick a category above")
+                m.loading && listing.isEmpty() -> Center("Loading...")
+                m.error != null && listing.isEmpty() -> Center(m.error ?: "")
+                twoPane -> {
+                    // Tablet: folders | items. The folder pane shows this level's folders (or, inside a leaf folder, its siblings).
+                    val hasFolders = listing.any { it.folder }
+                    val folderBase = if (hasFolders || m.path.size <= 1) m.path else m.path.dropLast(1)
+                    val folders = (m.cache[folderBase] ?: listing).filter { it.folder }
+                    val leaves = shown.filter { !it.folder }
+                    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Box(Modifier.width(paneW * 0.36f).fillMaxHeight()) {
+                            if (folders.isEmpty()) Center("No folders") else itemList(folders, folderBase, Modifier.fillMaxSize(), m.path)
+                        }
+                        Box(Modifier.weight(1f).fillMaxHeight()) {
+                            if (leaves.isEmpty()) Center(if (hasFolders) "Pick a folder on the left" else if (listing.isEmpty()) "Empty" else "No matches")
+                            else itemList(leaves, m.path, Modifier.fillMaxSize(), null)
+                        }
+                    }
+                }
+                shown.isEmpty() -> Center(if (listing.isEmpty()) "Empty" else "No matches")
+                else -> itemList(shown, m.path, Modifier.fillMaxSize(), null)
             }
         }
         m.status?.let { LiveText(it, Modifier.fillMaxWidth().background(LiveColors.Panel).padding(4.dp), LiveType.Small) }

@@ -47,7 +47,7 @@ import kotlin.math.sin
 /**
  * In-app fake Live ("Try demo"). Same API as [LiveClient]; requests are answered locally against the JSON fixtures in
  * assets/demo (recorded from the mock server). Common ops are applied to the [LiveStore]; everything else answers ok
- * with a one-line "Demo: not simulated" notice. [loader] returns the text of `<name>.json` or null.
+ * silently (logcat only, no user notice). [loader] returns the text of `<name>.json` or null.
  * [tickMs] <= 0 disables the playback ticker (tests drive [tick] by hand).
  */
 class DemoClient(
@@ -193,7 +193,11 @@ class DemoClient(
     private fun D(a: JsonObject, k: String) = a[k]?.jsonPrimitive?.doubleOrNull
     private fun B(a: JsonObject, k: String) = a[k]?.jsonPrimitive?.let { it.booleanOrNull ?: (it.doubleOrNull?.let { d -> d != 0.0 }) }
 
-    private fun unsupported(op: String): JsonElement { store.notice("Demo: not simulated ($op)"); return JsonNull }
+    /** Unsupported demo ops are silent for the user (no notice); only written to logcat. */
+    private fun unsupported(op: String): JsonElement {
+        try { android.util.Log.d("Demo", "not simulated: $op") } catch (_: Throwable) {}  // logcat only, never a user notice
+        return JsonNull
+    }
 
     private fun handle(op: String, a: JsonObject): JsonElement {
         when (op) {
@@ -213,6 +217,12 @@ class DemoClient(
             "song.jump", "song.scrub" -> D(a, "beats")?.let { v -> setPos((store.session.value.pos + v).coerceAtLeast(0.0)) }
             "song.set" -> songSet(S(a, "k") ?: "", a["v"])
             "song.tap_tempo", "song.undo", "song.redo", "song.capture_midi", "song.re_enable_automation", "song.cue" -> return unsupported(op)
+            "cue.move" -> {
+                val i = I(a, "i"); val tt = D(a, "time")
+                if (i != null && tt != null && tt >= 0.0) store.updateSession { ss ->
+                    ss.copy(cues = ss.cues.mapIndexed { ci, c -> if (ci == i) c.copy(t = tt) else c }.sortedBy { it.t })
+                }
+            }
             "song.stop_all_clips" -> stopAll()
             "track.set" -> trackSet(a)
             "track.stop" -> S(a, "tr")?.let { stopTrack(it) }

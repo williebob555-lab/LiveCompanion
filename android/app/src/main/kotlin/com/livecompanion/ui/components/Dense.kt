@@ -143,12 +143,12 @@ fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, onOk: (Str
     var touched by remember { mutableStateOf(false) }
     val err = nameError(text)
     val go = { if (err == null) onOk(text.trim()) else touched = true }
-    LiveDialog(title, onDismiss) {
-        LiveTextField(text, { text = it; touched = true }, onDone = { go() }, autoFocus = true)
+    // Small, IME-safe: LiveDialog is imePadding'd; the body scrolls and Cancel/OK stay pinned under it.
+    LiveDialog(title, onDismiss, buttons = {
+        DenseButton("Cancel", onDismiss, Modifier.widthIn(min = 72.dp))
+        DenseButton("OK", { go() }, Modifier.widthIn(min = 72.dp), on = err == null)
+    }) {
+        LiveTextField(text, { text = it; touched = true }, onDone = { go() }, autoFocus = true, minHeight = 48.dp)
         if (err != null && touched) LiveText(err, style = LiveType.Small, color = LiveColors.Rec, maxLines = 2)
-        LiveDialogButtons {
-            DenseButton("Cancel", onDismiss, Modifier.widthIn(min = 72.dp))
-            DenseButton("OK", { go() }, Modifier.widthIn(min = 72.dp), on = err == null)
-        }
     }
 }

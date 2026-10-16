@@ -251,20 +251,41 @@ fun DrawScope.drawClipTop(
             val stridePx = (step * v.ppu).toFloat()
             val lines = gridLines(from, to, step, axis.beatLen, axis.barLen)
             val barStride = labelStride(v.ppu, axis.barLen)
+            // Label thinning (same idea as the audio ruler): bar numbers every 2/4/8/16/32 bars by available px (barStride);
+            // beat / sixteenth labels only where they fit between already-placed labels (no overlap, 4px gap).
+            val taken = ArrayList<ClosedFloatingPointRange<Float>>()
+            fun fits(txt: String, x: Float): Boolean {
+                val wTxt = tm.measure(txt, lbl).size.width.toFloat()
+                val a0 = x + 3f - 4f; val a1 = x + 3f + wTxt + 4f
+                return taken.none { it.start < a1 && a0 < it.endInclusive }
+            }
+            fun place(txt: String, x: Float) {
+                val wTxt = tm.measure(txt, lbl).size.width.toFloat()
+                taken.add((x + 3f)..(x + 3f + wTxt))
+                drawText(tm, txt, Offset(x + 3f, bh), lbl)
+            }
+            // bar labels first (they win), then the finer ones
+            run {
+                var b = max(0L, floor(from / axis.barLen).toLong())
+                val be = ceil(to / axis.barLen).toLong()
+                while (b <= be) {
+                    if (b % barStride == 0L) { val x = v.xOf(b * axis.barLen); val t = "${b + 1}"; if (fits(t, x)) place(t, x) }
+                    b++
+                }
+            }
             for (l in lines) {
                 val x = v.xOf(l.t)
                 when (l.level) {
                     GridLevel.Bar -> {
                         drawLine(BarLine, Offset(x, bh + (th - bh) * 0.15f), Offset(x, th), 1f)
-                        if (l.bar % barStride == 0L) drawText(tm, "${l.bar + 1}", Offset(x + 3f, bh), lbl)
                     }
                     GridLevel.Beat -> {
                         drawLine(BeatLine, Offset(x, bh + (th - bh) * 0.5f), Offset(x, th), 1f)
-                        rulerLabel(l, (axis.beatLen * v.ppu).toFloat(), axis.barLen, axis.beatLen)?.let { drawText(tm, it, Offset(x + 3f, bh), lbl) }
+                        rulerLabel(l, (axis.beatLen * v.ppu).toFloat(), axis.barLen, axis.beatLen)?.let { if (barStride == 1 && fits(it, x)) place(it, x) }
                     }
                     GridLevel.Sub -> {
                         if (stridePx >= 5f) drawLine(SubLine, Offset(x, bh + (th - bh) * 0.75f), Offset(x, th), 1f)
-                        rulerLabel(l, stridePx, axis.barLen, axis.beatLen)?.let { drawText(tm, it, Offset(x + 3f, bh), lbl) }
+                        rulerLabel(l, stridePx, axis.barLen, axis.beatLen)?.let { if (barStride == 1 && fits(it, x)) place(it, x) }
                     }
                 }
             }
@@ -275,7 +296,6 @@ fun DrawScope.drawClipTop(
                 while (b <= be) {
                     val x = v.xOf(b * axis.barLen)
                     drawLine(BarLine, Offset(x, bh + (th - bh) * 0.15f), Offset(x, th), 1f)
-                    if (b % barStride == 0L) drawText(tm, "${b + 1}", Offset(x + 3f, bh), lbl)
                     b++
                 }
             }

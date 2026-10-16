@@ -83,6 +83,7 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
     val rt = store.rt.collectAsState()
     var showScenes by remember { mutableStateOf(true) }
     var menuSlot by remember { mutableIntStateOf(-1) }
+    var selSlot by remember { mutableIntStateOf(-1) }
     var dragFrom by remember { mutableIntStateOf(-1) }
     var dragDy by remember { mutableFloatStateOf(0f) }
     var pitchPx by remember { mutableFloatStateOf(0f) }
@@ -185,6 +186,7 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                         armed = focus.arm,
                         slotPos = { rt.value.slotPos[slot.i.toString()] },
                         onFire = {
+                            selSlot = slot.i
                             client.op("slot.fire", "tr" to tr, "i" to slot.i)
                             store.patchSlot(slot.i) {
                                 it.copy(status = if (!it.hasClip && focus.arm) SlotStatus.RECORDING else if (it.hasClip) SlotStatus.TRIGGERED else it.status)
@@ -195,7 +197,7 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                             store.patchSlot(slot.i) { it.copy(status = SlotStatus.STOPPED) }
                         },
                         onSceneFire = { client.op("scene.fire", "i" to slot.i) },
-                        onMenu = { menuSlot = slot.i },
+                        onMenu = { selSlot = slot.i; menuSlot = slot.i },
                         dragOffset = if (dragFrom == slot.i) dragDy else 0f,
                         isDropTarget = dragFrom >= 0 && dragFrom != slot.i && slot.i == dragTarget(dragFrom, dragDy, pitchPx, slots.size),
                         dropReplaces = slot.hasClip,
@@ -227,7 +229,19 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxSize().background(LiveColors.Bg)) {
         val mw = maxWidth
         val wide = mw >= 560.dp && mw > maxHeight
-        if (wide) {
+        if (mw >= 840.dp && mw > maxHeight) {
+            // Tablet: slot list | take/stop/scene controls | selected clip detail (uses the free space).
+            Row(Modifier.fillMaxSize()) {
+                slotList(Modifier.width(520.dp).fillMaxHeight(), false, 46.dp, 120.dp)
+                Box(Modifier.width(1.dp).fillMaxHeight().background(LiveColors.Line))
+                Column(Modifier.width(150.dp).fillMaxHeight()) { controls(true) }
+                Box(Modifier.width(1.dp).fillMaxHeight().background(LiveColors.Line))
+                val d = slotsState.slots.firstOrNull { it.i == selSlot && it.hasClip }
+                    ?: slotsState.slots.firstOrNull { it.hasClip && it.status == SlotStatus.PLAYING }
+                    ?: slotsState.slots.firstOrNull { it.hasClip }
+                SlotDetail(d, tracks, rt.value.slotPos, tr, client, goTab, Modifier.weight(1f).fillMaxHeight())
+            }
+        } else if (wide) {
             Row(Modifier.fillMaxSize()) {
                 slotList(Modifier.width(minOf(mw - 150.dp, 560.dp)).fillMaxHeight(), false, 46.dp, 120.dp)
                 Box(Modifier.width(1.dp).fillMaxHeight().background(LiveColors.Line))
@@ -293,6 +307,44 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                 pending = null
             },
         )
+    }
+}
+
+/** Tablet detail pane: big card of the selected slot clip with launch / stop / edit and a playback progress bar. */
+@Composable
+private fun SlotDetail(
+    slot: SlotInfo?, tracks: TracksState, slotPos: Map<String, Double>, tr: String, client: LiveClient,
+    goTab: (com.livecompanion.ui.screens.Tab) -> Unit, modifier: Modifier,
+) {
+    val c = slot?.clip
+    Column(modifier.background(LiveColors.Bg).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (slot == null || c == null) {
+            LiveText("Tap a clip to see it here", style = LiveType.Body, color = LiveColors.TextDim)
+            return@Column
+        }
+        val playing = slot.status == SlotStatus.PLAYING || slot.status == SlotStatus.RECORDING
+        val col = liveColor(c.color)
+        Row(Modifier.fillMaxWidth().background(col, LiveShapes.Small).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                LiveText(c.name.ifBlank { if (c.audio) "Audio" else "MIDI" }, style = LiveType.Title, color = onColor(col), maxLines = 2)
+                LiveText(
+                    (if (c.audio) "Audio" else "MIDI") + "  |  Slot ${slot.i + 1}" +
+                        (tracks.scenes.getOrNull(slot.i)?.name?.ifBlank { null }?.let { "  |  $it" } ?: "") +
+                        (if (c.len > 0) "  |  ${"%.4g".format(c.len / 4.0)} bars" else "") + (if (c.looping) "  |  loop" else ""),
+                    style = LiveType.Small, color = onColor(col),
+                )
+            }
+        }
+        val prog = if (playing && c.len > 0) ((slotPos[slot.i.toString()] ?: 0.0) / c.len).coerceIn(0.0, 1.0).toFloat() else 0f
+        Box(Modifier.fillMaxWidth().height(36.dp).background(LiveColors.Panel, LiveShapes.Small)) {
+            Box(Modifier.fillMaxHeight().fillMaxWidth(prog).background(col.copy(alpha = 0.55f), LiveShapes.Small))
+            LiveText(if (playing) "Playing" else "Stopped", Modifier.align(Alignment.CenterStart).padding(horizontal = 8.dp), LiveType.Small, LiveColors.TextDim)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            LiveTextButton("Launch", { client.op("slot.fire", "tr" to tr, "i" to slot.i) }, Modifier.weight(1f), minHeight = 44.dp, on = playing)
+            LiveTextButton("Stop", { client.op("clip.stop", "loc" to Loc.slot(tr, slot.i)) }, Modifier.weight(1f), minHeight = 44.dp)
+            LiveTextButton("Edit clip", { client.op("clip.open", "loc" to Loc.slot(tr, slot.i)); goTab(com.livecompanion.ui.screens.Tab.Clip) }, Modifier.weight(1f), minHeight = 44.dp)
+        }
     }
 }
 

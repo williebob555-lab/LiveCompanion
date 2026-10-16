@@ -8,7 +8,7 @@ from conftest import Harness
 
 SLOT = lambda tr, i: {"w": "slot", "tr": tr, "i": i}
 PROTOCOL_OPS = """song.play song.stop song.continue song.tap_tempo song.undo song.redo song.capture_midi
-song.stop_all_clips song.re_enable_automation song.jump song.seek song.scrub song.cue song.set scene.fire scene.create
+song.stop_all_clips song.re_enable_automation song.jump song.seek song.scrub song.cue cue.move song.set scene.fire scene.create
 track.create track.delete track.duplicate focus.set focus.follow view.select track.set track.stop slot.fire
 slot.create slot.delete slot.duplicate slot.copy slot.move take.next clip.fire clip.stop clip.open clip.close clip.set
 clip.delete clip.duplicate_loop clip.crop clip.quantize clip.to_arr arr.create_midi arr.move arr.trim notes.add notes.modify
@@ -691,3 +691,25 @@ def test_clip_peaks_errors(c, h, tmp_path):
         assert c.req("clip.peaks", loc=SLOT("t3", 0), n=64)["ok"] is False
     finally:
         clip.file_path = old
+
+
+def test_cue_move(c, h):
+    from fake_lom import FakeCue
+    s = c.until("session", lambda d: "cues" in d)
+    assert s["cues"][1] == {"t": 16.0, "n": "Verse"}
+    c.ok("cue.move", i=1, time=20)
+    c.until("session", lambda d: d["cues"][1] == {"t": 20.0, "n": "Verse"})
+    assert c.req("cue.move", i=1, time=0)["ok"] is False          # occupied by Intro
+    assert c.req("cue.move", i=9, time=3)["ok"] is False
+    assert c.req("cue.move", i=1, time=-1)["ok"] is False
+    # read-only CuePoint.time -> delete + re-create fallback, name and playhead preserved
+    FakeCue.locked = True
+    try:
+        c.ok("song.seek", beats=5)
+        c.until("session", lambda d: abs(d["pos"] - 5) < 1e-6)
+        c.ok("cue.move", i=1, time=24)
+        s = c.until("session", lambda d: any(x["t"] == 24.0 for x in d["cues"]))
+        assert [x["n"] for x in s["cues"]] == ["Intro", "Verse", ""]
+        assert abs(s["pos"] - 5) < 1e-6
+    finally:
+        FakeCue.locked = False

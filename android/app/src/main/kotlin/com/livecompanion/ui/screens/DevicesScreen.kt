@@ -90,7 +90,7 @@ fun DevicesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                 Box(m, contentAlignment = Alignment.Center) { LiveText("No track selected", color = LiveColors.TextDim) }
             } else {
                 // Tablets: scale knobs / cells / rows with the available height so panels fill the screen.
-                val scale = if (maxWidth >= 600.dp) (maxHeight / 330.dp).coerceIn(1f, 1.7f) else 1f
+                val scale = if (maxWidth >= 840.dp) (maxHeight / 280.dp).coerceIn(1f, 2.2f) else if (maxWidth >= 600.dp) (maxHeight / 330.dp).coerceIn(1f, 1.7f) else 1f
                 androidx.compose.runtime.CompositionLocalProvider(com.livecompanion.ui.devices.LocalDeviceScale provides scale) {
                     Box(m) {
                         Box(Modifier.fillMaxSize().horizontalScroll(scroll).padding(2.dp)) {
@@ -183,18 +183,25 @@ private fun ParamRow(p: Param, tr: String, path: String, store: LiveStore, clien
     }
 }
 
-/** Fade + chevron at a chain edge telling the chain scrolls horizontally. */
+/** Fade + chevron (24dp, accent) at a chain edge telling the chain scrolls horizontally. */
 @Composable
 private fun ChainEdgeCue(modifier: Modifier, end: Boolean) {
     val bg = LiveColors.Bg
     Box(
-        modifier.fillMaxHeight().width(28.dp).background(
+        modifier.fillMaxHeight().width(36.dp).background(
             androidx.compose.ui.graphics.Brush.horizontalGradient(
                 if (end) listOf(bg.copy(alpha = 0f), bg.copy(alpha = 0.95f)) else listOf(bg.copy(alpha = 0.95f), bg.copy(alpha = 0f)),
             ),
         ),
-        contentAlignment = if (end) Alignment.TopEnd else Alignment.TopStart,
+        contentAlignment = if (end) Alignment.CenterEnd else Alignment.CenterStart,
     ) {
-        LiveText(if (end) "›" else "‹", Modifier.padding(start = 4.dp, end = 4.dp, top = 56.dp), LiveType.Title, LiveColors.Accent)
+        androidx.compose.foundation.Canvas(Modifier.padding(horizontal = 4.dp).width(24.dp).height(24.dp)) {
+            val w = size.width; val h = size.height
+            val path = androidx.compose.ui.graphics.Path().apply {
+                if (end) { moveTo(w * 0.3f, h * 0.1f); lineTo(w * 0.8f, h * 0.5f); lineTo(w * 0.3f, h * 0.9f) }
+                else { moveTo(w * 0.7f, h * 0.1f); lineTo(w * 0.2f, h * 0.5f); lineTo(w * 0.7f, h * 0.9f) }
+            }
+            drawPath(path, LiveColors.Accent, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        }
     }
 }

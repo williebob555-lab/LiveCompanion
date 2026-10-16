@@ -113,6 +113,7 @@ class Ops(object):
         t["song.seek"] = self.song_seek
         t["song.scrub"] = self.song_scrub
         t["song.cue"] = self.song_cue
+        t["cue.move"] = self.cue_move
         t["song.set"] = self.song_set
         t["scene.fire"] = self.scene_fire
         t["scene.create"] = self.scene_create
@@ -250,6 +251,81 @@ class Ops(object):
             _call(self.song, "jump_to_prev_cue")
         else:
             raise BadArgs("dir must be 1 or -1")
+
+    def cue_move(self, c, a):
+        """Move locator `i` to `time`. Best effort: CuePoint.time may be read-only, so fall back to
+        delete + re-create at the new time (jump playhead, set_or_delete_cue) and restore name/playhead/play state."""
+        i = _i(need(a, "i"), "i", 0)
+        new_t = float(_n(need(a, "time"), "time", 0))
+        song = self.song
+        cues = list(seq(g(song, "cue_points", ())))
+        if i >= len(cues):
+            raise OpError("no such locator")
+        cue = cues[i]
+        old_t = num(g(cue, "time", 0.0))
+        if abs(new_t - old_t) < 1e-6:
+            return
+        for j, o in enumerate(cues):
+            if j != i and abs(num(g(o, "time", 0.0)) - new_t) < 1e-3:
+                raise OpError("another locator is already there")
+        try:
+            cue.time = new_t
+            if abs(num(g(cue, "time", old_t)) - new_t) < 1e-3:
+                self.core.dirty.add(("session",))
+                return
+        except Exception:
+            pass
+        if not hasattr(song, "set_or_delete_cue"):
+            raise OpError("cannot move locators: Live's API does not allow setting a locator time")
+        name = _s(g(cue, "name", ""))
+        pos = num(g(song, "current_song_time", 0.0))
+        playing = bool(g(song, "is_playing", False))
+        try:
+            song.current_song_time = old_t
+            song.set_or_delete_cue()
+            if len(list(seq(g(song, "cue_points", ())))) >= len(cues):
+                raise OpError("cannot move locators: Live did not delete the locator")
+            song.current_song_time = new_t
+            song.set_or_delete_cue()
+            after = list(seq(g(song, "cue_points", ())))
+            if len(after) < len(cues):
+                raise OpError("cannot move locators: Live did not create the locator")
+            for nc in after:
+                if abs(num(g(nc, "time", 0.0)) - new_t) < 1e-3:
+                    if name:
+                        try:
+                            nc.name = name
+                        except Exception:
+                            pass
+                    break
+        except OpError:
+            self._cue_rollback(old_t, cues)
+            raise
+        except Exception as e:
+            self._cue_rollback(old_t, cues)
+            raise OpError("cannot move locators: %r" % (e,))
+        finally:
+            self.core.dirty.add(("session",))
+            try:
+                song.current_song_time = pos
+                if bool(g(song, "is_playing", False)) != playing:
+                    if playing:
+                        song.start_playing()
+                    else:
+                        song.stop_playing()
+                        song.current_song_time = pos
+            except Exception:
+                pass
+
+    def _cue_rollback(self, old_t, before):
+        song = self.song
+        try:
+            now = list(seq(g(song, "cue_points", ())))
+            if len(now) < len(before) and not any(abs(num(g(x, "time", 0.0)) - old_t) < 1e-3 for x in now):
+                song.current_song_time = old_t
+                song.set_or_delete_cue()
+        except Exception:
+            pass
 
     def song_set(self, c, a):
         k = need(a, "k", str)

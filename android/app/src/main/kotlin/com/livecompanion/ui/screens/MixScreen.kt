@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -89,7 +91,18 @@ fun MixScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifie
             SendsAndRouting(f, store, client, ref, set = ::set)
         }
         val right: @Composable () -> Unit = { ReturnsStrip(tracks.returns, tracks.master, ref, store, client, rt) }
-        if (wide) {
+        val boxW = maxWidth
+        if (maxWidth >= 840.dp && maxWidth > maxHeight) {
+            // Tablet: sends as tall vertical faders + routing on the left, returns / master as wide vertical strips on the right.
+            Row(Modifier.fillMaxSize().padding(4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(Modifier.width(boxW * 0.42f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    title()
+                    if (!topBarHasFaders) VolPanStrip(f, rt, 28.dp, store, client, ref)
+                    TabletSends(f, store, client, ref, set = ::set, Modifier.weight(1f))
+                }
+                TabletReturns(tracks.returns, tracks.master, ref, store, client, rt, Modifier.weight(1f).fillMaxHeight())
+            }
+        } else if (wide) {
             Row(Modifier.fillMaxSize().padding(2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(3.dp)) { left() }
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(3.dp)) { right() }
@@ -217,6 +230,78 @@ private fun ReturnsStrip(
                     DenseButton("S", { store.patchTrack(t.ref) { it.copy(solo = !t.solo) }; client.op("track.set", "tr" to t.ref, "k" to "solo", "v" to !t.solo) }, Modifier.width(32.dp), on = t.solo, onColor = LiveColors.Solo)
                 }
                 DenseButton("Edit", { client.op("focus.set", "tr" to t.ref) }, Modifier.width(44.dp), on = t.ref == focusRef)
+            }
+        }
+    }
+}
+
+
+/** Tablet Mix: one tall vertical fader per send (named after its return) above the routing selectors. */
+@Composable
+private fun TabletSends(f: FocusState, store: LiveStore, client: LiveClient, ref: String, set: (String, Any?) -> Unit, modifier: Modifier) {
+    val returns by store.tracks.collectAsState()
+    Column(modifier.fillMaxWidth().background(LiveColors.Panel, LiveShapes.Small).padding(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (f.sends.isNotEmpty()) {
+            LiveLabel("Sends")
+            Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                f.sends.forEachIndexed { i, s ->
+                    Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        LiveText(returns.returns.getOrNull(i)?.name ?: s.name.ifEmpty { "Send ${i + 1}" }, style = LiveType.Small, maxLines = 1)
+                        LiveFader(
+                            s.v, { v ->
+                                store.updateFocus { fs -> fs.copy(sends = fs.sends.mapIndexed { j, x -> if (j == i) x.copy(v = v) else x }) }
+                                client.opThrottled("mix:$ref:send$i", "track.set", "tr" to ref, "k" to "send", "i" to i, "v" to v)
+                            },
+                            Modifier.weight(1f).widthIn(max = 90.dp).fillMaxWidth(), valueRange = s.min..s.max.coerceAtLeast(s.min + 1e-3f),
+                            defaultValue = s.min, vertical = true, label = s.str.ifEmpty { null },
+                        )
+                    }
+                }
+            }
+        } else Box(Modifier.weight(1f))
+        if (f.inTypes.isNotEmpty() || f.outTypes.isNotEmpty()) {
+            LiveLabel("Routing")
+            if (f.inTypes.isNotEmpty()) RouteRow("In", f.inType, f.inTypes) { set("in_type", it) }
+            if (f.inChs.isNotEmpty()) RouteRow("In ch", f.inCh, f.inChs) { set("in_ch", it) }
+            if (f.outTypes.isNotEmpty()) RouteRow("Out", f.outType, f.outTypes) { set("out_type", it) }
+        }
+    }
+}
+
+/** Tablet Mix: returns + master as vertical strips (name, tall fader, M / S, Edit). */
+@Composable
+private fun TabletReturns(
+    returns: List<TrackInfo>, master: TrackInfo?, focusRef: String, store: LiveStore, client: LiveClient,
+    rt: androidx.compose.runtime.State<com.livecompanion.state.RtFrame>, modifier: Modifier,
+) {
+    Column(modifier.background(LiveColors.Panel, LiveShapes.Small).padding(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        LiveLabel("Returns / Master")
+        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (t in returns + listOfNotNull(master)) {
+                Column(Modifier.weight(1f).widthIn(max = 130.dp).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        ColorChip(t.color)
+                        LiveText(t.name, style = LiveType.Small, maxLines = 1)
+                    }
+                    Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        t.vol?.let { vp ->
+                            LiveFader(
+                                vp.v, { v ->
+                                    store.patchTrack(t.ref) { it.copy(vol = vp.copy(v = v)) }
+                                    client.opThrottled("mix:${t.ref}:vol", "track.set", "tr" to t.ref, "k" to "vol", "v" to v)
+                                },
+                                Modifier.weight(1f).fillMaxHeight(), valueRange = vp.min..vp.max.coerceAtLeast(vp.min + 1e-3f),
+                                defaultValue = 0.85f.coerceIn(vp.min, vp.max.coerceAtLeast(0.85f)), vertical = true, label = vp.str.ifEmpty { null },
+                            )
+                        }
+                        if (t.kind == "master") MeterBar({ rt.value.meters.masterL }, { rt.value.meters.masterR }, Modifier.width(18.dp).fillMaxHeight(), vertical = true)
+                    }
+                    if (t.kind != "master") Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        DenseButton("M", { store.patchTrack(t.ref) { it.copy(mute = !t.mute) }; client.op("track.set", "tr" to t.ref, "k" to "mute", "v" to !t.mute) }, Modifier.width(40.dp), on = t.mute, onColor = LiveColors.MuteOn)
+                        DenseButton("S", { store.patchTrack(t.ref) { it.copy(solo = !t.solo) }; client.op("track.set", "tr" to t.ref, "k" to "solo", "v" to !t.solo) }, Modifier.width(40.dp), on = t.solo, onColor = LiveColors.Solo)
+                    }
+                    DenseButton("Edit", { client.op("focus.set", "tr" to t.ref) }, Modifier.width(82.dp), on = t.ref == focusRef)
+                }
             }
         }
     }
