@@ -5,6 +5,11 @@ Rule: update this file when starting/finishing anything. If interrupted, resume 
 
 ## RESUME HERE — Milestone 2 "UI lock-in" (owner feedback recorded in PREFERENCES 2026-10-15; owner asleep)
 2026-10-16 P4 fix pass DONE, uncommitted (see qa/REVIEW_LOG P4 "fixed(pending commit)"): note-bar MIDI clips, selected-on-top, updater resume + test-channel UI, icon gap/scale, 3-row portrait chrome, browser chip fade, tracks multi-column + pinned master, device cell scaling + tablet scale, shared 300ms hold-drag. Next: commit, release test8, emulator re-check (icon, updater resume, device drag).
+2026-10-16 night: QA passes 4–6 + fixes → test8, test9, test10; updater verified end-to-end incl. resume after
+permission. Found updater lexical ordering bug ("test10" < "test9") → fixed; naming rule in PREFERENCES; released
+v0.1.1-test1. One-click Windows setup (tools/setup_windows.ps1 + "Install LiveCompanion.cmd") added to releases
+from v0.1.1-test2 on (helper autostart + firewall parts untested on this PC by design — owner runs them).
+Remaining: owner's real-Live run of tools/live_verify.py --mutate; owner QA feedback.
 2026-10-16 evening: test6 (pass-3 fixes + design polish) and test7 (full-height lane, one-row toolbar, nits)
 RELEASED, signed. [~] QA pass 4 running: updater end-to-end test5→test7, icon verdict, portrait/tablet/small matrix.
 Still pending owner: real-Live run of tools/live_verify.py --mutate (empty set).
