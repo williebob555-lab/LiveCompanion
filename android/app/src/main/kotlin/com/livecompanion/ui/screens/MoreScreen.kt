@@ -187,7 +187,13 @@ fun SettingsContent(modifier: Modifier = Modifier, connected: (@Composable Colum
                 }
                 is UpdateUi.Available -> {
                     LiveText("Version ${u.release.version} available", style = LiveType.Body, color = LiveColors.Accent)
-                    if (u.release.notes.isNotBlank()) LiveText(u.release.notes, style = LiveType.Small, color = LiveColors.TextDim, maxLines = 6)
+                    val noteLines = remember(u.release) { UpdateCheck.cleanNotes(u.release.notes) }
+                    if (noteLines.isNotEmpty()) {
+                        LiveText(noteLines.take(6).joinToString("\n"), style = LiveType.Small, color = LiveColors.TextDim, maxLines = 6)
+                        if (noteLines.size > 6) {
+                            LiveTextButton("More…", { AppUpdates.openInBrowser(context, u.release.pageUrl) }, Modifier.height(40.dp))
+                        }
+                    }
                     if (u.asset != null) {
                         LiveTextButton(
                             "Download and install",

@@ -135,6 +135,7 @@ fun MainShell(
     val cutR = cutoutOverride?.second ?: with(d) { cut.getRight(d, LayoutDirection.Ltr).toDp() }
 
     var bodyCorners by remember { mutableStateOf(BodyCorners()) }
+    var secondaryBar by remember { mutableStateOf(false) }
     CompositionLocalProvider(LocalTabNavigator provides { t: Tab -> selected = t }, LocalBodyCorners provides bodyCorners) {
     BoxWithConstraints(
         modifier.fillMaxSize().background(LiveColors.Bg).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical)),
@@ -168,8 +169,10 @@ fun MainShell(
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
                         TabRail(Tab.entries, selected, Modifier.width(railW).fillMaxHeight().padding(top = if (stripL > 0.dp) 0.dp else corners.tl, bottom = if (stripL > 0.dp) 0.dp else corners.bl)) { selected = it }
                         Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                            Box(Modifier.padding(start = insStart, end = insEnd)) { TopChrome(live, client) { CompactTopBar(store, client) } }
+                            Box(Modifier.padding(start = insStart, end = insEnd)) { TopChrome(live, client) { CompactTopBar(store, client, onSecondary = { secondaryBar = it }) } }
                             Gated(live, Modifier.fillMaxWidth().weight(1f)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
+                            // Small phones: the controls that do not fit the single 40dp top row live in a bottom strip.
+                            if (secondaryBar && live) Box(Modifier.padding(start = botStart, end = botEnd)) { CompactSecondaryBar(store, client) }
                             Box(Modifier.padding(start = botStart, end = botEnd)) { noticeBar() }
                         }
                     }
@@ -294,7 +297,8 @@ fun Modifier.symmetricSafePadding(): Modifier {
 @Composable
 fun TabRail(tabs: List<Tab>, selected: Tab, modifier: Modifier = Modifier, onSelect: (Tab) -> Unit) {
     BoxWithConstraints(modifier.background(LiveColors.Panel)) {
-        val itemH = (maxHeight / (tabs.size + 1)).coerceIn(30.dp, 42.dp)
+        // every item fits when the rail is tall enough (never clip "More"); otherwise 28dp items and the rail scrolls
+        val itemH = ((maxHeight - 4.dp - 1.dp * (tabs.size - 1)) / tabs.size).coerceIn(28.dp, 42.dp)
         val style = LiveType.Small
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(2.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             for (t in tabs) {

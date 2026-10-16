@@ -94,6 +94,11 @@ fun BrowserScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
             catch (e: LiveException) { m.error = e.message }
         }
     }
+    // Opens on a useful default: the last category, else Instruments (else the first one).
+    LaunchedEffect(m.roots) {
+        val r = m.roots
+        if (r != null && m.path.isEmpty() && r.isNotEmpty()) m.path = listOf((r.firstOrNull { it.name.equals("Instruments", true) } ?: r.first()).name)
+    }
     LaunchedEffect(m.path, m.version) {
         if (m.path.isEmpty() || m.cache.containsKey(m.path)) { m.loading = false; return@LaunchedEffect }
         m.loading = true; m.error = null

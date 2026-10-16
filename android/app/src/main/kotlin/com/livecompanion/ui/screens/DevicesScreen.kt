@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -91,8 +92,13 @@ fun DevicesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                 // Tablets: scale knobs / cells / rows with the available height so panels fill the screen.
                 val scale = if (maxWidth >= 600.dp) (maxHeight / 330.dp).coerceIn(1f, 1.7f) else 1f
                 androidx.compose.runtime.CompositionLocalProvider(com.livecompanion.ui.devices.LocalDeviceScale provides scale) {
-                    Box(m.horizontalScroll(scroll).padding(2.dp)) {
-                        ChainRow(devs.devices, tr, "", ui, store, client, focus.kind, scroll, viewportPx, mine)
+                    Box(m) {
+                        Box(Modifier.fillMaxSize().horizontalScroll(scroll).padding(2.dp)) {
+                            ChainRow(devs.devices, tr, "", ui, store, client, focus.kind, scroll, viewportPx, mine)
+                        }
+                        // Scroll cues: edge fade + chevron wherever more chain is hidden (never a silently clipped panel).
+                        if (scroll.canScrollForward) ChainEdgeCue(Modifier.align(Alignment.CenterEnd), true)
+                        if (scroll.canScrollBackward) ChainEdgeCue(Modifier.align(Alignment.CenterStart), false)
                     }
                 }
             }
@@ -174,5 +180,21 @@ private fun ParamRow(p: Param, tr: String, path: String, store: LiveStore, clien
                 label = p.str.ifEmpty { null }, modifier = Modifier.weight(0.58f).height(26.dp),
             )
         }
+    }
+}
+
+/** Fade + chevron at a chain edge telling the chain scrolls horizontally. */
+@Composable
+private fun ChainEdgeCue(modifier: Modifier, end: Boolean) {
+    val bg = LiveColors.Bg
+    Box(
+        modifier.fillMaxHeight().width(28.dp).background(
+            androidx.compose.ui.graphics.Brush.horizontalGradient(
+                if (end) listOf(bg.copy(alpha = 0f), bg.copy(alpha = 0.95f)) else listOf(bg.copy(alpha = 0.95f), bg.copy(alpha = 0f)),
+            ),
+        ),
+        contentAlignment = if (end) Alignment.TopEnd else Alignment.TopStart,
+    ) {
+        LiveText(if (end) "›" else "‹", Modifier.padding(start = 4.dp, end = 4.dp, top = 56.dp), LiveType.Title, LiveColors.Accent)
     }
 }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.items
@@ -37,6 +38,7 @@ import com.livecompanion.state.TrackInfo
 import com.livecompanion.ui.components.ConfirmDialog
 import com.livecompanion.ui.components.DenseTextField
 import com.livecompanion.ui.components.nameError
+import com.livecompanion.ui.components.LiveButton
 import com.livecompanion.ui.components.LivePalette
 import com.livecompanion.ui.components.LiveText
 import com.livecompanion.ui.components.LiveTextButton
@@ -143,18 +145,28 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
             BoxWithConstraints(Modifier.fillMaxWidth().then(if (onFocused == null) Modifier.weight(1f) else Modifier.heightIn(max = 420.dp))) {
                 // Wide screens (tablets): rows flow into 2-3 columns instead of ~1800px-wide rows.
                 val cols = (maxWidth / 440.dp).toInt().coerceIn(1, 3)
+                // Pin Master only if >= 5 rows still fit above it; on short screens it scrolls with the list (rows keep their height).
+                val pinMaster = master != null && maxHeight >= 38.dp * 5 + 44.dp
+                val listRows = if (pinMaster) scrolling else rows
+                val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+                // Opening Edit brings that row to the top of the list so its action row is visible without scrolling.
+                androidx.compose.runtime.LaunchedEffect(expanded) {
+                    val i = listRows.indexOfFirst { it.ref == expanded }
+                    if (i >= 0) gridState.scrollToItem(i)
+                }
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
                         androidx.compose.foundation.lazy.grid.GridCells.Fixed(cols),
                         Modifier.fillMaxWidth().weight(1f),
+                        state = gridState,
                         verticalArrangement = Arrangement.spacedBy(1.dp),
                         horizontalArrangement = Arrangement.spacedBy(1.dp),
                         contentPadding = PaddingValues(1.dp),
                     ) {
-                        items(scrolling, key = { it.ref }) { t -> rowFor(t) }
+                        items(listRows, key = { it.ref }) { t -> rowFor(t) }
                     }
                     // Master stays pinned below the list so it is never below the fold.
-                    if (master != null) Box(Modifier.fillMaxWidth().padding(1.dp)) { rowFor(master) }
+                    if (pinMaster && master != null) Box(Modifier.fillMaxWidth().padding(1.dp)) { rowFor(master) }
                 }
             }
         }
@@ -229,13 +241,24 @@ private fun TrackRow(
             Box(Modifier.width(2.dp))
         }
         if (open && !renaming) {
+            // Actions first (always visible, no scrolling); the palette sits behind a "Color" chip.
+            var showColor by remember(t.ref) { mutableStateOf(false) }
             Column(Modifier.fillMaxWidth().padding(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (!master) ColorGrid(t.color, onColor)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     LiveTextButton("Rename", onStartRename, Modifier.weight(1f), enabled = !master)
                     LiveTextButton("Duplicate", onDuplicate, Modifier.weight(1f), enabled = !master && !ret)
                     LiveTextButton("Delete", onDelete, Modifier.weight(1f), on = !master, onColor = LiveColors.Rec, enabled = !master)
+                    if (!master) LiveButton(
+                        { showColor = !showColor }, Modifier.weight(1f), on = showColor, minHeight = 32.dp,
+                        contentPadding = PaddingValues(horizontal = 6.dp),
+                    ) { c ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(Modifier.size(10.dp).clip(LiveShapes.Small).background(liveColor(t.color)))
+                            LiveText(if (showColor) "Color ▴" else "Color ▾", style = LiveType.Small, color = c, softWrap = false)
+                        }
+                    }
                 }
+                if (!master && showColor) ColorGrid(t.color, onColor)
             }
         }
     }

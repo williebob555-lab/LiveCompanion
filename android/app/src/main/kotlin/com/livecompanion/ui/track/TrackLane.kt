@@ -152,11 +152,15 @@ fun TrackLane(
     val haptic = LocalHapticFeedback.current
     val slop = LocalViewConfiguration.current.touchSlop
     val tm = rememberTextMeasurer()
-    val scrubPx = with(density) { maxOf(SCRUB_H_DP.dp, 10.sp.toDp() + 5.dp).toPx() }
-    val bracePx = BRACE_H_DP * dens
+    // Short screens (small phone landscape): slimmer ruler (12dp) + brace (4dp) so the chrome above the lane stays <= ~18%.
+    val shortScreen = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp < 360
+    val scrubPx = if (shortScreen) 12f * dens else with(density) { maxOf(SCRUB_H_DP.dp, 10.sp.toDp() + 5.dp).toPx() }
+    val bracePx = (if (shortScreen) 4f else BRACE_H_DP) * dens
     val rulerPx = scrubPx + bracePx
     val takeH0 = TAKE_H_DP * dens
-    val edgeHit = 22f * dens
+    val edgeHit = 24f * dens
+    /** The loop-edge grab band is at least this tall (invisible: extends over the bar ruler and the top of the lane). */
+    val braceHitPx = 40f * dens
     val clipEdge = EDGE_DP * dens
     val tapPad = 4f * dens
 
@@ -283,7 +287,12 @@ fun TrackLane(
                     }
                     val m = curM
                     val a = curA
-                    val zone = zoneAt(p0.y)
+                    var zone = zoneAt(p0.y)
+                    // Loop edges: >= 40dp tall grab band (ruler + brace + top of the lane), edge zones 24dp wide.
+                    if (m.loop.len > 0 && p0.y < max(rulerPx, braceHitPx) && (zone == Zone.Scrub || zone == Zone.Main)) {
+                        val nearEdge = min(abs(view.xOf(m.loop.start) - p0.x), abs(view.xOf(m.loop.start + m.loop.len) - p0.x)) <= edgeHit
+                        if (nearEdge && (zone == Zone.Scrub || hitMain(p0.x, p0.y) == null)) zone = Zone.Brace
+                    }
                     var mode = Mode.Pending
                     var hitClip: ArrClip? = null
                     var hitEdge = 0
@@ -682,9 +691,12 @@ private fun DrawScope.drawBase(
         val punchOn = m.punchIn || m.punchOut
         val braceBot = if (punchOn) rulerPx - punchH - 1f * dens else rulerPx
         drawRect(col.copy(alpha = if (lp.enabled) 0.85f else 0.45f), Offset(ls, scrubPx + 1f * dens), Size(le - ls, braceBot - scrubPx - 2f * dens))
-        val hw = 5f * dens
+        val hw = 6f * dens
         drawRect(col, Offset(ls - 1f, scrubPx), Size(hw, braceBot - scrubPx))
         drawRect(col, Offset(le - hw + 1f, scrubPx), Size(hw, braceBot - scrubPx))
+        // edge grips (two dark ticks) so the handles read as grabbable
+        for (gx in floatArrayOf(ls - 1f + hw * 0.3f, ls - 1f + hw * 0.7f, le + 1f - hw * 0.3f, le + 1f - hw * 0.7f))
+            drawLine(LiveColors.Bg.copy(alpha = 0.7f), Offset(gx, scrubPx + 1f * dens), Offset(gx, braceBot - 1f * dens), 1f)
         drawLine(col.copy(alpha = 0.9f), Offset(ls, rulerPx), Offset(ls, totalH), 1f)
         drawLine(col.copy(alpha = 0.9f), Offset(le, rulerPx), Offset(le, totalH), 1f)
         if (punchOn) {

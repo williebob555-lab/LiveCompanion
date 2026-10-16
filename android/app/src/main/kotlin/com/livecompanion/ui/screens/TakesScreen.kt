@@ -151,8 +151,17 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
                 if (best > 0) shown = takes.lanes.map { l -> l.copy(clips = l.clips.filter { ratings.get(ratings.key(trackName, l.i, it.start)) == best }) }
             }
             if (takes.lanes.isEmpty()) {
-                Box(Modifier.fillMaxWidth().weight(1f).padding(8.dp)) {
-                    LiveText("No take lanes yet. Use + Lane to create one.", style = LiveType.Small, color = LiveColors.TextDim, maxLines = 3)
+                Column(Modifier.fillMaxWidth().weight(1f).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LiveText("No take lanes on ${trackName.ifBlank { "this track" }}", style = LiveType.Title, maxLines = 2)
+                    LiveText(
+                        "Take lanes keep alternate takes under the arrangement clips (Live's comping). Record over a region in the arrangement " +
+                            "(Rec + play) to fill them, or create an empty lane now and drag clips into it.",
+                        style = LiveType.Small, color = LiveColors.TextDim, maxLines = 5,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        LiveTextButton("+ Create take lane", { client.op("takes.create_lane", "tr" to tr) }, on = true, minHeight = 40.dp)
+                        LiveTextButton("Session takes", { showSlots = true }, minHeight = 40.dp)
+                    }
                 }
             } else {
                 // Lane 0 = the track's MAIN lane (drop target of PROMOTE, source of DEMOTE); lanes 1.. = take lanes.

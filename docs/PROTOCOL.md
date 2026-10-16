@@ -81,7 +81,7 @@ Slots: `slot.fire {tr,i}`, `slot.create {tr,i,len}`, `slot.delete {tr,i}`, `slot
 `slot.copy {tr,i,to_tr,to_i,replace?}`, `slot.move {tr,i,to_tr,to_i,replace?|swap?}` — an OCCUPIED target is REFUSED (`err` contains "occupied") unless `replace:true` (overwrite) or, for move only, `swap:true` (exchange both clips via a scratch slot),
 `take.next {tr}` — take loop: arms track, fires first empty slot at/after last recorded one (creates scene if none).
 Names the new clip "Take N" (N = highest existing "Take n" on the track + 1; a newly created scene gets the same name). Returns `{i, name}`.
-Clips: `clip.fire {loc}`, `clip.stop {loc}`, `clip.open {loc}`, `clip.close`, `clip.set {loc,k,v}`
+Clips: `clip.fire {loc}`, `clip.stop {loc}`, `clip.scrub {loc,beat}` / `clip.stop_scrub {loc}` (LOM Clip.scrub, session clips; `unsupported` if the API is missing; the clip editor ruler scrub uses `song.seek` for arrangement clips and these for session clips), `clip.open {loc}`, `clip.close`, `clip.set {loc,k,v}`
 k ∈ name,color,sig_num (1-99),sig_den (1,2,4,8,16),looping,loop_start,loop_end,start_marker,end_marker,gain,gain_db (dB in displayed units; server converts and refines against gain_display_string),pitch_coarse,pitch_fine,warping,warp_mode,
 launch_mode,launch_quant,legato,muted; `clip.delete {loc}`, `clip.duplicate_loop {loc}`, `clip.crop {loc}`,
 `clip.quantize {loc,grid,amount}`, `clip.to_arr {loc,time}`, `arr.create_midi {tr,start,len}`,

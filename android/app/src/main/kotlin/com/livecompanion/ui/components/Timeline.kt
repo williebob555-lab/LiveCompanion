@@ -193,7 +193,9 @@ fun Timeline(
     val rulerH = timelineRulerHeight()
     val rulerPx = with(density) { rulerH.toPx() }
     val laneHPx = with(density) { laneHeight.toPx() }
-    val edgeHit = with(density) { 20.dp.toPx() }
+    val edgeHit = with(density) { 24.dp.toPx() }
+    /** Invisible loop-edge grab band: at least 40dp tall (ruler + top of the first lane). */
+    val braceBandPx = with(density) { 40.dp.toPx() }
     val tapPad = with(density) { 5.dp.toPx() }
     val slop = LocalViewConfiguration.current.touchSlop
     val measurer = rememberTextMeasurer()

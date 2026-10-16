@@ -167,7 +167,7 @@ fun PianoRoll(
                             { f -> view.ppk = (view.ppk * f).coerceIn(with(density) { 5.dp.toPx() }, with(density) { 40.dp.toPx() }) }, { v.requestFit() })
                         // Playhead / recording overlay: only this canvas redraws per frame.
                         Canvas(Modifier.fillMaxSize()) {
-                            val h = head() ?: if (rec) clip.loopEnd else null
+                            val h = v.headFor(head()) ?: if (rec) clip.loopEnd else null
                             if (rec) drawRecRegion(v, 0.0, h ?: 0.0, v.topH, size.height)
                             if (h != null) drawPlayhead(v, h, if (rec) LiveColors.Rec else LiveColors.Playhead, v.braceH, size.height)
                         }
@@ -210,6 +210,7 @@ private fun NotesCanvas(
     val touchMin = with(density) { 10.dp.toPx() }
     val edgePx = with(density) { 14.dp.toPx() }
     val hitPx = with(density) { 18.dp.toPx() }
+    val bandPx = with(density) { 40.dp.toPx() }
     val minPpk = with(density) { 5.dp.toPx() }
     val maxPpk = with(density) { 40.dp.toPx() }
 
@@ -245,7 +246,7 @@ private fun NotesCanvas(
                 val c0 = clipS.value
                 val ax = axisS.value
                 val stepNow = snapStepFor(subS.value, snapS.value, v.ppu, ax.beatLen, ax.barLen)
-                if (start.y < v.topH && start.x >= v.leftW) {
+                if (inTopGestureZone(v, c0, start, hitPx, bandPx)) {
                     clipTopGesture(down, v, c0, opsS.value, stepNow, hitPx)
                     return@awaitEachGesture
                 }

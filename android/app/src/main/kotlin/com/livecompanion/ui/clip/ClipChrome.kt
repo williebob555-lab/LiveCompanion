@@ -29,6 +29,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
 import com.livecompanion.state.ClipState
 import com.livecompanion.state.RtFrame
 import com.livecompanion.ui.theme.LiveColors
@@ -47,6 +48,8 @@ interface ClipEdits {
     fun warpAdd(beat: Double)
     fun warpMove(beat: Double, to: Double)
     fun warpRemove(beat: Double)
+    /** Ruler scrub: [unit] = axis unit (beats or seconds) inside the clip; [done] on release. Optimistic in the view, throttled ops. */
+    fun scrub(unit: Double, seconds: Boolean, done: Boolean)
 }
 
 /** Disables the per-frame playhead ticker (screenshot tests would never go idle). */
@@ -77,6 +80,15 @@ class ClipView(var minPpu: Float = 3f, var maxPpu: Float = 1200f) {
     var pvLe by mutableStateOf<Double?>(null)
     var pvSm by mutableStateOf<Double?>(null)
     var pvEm by mutableStateOf<Double?>(null)
+    /** Ruler scrub: playhead position (axis units) drawn locally while dragging and for ~600 ms after release. */
+    var scrubU by mutableStateOf<Double?>(null)
+    var scrubbing = false
+    var scrubHoldUntil = 0L
+    /** Playhead to draw: the local scrub position wins while scrubbing / held / when the clip has no live position. */
+    fun headFor(live: Double?): Double? {
+        val s = scrubU ?: return live
+        return if (scrubbing || System.nanoTime() < scrubHoldUntil || live == null) s else live
+    }
 
     fun xOf(u: Double): Float = leftW + ((u - x0) * ppu).toFloat()
     fun unitOf(x: Float): Double = x0 + (x - leftW) / ppu.toDouble()
@@ -215,9 +227,12 @@ fun DrawScope.drawClipTop(
             val xb = v.xOf(le)
             val col = if (c.looping) LiveColors.Accent else Color(0xFF707070)
             drawRect(col.copy(alpha = if (c.looping) 0.9f else 0.8f), Offset(xa, 1f), Size(max(xb - xa, 2f), bh - 2f))
-            val hw = 5f
-            drawRect(Color(0x55000000), Offset(xa, 1f), Size(hw, bh - 2f))
-            drawRect(Color(0x55000000), Offset(xb - hw, 1f), Size(hw, bh - 2f))
+            val hw = 6.dp.toPx()
+            drawRect(Color(0x66000000), Offset(xa, 1f), Size(hw, bh - 2f))
+            drawRect(Color(0x66000000), Offset(xb - hw, 1f), Size(hw, bh - 2f))
+            // edge grips so the handles read as grabbable
+            for (gx in floatArrayOf(xa + hw * 0.33f, xa + hw * 0.66f, xb - hw * 0.66f, xb - hw * 0.33f))
+                drawLine(Color(0xCC000000), Offset(gx, 3.dp.toPx()), Offset(gx, bh - 3.dp.toPx()), 1f)
             drawText(tm, "LOOP", Offset(xa + hw + 3f, (bh - lblSp.value * 1.1f) / 2f - 1f), TextStyle(fontSize = lblSp, color = Color.Black))
         }
         // ruler
@@ -313,10 +328,13 @@ fun DrawScope.drawPlayhead(v: ClipView, u: Double, color: Color, y0: Float, y1: 
  * looping), start/end flags drag, anything else pans horizontally; two fingers zoom. Returns when the pointer lifts.
  */
 suspend fun AwaitPointerEventScope.clipTopGesture(
-    down: PointerInputChange, v: ClipView, c: ClipState, ops: ClipEdits, snap: Double, hit: Float,
+    down: PointerInputChange, v: ClipView, c: ClipState, ops: ClipEdits, snap: Double, hit: Float, seconds: Boolean = false,
 ) {
     val x = down.position.x
-    val inBrace = down.position.y < v.braceH
+    // The loop edges also grab from the ruler row and the strip under it (see [inTopGestureZone]); markers win in the ruler.
+    val nearMarker = abs(x - v.xOf(c.startMarker)) <= hit || abs(x - v.xOf(c.endMarker)) <= hit
+    val nearLoopEdge = c.loopEnd > c.loopStart && min(abs(x - v.xOf(c.loopStart)), abs(x - v.xOf(c.loopEnd))) <= hit
+    val inBrace = down.position.y < v.braceH || (down.position.y >= v.topH) || (nearLoopEdge && !nearMarker)
     // 1 loop start, 2 loop end, 3 loop body, 4 start marker, 5 end marker, 0 pan
     var target = 0
     if (inBrace) {
@@ -337,15 +355,30 @@ suspend fun AwaitPointerEventScope.clipTopGesture(
             else -> 0
         }
     }
+    // A press on the ruler row that grabs nothing scrubs the playhead (finger = playhead, like the track view).
+    val scrubbing = target == 0 && down.position.y >= v.braceH
     val grab = v.unitOf(x) - when (target) { 1, 3 -> c.loopStart; 2 -> c.loopEnd; 4 -> c.startMarker; 5 -> c.endMarker; else -> 0.0 }
     val loopLen = c.loopEnd - c.loopStart
     var moved = false
     var transforming = false
+    var scrubU = 0.0
+    fun scrubTo(px: Float, done: Boolean) {
+        scrubU = max(0.0, snapValue(v.unitOf(px), snap))
+        v.scrubU = scrubU
+        ops.scrub(scrubU, seconds, done)
+    }
+    if (scrubbing) { v.scrubbing = true; scrubTo(x, false); down.consume() }
     try {
         while (true) {
             val ev = awaitPointerEvent()
             val pressed = ev.changes.filter { it.pressed }
             if (pressed.isEmpty()) {
+                if (scrubbing) {
+                    if (!transforming) scrubTo(ev.changes.firstOrNull()?.position?.x ?: x, true)
+                    v.scrubbing = false
+                    v.scrubHoldUntil = System.nanoTime() + 600_000_000L
+                    break
+                }
                 if (!moved && !transforming && target in 1..3) ops.setLooping(!c.looping)
                 else if (moved && !transforming) {
                     when (target) {
@@ -361,6 +394,7 @@ suspend fun AwaitPointerEventScope.clipTopGesture(
             }
             if (pressed.size >= 2) {
                 transforming = true
+                v.scrubbing = false
                 v.clearPreviews()
                 v.transformX(pressed[0], pressed[1])
                 ev.changes.forEach { it.consume() }
@@ -368,6 +402,7 @@ suspend fun AwaitPointerEventScope.clipTopGesture(
             }
             if (transforming) { ev.changes.forEach { it.consume() }; continue }
             val p = pressed[0]
+            if (scrubbing) { scrubTo(p.position.x, false); p.consume(); continue }
             if (!moved) {
                 if ((p.position - down.position).getDistance() <= viewConfiguration.touchSlop) continue
                 moved = true
@@ -385,7 +420,16 @@ suspend fun AwaitPointerEventScope.clipTopGesture(
         }
     } finally {
         v.clearPreviews()
+        v.scrubbing = false
     }
+}
+
+/** True when a press at [pos] belongs to [clipTopGesture]: the top chrome, or the strip under it (up to [bandPx] from the top) next to a loop edge. */
+fun inTopGestureZone(v: ClipView, c: ClipState, pos: androidx.compose.ui.geometry.Offset, hit: Float, bandPx: Float): Boolean {
+    if (pos.x < v.leftW) return false
+    if (pos.y < v.topH) return true
+    if (pos.y >= max(v.topH, bandPx) || c.loopEnd <= c.loopStart) return false
+    return min(abs(pos.x - v.xOf(c.loopStart)), abs(pos.x - v.xOf(c.loopEnd))) <= hit
 }
 
 // ---------------------------------------------------------------- playhead interpolation

@@ -134,6 +134,7 @@ fun AudioEditor(
     val tm = rememberTextMeasurer()
     val lblSp = with(density) { 9.dp.toSp() }
     val hitPx = with(density) { 18.dp.toPx() }
+    val bandPx = with(density) { 40.dp.toPx() }
     val fileSecClip = if (clip.sampleRate > 0) clip.sampleLen / clip.sampleRate else 0.0
     val num = clip.signature.getOrElse(0) { 4 }
     val den = clip.signature.getOrElse(1) { 4 }
@@ -215,8 +216,8 @@ fun AudioEditor(
                             val c0 = clipS.value
                             val ax = axisS.value
                             val step = if (ax.seconds) 0.0 else snapStepFor(subS.value, snapS.value, v.ppu, ax.beatLen, ax.barLen)
-                            if (down.position.y < v.topH && down.position.x >= v.leftW) {
-                                clipTopGesture(down, v, c0, opsS.value, step, hitPx)
+                            if (inTopGestureZone(v, c0, down.position, hitPx, bandPx)) {
+                                clipTopGesture(down, v, c0, opsS.value, step, hitPx, ax.seconds)
                                 return@awaitEachGesture
                             }
                             // nearest warp marker
@@ -275,7 +276,7 @@ fun AudioEditor(
                 }
                 ZoomPad(Modifier.align(Alignment.BottomEnd), { v.zoomX(it) }, null, { v.requestFit() })
                 Canvas(Modifier.fillMaxSize()) {
-                    val h = head() ?: if (rec) clip.loopEnd else null
+                    val h = v.headFor(head()) ?: if (rec) clip.loopEnd else null
                     if (rec) {
                         drawRecRegion(v, 0.0, h ?: 0.0, v.topH, size.height)
                         drawText(tm, "RECORDING", Offset(v.leftW + 8f, v.topH + 6f), TextStyle(fontSize = lblSp, color = LiveColors.Rec))

@@ -108,6 +108,29 @@ object UpdateCheck {
             }
         }
 
+    /** Release notes as plain readable lines: no trailers, compare links or markdown syntax. */
+    fun cleanNotes(raw: String): List<String> {
+        val rule = Regex("""^(-{3,}|\*{3,}|_{3,}|`{3})$""")
+        val head = Regex("""^#{1,6}\s*""")
+        val quote = Regex("""^>\s?""")
+        val bullet = Regex("""^[*+-]\s+""")
+        val link = Regex("""!?\[([^\]]*)]\([^)]*\)""")
+        val url = Regex("""https?://\S+""")
+        val marks = Regex("""(\*\*|__|`)""")
+        val out = mutableListOf<String>()
+        for (line in raw.replace("\r", "").lines()) {
+            val t = line.trim()
+            if (t.startsWith("Co-Authored-By", ignoreCase = true) || t.startsWith("Generated with", ignoreCase = true)) continue
+            if (t.contains("Full Changelog", ignoreCase = true) || rule.matches(t)) continue
+            val l = t.replace(head, "").replace(quote, "").replace(bullet, "• ")
+                .replace(link, "$1").replace(url, "").replace(marks, "").trim()
+            if (l.isEmpty() && (out.isEmpty() || out.last().isEmpty())) continue
+            out.add(l)
+        }
+        while (out.isNotEmpty() && out.last().isEmpty()) out.removeAt(out.size - 1)
+        return out
+    }
+
     /** Newest by version, not by the order GitHub listed them. */
     internal fun newestOf(releases: List<Release>): Release? = releases.maxByOrNull { it.version }
 

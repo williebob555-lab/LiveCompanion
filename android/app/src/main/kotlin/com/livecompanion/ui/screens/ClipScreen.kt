@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.livecompanion.net.LiveClient
+import com.livecompanion.net.jsonArgs
 import com.livecompanion.state.ClipState
 import com.livecompanion.state.Loc
 import com.livecompanion.state.LiveStore
@@ -228,6 +229,25 @@ private fun storeClipEdits(store: LiveStore, client: LiveClient) = object : Clip
     override fun setLooping(on: Boolean) {
         store.editClip({ it.copy(looping = on) })
         send("looping", on)
+    }
+
+    override fun scrub(unit: Double, seconds: Boolean, done: Boolean) {
+        val c = store.clip.value
+        val tempo = store.session.value.tempo.toDouble()
+        val beats = if (seconds) unit * tempo / 60.0 else unit
+        val where = loc()?.get("w")?.jsonPrimitive?.content
+        if (where == "slot") {
+            // Session clip: LOM Clip.scrub (best effort; the server answers `unsupported` if the API is missing).
+            if (done) { client.op("clip.scrub", "loc" to loc(), "beat" to beats); client.op("clip.stop_scrub", "loc" to loc()) }
+            else client.sendThrottled("clipscrub", "clip.scrub", jsonArgs("loc" to loc(), "beat" to beats), 33)
+        } else {
+            // Arrangement / take clip: the clip's start marker sits at the clip's arrangement start.
+            val song = kotlin.math.max(0.0, c.start + (beats - c.startMarker))
+            if (done) {
+                client.op("song.seek", "beats" to song)
+                store.editSession({ it.copy(pos = song) }, { it.playing || kotlin.math.abs(it.pos - song) < 0.05 })
+            } else client.sendThrottled("seek", "song.seek", jsonArgs("beats" to song), 33)
+        }
     }
 
     override fun warpAdd(beat: Double) = client.op("warp.add", "loc" to loc(), "beat" to beat)

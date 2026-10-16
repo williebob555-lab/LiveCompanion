@@ -98,7 +98,7 @@ internal fun RowScope.TrackNav(store: LiveStore, client: LiveClient, nameModifie
 
 /** arm / mute / solo / monitor of the focused track. */
 @Composable
-internal fun RowScope.TrackToggles(store: LiveStore, client: LiveClient, h: Dp = 40.dp, btnW: Dp = 40.dp) {
+internal fun RowScope.TrackToggles(store: LiveStore, client: LiveClient, h: Dp = 40.dp, btnW: Dp = 40.dp, monitor: Boolean = true) {
     val focus by store.focus.collectAsState()
     val m = Modifier
     val ref = focus.ref
@@ -111,15 +111,24 @@ internal fun RowScope.TrackToggles(store: LiveStore, client: LiveClient, h: Dp =
     }
     LiveTextButton("M", { set("mute", !focus.mute, { it.copy(mute = !focus.mute) }, { it.copy(mute = !focus.mute) }) }, m, focus.mute, LiveColors.MuteOn, minHeight = h, minWidth = btnW)
     LiveTextButton("S", { set("solo", !focus.solo, { it.copy(solo = !focus.solo) }, { it.copy(solo = !focus.solo) }) }, m, focus.solo, LiveColors.Solo, minHeight = h, minWidth = btnW)
+    if (monitor) MonitorToggle(store, client, h)
+}
+
+/** Monitor cycle button (In / Auto / Off) of the focused track. */
+@Composable
+internal fun RowScope.MonitorToggle(store: LiveStore, client: LiveClient, h: Dp = 40.dp) {
+    val focus by store.focus.collectAsState()
+    val ref = focus.ref
     if (focus.kind == "audio" || focus.kind == "midi" || focus.kind == "group") {
         val mon = focus.monitor.coerceIn(0, 2)
         LiveTextButton(
             MONITOR_LABELS[mon],
             {
                 val nxt = (mon + 1) % 3
-                set("monitor", nxt, { it.copy(monitor = nxt) }, { it.copy(monitor = nxt) })
+                client.op("track.set", "tr" to ref, "k" to "monitor", "v" to nxt)
+                store.updateFocus { it.copy(monitor = nxt) }; store.patchTrack(ref) { it.copy(monitor = nxt) }
             },
-            m, mon == 0, LiveColors.Accent, minHeight = h, minWidth = 70.dp,
+            Modifier, mon == 0, LiveColors.Accent, minHeight = h, minWidth = 70.dp,
         )
     }
 }

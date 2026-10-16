@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -69,38 +71,63 @@ fun TransportBar(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
     }
 }
 
+/** Width of [sample] in the mono readout style at the CURRENT font scale + [pad] (so "999.4.4" never truncates). */
 @Composable
-internal fun RowScope.TransportButtons(store: LiveStore, client: LiveClient, h: Dp = 40.dp, minW: Dp = 36.dp) {
+internal fun monoWidth(sample: String, pad: Dp = 10.dp): Dp {
+    val tm = androidx.compose.ui.text.rememberTextMeasurer()
+    val d = LocalDensity.current
+    return remember(sample, d.density, d.fontScale) {
+        with(d) { tm.measure(sample, LiveType.Mono).size.width.toDp() } + pad
+    }
+}
+
+@Composable
+internal fun RowScope.TransportButtons(store: LiveStore, client: LiveClient, h: Dp = 40.dp, minW: Dp = 36.dp, fixed: Boolean = false, extras: Boolean = true) {
     val s by store.session.collectAsState()
     fun toggle(k: String, cur: Boolean, patch: (SessionState, Boolean) -> SessionState) {
         client.op("song.set", "k" to k, "v" to !cur)
         store.updateSession { patch(it, !cur) }
     }
-    W(LiveIconKind.Play, s.playing, LiveColors.Play, h = h, minW = minW) {
+    W(LiveIconKind.Play, s.playing, LiveColors.Play, h = h, minW = minW, fixed = fixed) {
         if (s.playing) client.op("song.stop") else client.op("song.play")
         store.updateSession { it.copy(playing = !it.playing) }
     }
-    W(LiveIconKind.Stop, false, LiveColors.Accent, h = h, minW = minW) {
+    W(LiveIconKind.Stop, false, LiveColors.Accent, h = h, minW = minW, fixed = fixed) {
         client.op("song.stop"); store.updateSession { it.copy(playing = false) }
     }
-    W(LiveIconKind.Rec, s.rec, LiveColors.Rec, h = h, minW = minW) { toggle("rec", s.rec) { x, v -> x.copy(rec = v) } }
-    W(LiveIconKind.SessionRec, s.sessionRec, LiveColors.Rec, h = h, minW = minW) { toggle("session_rec", s.sessionRec) { x, v -> x.copy(sessionRec = v) } }
-    W(LiveIconKind.Overdub, s.overdub, LiveColors.Accent, h = h, minW = minW) { toggle("overdub", s.overdub) { x, v -> x.copy(overdub = v) } }
-    W(LiveIconKind.Loop, s.loop, LiveColors.Accent, h = h, minW = minW) { toggle("loop", s.loop) { x, v -> x.copy(loop = v) } }
-    W(LiveIconKind.Metronome, s.metronome, LiveColors.Accent, h = h, minW = minW) { toggle("metronome", s.metronome) { x, v -> x.copy(metronome = v) } }
+    W(LiveIconKind.Rec, s.rec, LiveColors.Rec, h = h, minW = minW, fixed = fixed) { toggle("rec", s.rec) { x, v -> x.copy(rec = v) } }
+    if (extras) TransportExtras(store, client, h, minW, fixed)
+}
+
+/** Session-record / overdub / loop / metronome (secondary transport toggles; the compact layout puts them in the bottom strip). */
+@Composable
+internal fun RowScope.TransportExtras(store: LiveStore, client: LiveClient, h: Dp = 40.dp, minW: Dp = 36.dp, fixed: Boolean = false) {
+    val s by store.session.collectAsState()
+    fun toggle(k: String, cur: Boolean, patch: (SessionState, Boolean) -> SessionState) {
+        client.op("song.set", "k" to k, "v" to !cur)
+        store.updateSession { patch(it, !cur) }
+    }
+    W(LiveIconKind.SessionRec, s.sessionRec, LiveColors.Rec, h = h, minW = minW, fixed = fixed) { toggle("session_rec", s.sessionRec) { x, v -> x.copy(sessionRec = v) } }
+    W(LiveIconKind.Overdub, s.overdub, LiveColors.Accent, h = h, minW = minW, fixed = fixed) { toggle("overdub", s.overdub) { x, v -> x.copy(overdub = v) } }
+    W(LiveIconKind.Loop, s.loop, LiveColors.Accent, h = h, minW = minW, fixed = fixed) { toggle("loop", s.loop) { x, v -> x.copy(loop = v) } }
+    W(LiveIconKind.Metronome, s.metronome, LiveColors.Accent, h = h, minW = minW, fixed = fixed) { toggle("metronome", s.metronome) { x, v -> x.copy(metronome = v) } }
 }
 
 @Composable
+/** Tempo + position: fixed widths (never weighted) so the longest value always fits; [tempoWeight]/[posWeight] are kept for old call sites and ignored. */
 internal fun RowScope.TempoPos(store: LiveStore, client: LiveClient, tempoWeight: Float, posWeight: Float, h: Dp = 40.dp) {
     val s by store.session.collectAsState()
     var tempoDialog by remember { mutableStateOf(false) }
+    // Both fields are at least as wide as their longest value ("999.99", "999.4.4") at the current font scale; extra room is shared.
+    val tempoMin = maxOf(58.dp * LocalDensity.current.fontScale.coerceAtLeast(1f), monoWidth("999.99", 8.dp))
+    val posMin = monoWidth("999.4.4", 10.dp)
     LiveButton(
         onClick = { tempoDialog = true },
-        modifier = Modifier.weight(tempoWeight),
-        minWidth = 58.dp * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f), minHeight = h,
+        modifier = Modifier,
+        minWidth = tempoMin, minHeight = h,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp),
-    ) { c -> LiveText(formatTempo(s.tempo), style = LiveType.Mono, color = c) }
-    PositionReadout(store, Modifier.weight(posWeight), h)
+    ) { c -> LiveText(formatTempo(s.tempo), style = LiveType.Mono, color = c, softWrap = false) }
+    PositionReadout(store, Modifier.width(posMin), h)
     if (tempoDialog) {
         TempoDialog(
             current = s.tempo,
@@ -116,10 +143,10 @@ internal fun RowScope.TempoPos(store: LiveStore, client: LiveClient, tempoWeight
 }
 
 @Composable
-internal fun RowScope.UndoRedo(store: LiveStore, client: LiveClient, h: Dp = 40.dp, minW: Dp = 36.dp) {
+internal fun RowScope.UndoRedo(store: LiveStore, client: LiveClient, h: Dp = 40.dp, minW: Dp = 36.dp, fixed: Boolean = false) {
     val s by store.session.collectAsState()
-    W(LiveIconKind.Undo, false, LiveColors.Accent, enabled = s.canUndo, h = h, minW = minW) { client.op("song.undo") }
-    W(LiveIconKind.Redo, false, LiveColors.Accent, enabled = s.canRedo, h = h, minW = minW) { client.op("song.redo") }
+    W(LiveIconKind.Undo, false, LiveColors.Accent, enabled = s.canUndo, h = h, minW = minW, fixed = fixed) { client.op("song.undo") }
+    W(LiveIconKind.Redo, false, LiveColors.Accent, enabled = s.canRedo, h = h, minW = minW, fixed = fixed) { client.op("song.redo") }
 }
 
 @Composable
@@ -130,8 +157,9 @@ private fun RowScope.W(
     enabled: Boolean = true,
     h: Dp = 40.dp,
     minW: Dp = 36.dp,
+    fixed: Boolean = false,
     onClick: () -> Unit,
-) = LiveIconButton(icon, onClick, Modifier.weight(1f), on, color, enabled, minHeight = h, minWidth = minW)
+) = LiveIconButton(icon, onClick, if (fixed) Modifier else Modifier.weight(1f), on, color, enabled, minHeight = h, minWidth = minW)
 
 /** "120", "128.5", "93.25": no trailing zeros, so it fits the narrow top-bar button even at font scale 1.3. */
 internal fun formatTempo(t: Float): String =

@@ -53,3 +53,12 @@ class P3FixTests {
         assertEquals(UpdateCheck.Result.NoReleases, UpdateCheck.noRelease(UpdateCheck.Channel.TEST, anyPrerelease = false))
     }
 }
+
+class ReleaseNotesCleanTest {
+    @org.junit.Test
+    fun stripsTrailersLinksAndMarkdown() {
+        val raw = "## What's new\r\n- **Faster** drags\r\n- see [docs](https://x.y/z)\r\n\r\nCo-Authored-By: Claude <noreply@x>\r\n\r\n**Full Changelog**: https://github.com/a/b/compare/v1...v2"
+        val out = com.livecompanion.update.UpdateCheck.cleanNotes(raw)
+        org.junit.Assert.assertEquals(listOf("What's new", "\u2022 Faster drags", "\u2022 see docs"), out)
+    }
+}

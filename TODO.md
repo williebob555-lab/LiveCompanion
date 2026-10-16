@@ -4,6 +4,7 @@ Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (wh
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
 ## NOW (2026-10-16, owner testing on phone)
+- [x] Conformance review #1 fixes (see qa/CONFORMANCE.md fix pass) - uncommitted, gate green; needs reviewer re-check on emulator. New: clip.scrub/clip.stop_scrub ops (real-Live unverified), compact top bar + CompactSecondaryBar.
 - [x] Agent 1: Connect settings/updates, demo mode (DemoClient), editable track picker, zoom-out limits, 40dp top bar, rounded-corner insets (committed 2a7c643).
 - [x] Agent 2: waveforms without helper (clip.peaks in remote script, background thread) (committed 2a7c643; real-Live check of Wine paths / large AIFF still pending).
 - [x] Pass 3 (uncommitted, gate green): INSTANT FEEL everywhere - SectionGuard (state/SectionGuard.kt) + LiveStore.edit* for clip markers/loop/warp/props, slot move, arr/takes, session (punch, loop, seek); NoteEditor settle; TrackLane drag settles on match (no reset on any clips section); Timeline loop edge settle; playhead hold 600 ms; debug "Simulate 300 ms server delay" (More -> Help -> Developer; SimDelay honoured by LiveClient + DemoClient).

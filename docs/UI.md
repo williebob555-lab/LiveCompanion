@@ -72,3 +72,8 @@ Every rename (clip in Arrange/Session/Takes lane, track in Mix/Tracks, clip name
 
 ## Position text
 Every bar.beat.sixteenth readout/parser uses `ui/track/Bbt.kt` (signature-aware, 1-based; a sixteenth is always 0.25 quarter, so 3/8 beats have 2). Typed values out of range are rejected with an inline message, never wrapped.
+
+## Conformance fix pass (2026-10-16)
+- Landscape top chrome is ONE 40dp row (`CompactTopBar`): fixed-width buttons, tempo/position sized for "999.99"/"999.4.4" at the current font scale, the track name takes the rest. When the full set does not fit (small phones), session-rec/overdub/loop/metronome/undo/redo/monitor/vol/pan/meter move to a 40dp bottom strip (`CompactSecondaryBar`). Screens < 360dp tall: arrange ruler 12dp + brace 4dp (chrome ~18%).
+- Loop brace: invisible >= 40dp grab band (ruler + top of lane), 24dp edge zones, two-tick grips (track view, clip editor, Takes). Clip editor: dragging the ruler (not on a marker/loop edge) scrubs the playhead (arrangement clip: song.seek; session clip: clip.scrub).
+- Track list Edit panel: Rename | Duplicate | Delete | Color chip (palette collapsed). Session scene column widens to the longest scene name (cap 120/130dp); long-press shows the full name. Devices chain shows edge fade + chevron when it scrolls. Tracks: Master pinned only when >= 5 rows fit. Release notes: cleaned, first 6 lines + More... Browser opens on Instruments; Takes without lanes shows an explanation + Create lane.

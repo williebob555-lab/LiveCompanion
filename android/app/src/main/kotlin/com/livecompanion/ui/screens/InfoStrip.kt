@@ -77,6 +77,8 @@ fun InfoStrip(store: LiveStore, statusOverride: ConnStatus?, client: LiveClient,
 private fun Cell(label: String, value: String) {
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         LiveText(label, style = StripLabel, textAlign = TextAlign.Center)
-        LiveText(value, style = StripText, textAlign = TextAlign.Center, maxLines = 1)
+        // The strip has a fixed physical width (the cutout inset): keep its text at 10dp whatever the font scale so "10.2.3" never truncates.
+        val fs = androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)
+        LiveText(value, style = StripText.copy(fontSize = (10f / fs).sp), textAlign = TextAlign.Center, maxLines = 1, softWrap = false)
     }
 }

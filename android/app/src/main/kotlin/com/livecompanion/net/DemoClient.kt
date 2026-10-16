@@ -138,7 +138,12 @@ class DemoClient(
 
     private fun takesFor(ref: String): TakesState = takesBy.getOrPut(ref) {
         val f = family(ref)
-        (f?.let { decode("sec_takes_$f", TakesState.serializer()) } ?: TakesState()).copy(tr = ref)
+        val base = (f?.let { decode("sec_takes_$f", TakesState.serializer()) } ?: TakesState()).copy(tr = ref)
+        // Demo ships a take lane so promote / demote / move can be tried: one alternate take of the first arrangement clip.
+        val first = if (base.supported && base.lanes.isEmpty()) arrFor(ref).clips.firstOrNull() else null
+        if (first == null) base
+        else base.copy(lanes = listOf(com.livecompanion.state.TakeLane(0, "Take Lane 1",
+            listOf(com.livecompanion.state.TakeClip(0, first.name.ifBlank { "Take" } + " (alt)", first.color, first.start, first.end)))))
     }
 
     private fun focusFor(ref: String): FocusState = focusBy.getOrPut(ref) {
@@ -557,8 +562,8 @@ class DemoClient(
         val c = arrFor(tr).clips.firstOrNull { it.i == i } ?: throw LiveException("no such arrangement clip")
         val len = c.end - c.start
         val moved = c.copy(start = start.coerceAtLeast(0.0), end = start.coerceAtLeast(0.0) + len)
-        // Live overwrites what the moved clip lands on
-        val rest = arrFor(tr).clips.filter { it.i != i && (it.end <= moved.start || it.start >= moved.end) }
+        // Never delete what the moved clip lands on: clips just overlap (the moved clip is drawn on top).
+        val rest = arrFor(tr).clips.filter { it.i != i }
         val all = reindex(rest + moved)
         arrBy[tr] = arrFor(tr).copy(clips = all)
         pushArr(tr)

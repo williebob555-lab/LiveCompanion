@@ -150,8 +150,20 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
         }
     }
 
-    val slotList: @Composable (Modifier, Boolean, Dp) -> Unit = { m, showAddScene, sceneBase ->
+    // Scene column adapts to the longest scene name (measured at the current font scale), up to a cap.
+    val sceneTm = androidx.compose.ui.text.rememberTextMeasurer()
+    val sceneDens = androidx.compose.ui.platform.LocalDensity.current
+    val sceneNeed: Dp = remember(tracks.scenes, slotsState.slots.size, sceneDens.density, sceneDens.fontScale) {
+        var wMax = 0
+        for (sl in slotsState.slots) {
+            val n = tracks.scenes.getOrNull(sl.i)?.name?.ifBlank { null } ?: "${sl.i + 1}"
+            wMax = maxOf(wMax, sceneTm.measure(n, LiveType.Label).size.width)
+        }
+        with(sceneDens) { wMax.toDp() } + 8.dp + 1.dp + 8.dp   // play triangle + gap + side padding
+    }
+    val slotList: @Composable (Modifier, Boolean, Dp, Dp) -> Unit = { m, showAddScene, sceneBase, sceneCap ->
         val slots = slotsState.slots
+        val sceneW = maxOf(sceneBase * sceneDens.fontScale.coerceAtLeast(1f), sceneNeed).coerceAtMost(sceneCap)
         if (slots.isEmpty()) {
             Box(m, contentAlignment = Alignment.Center) {
                 LiveText(if (tr.isEmpty()) "No track selected" else "No slots", style = LiveType.Body, color = LiveColors.TextDim)
@@ -166,7 +178,8 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                 items(slots, key = { it.i }) { slot ->
                     SlotRow(
                         slot = slot,
-                        sceneBase = sceneBase,
+                        sceneBase = sceneW,
+                        onSceneInfo = { store.notice("Scene ${slot.i + 1}: " + (tracks.scenes.getOrNull(slot.i)?.name?.ifBlank { null } ?: "(unnamed)")) },
                         sceneLabel = tracks.scenes.getOrNull(slot.i)?.name?.ifBlank { null } ?: "${slot.i + 1}",
                         showScene = showScenes,
                         armed = focus.arm,
@@ -216,7 +229,7 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
         val wide = mw >= 560.dp && mw > maxHeight
         if (wide) {
             Row(Modifier.fillMaxSize()) {
-                slotList(Modifier.width(minOf(mw - 150.dp, 560.dp)).fillMaxHeight(), false, 46.dp)
+                slotList(Modifier.width(minOf(mw - 150.dp, 560.dp)).fillMaxHeight(), false, 46.dp, 120.dp)
                 Box(Modifier.width(1.dp).fillMaxHeight().background(LiveColors.Line))
                 Column(Modifier.width(150.dp).fillMaxHeight()) { controls(true) }
             }
@@ -225,7 +238,7 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
             Column(Modifier.fillMaxSize()) {
                 controls(false)
                 Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.Center) {
-                    slotList(Modifier.widthIn(max = 560.dp).fillMaxHeight().weight(1f, fill = false), true, 64.dp)
+                    slotList(Modifier.widthIn(max = 560.dp).fillMaxHeight().weight(1f, fill = false), true, 64.dp, 130.dp)
                 }
             }
         }
@@ -355,6 +368,7 @@ private fun SlotRow(
     onFire: () -> Unit,
     onStop: () -> Unit,
     onSceneFire: () -> Unit,
+    onSceneInfo: () -> Unit = {},
     onMenu: () -> Unit,
     dragOffset: Float,
     isDropTarget: Boolean,
@@ -387,8 +401,8 @@ private fun SlotRow(
     ) {
         if (showScene) {
             // narrow scene column: number / short name with a tiny play triangle
-            val sceneW = sceneBase * fs
-            LiveButton(onSceneFire, Modifier.width(sceneW).fillMaxHeight(), minHeight = rowH, minWidth = sceneW, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp)) { c ->
+            val sceneW = sceneBase   // already font-scaled / measured by the caller
+            LiveButton(onSceneFire, Modifier.width(sceneW).fillMaxHeight(), onLongClick = onSceneInfo, minHeight = rowH, minWidth = sceneW, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp)) { c ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(1.dp)) {
                     LiveIcon(LiveIconKind.Play, c, size = 8.dp)
                     LiveText(sceneLabel, style = LiveType.Label.copy(color = c), color = c)

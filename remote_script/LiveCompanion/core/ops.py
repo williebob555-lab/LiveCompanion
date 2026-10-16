@@ -133,6 +133,8 @@ class Ops(object):
         t["take.next"] = self.take_next
         t["clip.fire"] = self.clip_fire
         t["clip.stop"] = self.clip_stop
+        t["clip.scrub"] = self.clip_scrub
+        t["clip.stop_scrub"] = self.clip_stop_scrub
         t["clip.open"] = self.clip_open
         t["clip.close"] = self.clip_close
         t["clip.set"] = self.clip_set
@@ -537,6 +539,16 @@ class Ops(object):
         if cr.kind != "slot":
             return                      # PROTOCOL clarification: arr/take -> no-op ok
         _call(cr.slot, "stop")
+
+    def clip_scrub(self, c, a):
+        """Scrub inside a session clip (LOM Clip.scrub; sounds until clip.stop_scrub). Arrangement clips use song.seek."""
+        cr = self._clip(a)
+        _call(cr.clip, "scrub", float(max(0.0, _n(need(a, "beat"), "beat"))))
+
+    def clip_stop_scrub(self, c, a):
+        cr = self._clip(a)
+        if hasattr(cr.clip, "stop_scrub"):
+            cr.clip.stop_scrub()
 
     def clip_open(self, c, a):
         loc = clean_loc(need(a, "loc", dict))
