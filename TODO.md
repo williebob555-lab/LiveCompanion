@@ -3,6 +3,16 @@
 Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (why)
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
+## NOW (2026-10-16, owner testing on phone)
+- [~] Agent 1: Connect-screen settings/updates, demo mode, editable track picker, more zoom-out, bigger top bar,
+      optimistic drags everywhere, rounded-corner safe insets.
+- [~] Agent 2: waveforms without helper (clip.peaks in remote script, background thread).
+- [ ] AFTER agent 1: take lanes hold-drag promote/demote/move (track view + Takes tab), server ops for demote.
+- [ ] Then: build gate → CONFORMANCE REVIEW (reviewer agent fills qa/CONFORMANCE.md on emulator; FAILs fixed)
+      → release v0.1.1-test3 → reinstall remote script.
+- Process rule (owner, 2026-10-16): "do more reviewing with my obvious preferences" — every release gated on
+  qa/CONFORMANCE.md; derive and apply Core principles proactively.
+
 ## RESUME HERE — Milestone 2 "UI lock-in" (owner feedback recorded in PREFERENCES 2026-10-15; owner asleep)
 2026-10-16 P4 fix pass DONE, uncommitted (see qa/REVIEW_LOG P4 "fixed(pending commit)"): note-bar MIDI clips, selected-on-top, updater resume + test-channel UI, icon gap/scale, 3-row portrait chrome, browser chip fade, tracks multi-column + pinned master, device cell scaling + tablet scale, shared 300ms hold-drag. Next: commit, release test8, emulator re-check (icon, updater resume, device drag).
 2026-10-16 night: QA passes 4–6 + fixes → test8, test9, test10; updater verified end-to-end incl. resume after

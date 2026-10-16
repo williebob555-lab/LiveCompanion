@@ -2,6 +2,22 @@
 
 Single user (the owner). Read this before every change. Newest entries at the bottom of each section.
 
+## CORE PRINCIPLES (distilled from all owner feedback — apply them to cases the owner hasn't mentioned yet)
+1. **It's Ableton on a phone.** When unsure how something should look or behave, do what Live does.
+2. **Direct manipulation.** Anything you can see you can grab: hold-drag to move/reorder/promote/trim, drag to
+   set values. Menus/dialogs only for rare actions. No submenus.
+3. **Instant feel.** Every touch responds at frame rate locally; the network never shows as lag or snap-back.
+4. **Everything visible, nothing clipped or hidden.** No content under cutouts/rounded corners; no hidden gestures
+   or undiscoverable toggles; controls big enough to hit; text never truncated where it matters.
+5. **Zero friction setup and use.** No extra programs required for core features (waveforms etc.), one-click
+   install, updates from anywhere in the app, app usable without a Live connection (settings, updates, demo).
+6. **Space goes to the work.** Editors (track view, clip editor) get the room; chrome is compact but comfortable;
+   zoom ranges generous both ways.
+7. **One track at a time**, but the track itself is fully editable from wherever its list appears.
+8. **Looks good.** Live's dark look, light-blue accent, subtle roundness, consistent sizes; if a screen looks
+   empty, clumsy or "not Live", it's a bug.
+Every release must pass qa/CONFORMANCE.md (a reviewer agent audits each screen against these principles).
+
 ## Product preferences
 - Core focus: ONE track at a time — see and manipulate the clips on that track (session slots, arrangement lane, takes).
 - Target ONLY the latest Live (currently 12.4.1, Standard edition; no Max for Live). No back-compat shims.
@@ -28,6 +44,19 @@ Single user (the owner). Read this before every change. Newest entries at the bo
 - 2026-10-16 (owner): the app must be usable WITHOUT a Live connection — settings/updates reachable from the
   Connect screen, plus a demo mode to explore the UI. Emulator must be easy to open (tools\Start Emulator.cmd,
   -port 5554 because NTKDaemon holds 5563).
+- 2026-10-16 (owner): "I want to be able to zoom out much more" — zoom-out limits must be generous (track view:
+  whole song in ~1/4 width; clip editor: clip in ~1/4 width). Owner also still couldn't edit the track list: the
+  track picker (top-bar dropdown) must itself support rename/add/delete/color, not only the Tracks tab.
+  Owner couldn't see waveforms (helper not running) → waveforms must work WITHOUT the helper (remote script
+  computes peaks in a background thread; helper only a fallback).
+  Dragging the loop brace ("repeat heads") felt laggy → ALL drags must be optimistic (render local state at frame
+  rate, throttled sends, settle after release, never snap back). Perf-sensitive area.
+  Nothing may be clipped by ROUNDED DISPLAY CORNERS (owner's phone clipped the info strip and three corners) —
+  respect rounded-corner insets everywhere.
+  Takes: hold-and-drag a take from a take lane up to the main lane = PROMOTE; drag a main-lane clip down into a
+  take lane = DEMOTE; drag between take lanes = move. (Owner request; real-Live API for take-lane clip creation
+  unverified — implement best-effort with clear errors.)
+  Top-bar buttons should be a bit BIGGER (owner accepts losing some clip-view height for it) — ~40dp row.
 - Release tags: builds ≤ v0.1.0-test10 compare pre-release text lexically ("test10" < "test9"), so from now on
   bump the base version instead of growing the test number past 9 (v0.1.1-test1, v0.1.1-test2 … v0.1.2-test1).
   Natural ordering is fixed from v0.1.1-test1 on.
