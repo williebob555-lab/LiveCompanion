@@ -68,14 +68,17 @@ class ArrangeTakesScreenshotTest(private val wDp: Int, private val hDp: Int, pri
     private fun store(supported: Boolean): LiveStore {
         val s = fakeStore()
         fun sec(n: String, j: String) = s.handleSection(n, LiveJson.parseToJsonElement(j))
-        sec("session", """{"tempo":122.5,"sig":[4,4],"playing":true,"pos":37.5,"rec":false,"overdub":true,"loop":true,
-            "loop_start":16,"loop_len":16,"punch_in":true,"sel_track":"t1"}""")
+        sec("session", """{"tempo":120,"sig":[4,4],"playing":true,"pos":37.5,"rec":false,"overdub":true,"loop":true,
+            "loop_start":16,"loop_len":16,"punch_in":true,"sel_track":"t1",
+            "cues":[{"t":0,"n":"Intro"},{"t":32,"n":"Drop"}]}""")
+        sec("focus", """{"ref":"t1","name":"1 Bass","kind":"midi","armable":true,"arm":true}""")
         sec("arr", """{"tr":"t1","clips":[
-            {"i":0,"name":"Intro bass","color":3452671,"start":0,"end":16,"audio":false},
-            {"i":1,"name":"Verse with a very long name","color":16724787,"start":16,"end":32,"audio":false,"muted":true},
-            {"i":2,"name":"Fill","color":16766720,"start":32,"end":36},
-            {"i":3,"name":"Drop","color":3452671,"start":40,"end":72}]}""")
-        sec("clip", """{"loc":{"w":"arr","tr":"t1","i":1},"name":"Verse","color":16724787,"start":16,"end":32}""")
+            {"i":0,"name":"Intro bass","color":3452671,"start":0,"end":16,"audio":false,"looping":true,"start_marker":0,"end_marker":4,"loop_start":0,"loop_end":4,
+              "pn":[[0,0.5,36],[0.5,0.5,36],[1,0.5,43],[2,1,39],[3,0.5,41],[3.5,0.25,48]]},
+            {"i":1,"name":"Verse with a very long name","color":16724787,"start":16,"end":32,"audio":true,"muted":true,"file_path":"/x/verse.wav","warping":true,"warp_first":0,"warp_last":16,"end_marker":16},
+            {"i":2,"name":"Fill","color":16766720,"start":32,"end":36,"pn":[[0,1,60],[1,1,64],[2,1,67]],"end_marker":4},
+            {"i":3,"name":"Drop","color":3452671,"start":40,"end":72,"audio":true,"file_path":"/x/verse.wav","warping":true,"warp_first":0,"warp_last":32,"end_marker":32}]}""")
+        com.livecompanion.net.PeaksClient.shared.put("/x/verse.wav", 1024, wavePeaks())
         if (supported) {
             sec("takes", """{"tr":"t1","supported":true,"lanes":[
                 {"i":0,"name":"Take lane 1","clips":[{"i":0,"name":"Take 1","color":3452671,"start":0,"end":16},{"i":1,"name":"Take 2","color":3452671,"start":16,"end":32}]},
@@ -87,13 +90,41 @@ class ArrangeTakesScreenshotTest(private val wDp: Int, private val hDp: Int, pri
         return s
     }
 
+    private fun wavePeaks(): com.livecompanion.net.Peaks {
+        val n = 1024
+        val hi = FloatArray(n) { i -> (0.15f + 0.8f * kotlin.math.abs(kotlin.math.sin(i * 0.05f)) * (0.5f + 0.5f * kotlin.math.sin(i * 0.31f).let { it * it })).coerceAtMost(1f) }
+        val lo = FloatArray(n) { i -> -hi[i] * 0.9f }
+        return com.livecompanion.net.Peaks(44100, 2, 44100L * 16, n, lo, hi)
+    }
+
     private fun client(s: LiveStore) = LiveClient(s, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
 
     @Test fun arrange() {
         val s = store(true)
         val c = client(s)
+        s.handleRt(LiveJson.parseToJsonElement("""{"pos":37.5,"playing":false}"""))
         launch { ArrangeScreen(s, c, Modifier.fillMaxSize()) }
         rule.onRoot().captureRoboImage(name("arrange"))
+    }
+
+    @Test fun arrangeSelectedWithTakes() {
+        val s = store(true)
+        s.handleRt(LiveJson.parseToJsonElement("""{"pos":20,"playing":false}"""))
+        val c = client(s)
+        launch { ArrangeScreen(s, c, Modifier.fillMaxSize(), initialSel = 0, initialShowTakes = true) }
+        rule.onRoot().captureRoboImage(name("arrange_sel_takes"))
+    }
+
+    @Test fun arrangeRecording() {
+        val s = store(true)
+        s.handleSection("session", LiveJson.parseToJsonElement("""{"tempo":120,"sig":[4,4],"playing":true,"pos":40,"rec":true,"loop":false,"loop_start":0,"loop_len":16}"""))
+        s.handleRt(LiveJson.parseToJsonElement("""{"pos":40,"playing":true}"""))
+        val c = client(s)
+        launch { ArrangeScreen(s, c, Modifier.fillMaxSize()) }
+        rule.waitForIdle()
+        s.handleRt(LiveJson.parseToJsonElement("""{"pos":45,"playing":true}"""))
+        rule.waitForIdle()
+        rule.onRoot().captureRoboImage(name("arrange_rec"))
     }
 
     @Test fun takesSupported() {

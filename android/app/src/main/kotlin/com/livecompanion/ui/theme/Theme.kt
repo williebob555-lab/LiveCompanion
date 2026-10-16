@@ -24,7 +24,10 @@ object LiveColors {
     val Line = Color(0xFF444444)
     val Text = Color(0xFFC8C8C8)
     val TextDim = Color(0xFF8A8A8A)
-    val Accent = Color(0xFFFFA22B)
+    /** Ableton Live 12 dark-theme selection light blue. */
+    val Accent = Color(0xFF5FBEEB)
+    /** Orange: warnings / Live's own orange-coded states only. */
+    val Warn = Color(0xFFFFA22B)
     val Play = Color(0xFF5FD35F)
     val Rec = Color(0xFFFF3B30)
     val Solo = Color(0xFF3D9FE0)
@@ -32,7 +35,10 @@ object LiveColors {
 }
 
 object LiveShapes {
-    val Small = RoundedCornerShape(2.dp)
+    /** Subtle Live-12 roundness: buttons, cells, clips, inputs. */
+    val Small = RoundedCornerShape(3.dp)
+    /** Cards, dialogs, panels. */
+    val Medium = RoundedCornerShape(4.dp)
 }
 
 /** Small type scale: 11-13sp body, 10sp caps labels. Scales with the system font scale. */

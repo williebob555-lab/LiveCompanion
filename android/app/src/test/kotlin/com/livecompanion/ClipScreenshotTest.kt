@@ -69,12 +69,12 @@ class ClipScreenshotTest(private val wDp: Int, private val hDp: Int, private val
         RuntimeEnvironment.setQualifiers("w${w}dp-h${h}dp-${if (land) "land" else "port"}-xhdpi")
         RuntimeEnvironment.setFontScale(fontScale)
         scenario = ActivityScenario.launch(ComponentActivity::class.java)
-        scenario!!.onActivity { it.setContent { LiveTheme { MainShell(store, client, Modifier.fillMaxSize(), initialTab = Tab.Clip, statusOverride = com.livecompanion.net.ConnStatus.CONNECTED) } } }
+        scenario!!.onActivity { it.setContent { androidx.compose.runtime.CompositionLocalProvider(com.livecompanion.ui.clip.LocalClipAnimate provides false) { LiveTheme { MainShell(store, client, Modifier.fillMaxSize(), initialTab = Tab.Clip, statusOverride = com.livecompanion.net.ConnStatus.CONNECTED) } } } }
         rule.waitForIdle()
         rule.onRoot().captureRoboImage(name(shot))
     }
 
-    private fun midiStore(): LiveStore {
+    private fun midiStore(rec: Boolean = false, sig: String = "[4,4]", dense: Boolean = false): LiveStore {
         val s = fakeStore()
         val notes = buildString {
             var id = 1
@@ -85,15 +85,17 @@ class ClipScreenshotTest(private val wDp: Int, private val hDp: Int, private val
                 append("""{"id":${id++},"p":$p,"t":${bar * 4 + i * 0.25},"d":0.25,"v":${60 + (i * 7) % 60},"prob":${if (i % 5 == 0) 0.5 else 1.0}}""")
             }
             append(""",{"id":900,"p":36,"t":0,"d":4,"v":110},{"id":901,"p":84,"t":8,"d":2.5,"v":90}""")
+            if (dense) for (k in 0 until 2000) append(""",{"id":${1000 + k},"p":${30 + (k * 7) % 60},"t":${(k % 512) * 0.125},"d":0.125,"v":${40 + k % 80}}""")
         }
         s.handleSection("clip", LiveJson.parseToJsonElement("""{"loc":{"w":"slot","tr":"t1","i":0},"name":"Bass A","color":3452671,"audio":false,"len":16,
-            "looping":true,"loop_start":0,"loop_end":16,"start_marker":0,"end_marker":16,"signature":[4,4],"launch_mode":0,"launch_quant":0,
-            "legato":false,"muted":false,"notes":[$notes]}"""))
-        s.handleRt(LiveJson.parseToJsonElement("""{"pos":3,"playing":true,"clip_pos":5.5}"""))
+            "looping":true,"loop_start":0,"loop_end":16,"start_marker":0,"end_marker":16,"signature":$sig,"launch_mode":0,"launch_quant":0,
+            "legato":false,"muted":false,"rec":$rec,"notes":[$notes]}"""))
+        s.handleSection("session", LiveJson.parseToJsonElement("""{"tempo":122.5,"sig":[4,4],"playing":true,"pos":37.5,"overdub":true,"loop":true,"metronome":true,"can_undo":true,"sel_track":"t1","sel_scene":2,"scale":{"root":0,"name":"Minor","intervals":[0,2,3,5,7,8,10]}}"""))
+        s.handleRt(LiveJson.parseToJsonElement("""{"pos":3,"playing":true,"clip_pos":${if (rec) 9.5 else 5.5}}"""))
         return s
     }
 
-    private fun audioStore(): LiveStore {
+    private fun audioStore(rec: Boolean = false): LiveStore {
         val n = 4096
         val mx = FloatArray(n) { i -> abs(sin(i * 2 * PI / 128)).toFloat() * (0.3f + 0.7f * ((i / 256) % 2)) }
         val pk = Peaks(44100, 2, 44100L * 8, n, FloatArray(n) { -mx[it] * 0.9f }, mx)
@@ -101,15 +103,18 @@ class ClipScreenshotTest(private val wDp: Int, private val hDp: Int, private val
         while (b <= 8192) { PeaksClient.shared.put(AUDIO_PATH, b, Peaks(pk.sr, 2, pk.frames, n, pk.min, pk.max)); b *= 2 }
         val s = fakeStore()
         s.handleSection("clip", LiveJson.parseToJsonElement("""{"loc":{"w":"slot","tr":"t0","i":1},"name":"Drum Loop","color":16724787,"audio":true,"len":16,
-            "looping":true,"loop_start":0,"loop_end":8,"start_marker":0,"end_marker":8,"signature":[4,4],"launch_mode":0,"launch_quant":0,
+            "looping":true,"loop_start":0,"loop_end":8,"start_marker":0,"end_marker":8,"signature":[4,4],"launch_mode":0,"launch_quant":0,"rec":$rec,
             "gain":0.4,"gain_str":"-6.0 dB","pitch_coarse":0,"pitch_fine":0.0,"warping":true,"warp_mode":"Beats","warp_modes":["Beats","Tones","Texture","Re-Pitch","Complex","Complex Pro"],
             "file_path":"C:/Samples/loop.wav","sample_rate":44100.0,"sample_len":352800.0,
             "warp_markers":[{"beat":0,"sample_time":0},{"beat":4,"sample_time":2},{"beat":8,"sample_time":4.5}]}"""))
-        s.handleRt(LiveJson.parseToJsonElement("""{"pos":3,"playing":true,"clip_pos":2.5}"""))
+        s.handleRt(LiveJson.parseToJsonElement("""{"pos":3,"playing":true,"clip_pos":${if (rec) 6.5 else 2.5}}"""))
         return s
     }
 
     @Test fun midi() = shell(midiStore(), "clip_midi")
     @Test fun audio() = shell(audioStore(), "clip_audio")
+    @Test fun midiRecording() = shell(midiStore(rec = true), "clip_midi_rec")
+    @Test fun audioRecording() = shell(audioStore(rec = true), "clip_audio_rec")
+    @Test fun midiDense68() = shell(midiStore(sig = "[6,8]", dense = true), "clip_midi_dense_68")
     @Test fun picker() = shell(fakeStore(), "clip_picker")
 }

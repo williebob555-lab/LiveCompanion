@@ -151,7 +151,10 @@ class FakeDevice(Observable):
         if param_names is None:
             param_names = ["Param %d" % (k + 1) for k in range(6)]
         for i, pn in enumerate(param_names):
-            self.parameters.append(FakeParam(pn, 0.5 + 0.05 * (i % 5)))
+            if i == 4 and pn != "Release":
+                self.parameters.append(FakeParam("Mode", 1.0, 0.0, 2.0, quantized=True, items=("Low", "Mid", "High")))
+            else:
+                self.parameters.append(FakeParam(pn, 0.5 + 0.05 * (i % 5)))
         self.chains = ()
         self.view = FakeDeviceView()
 
@@ -160,7 +163,44 @@ class FakeDevice(Observable):
         return self.parameters[0].value >= 0.5
 
 
-class FakeChain(Observable):
+def _make_native_device(name):
+    """Fake of track.insert_device(name): any non-empty name creates a device (Live raises on unknown)."""
+    if not name or name.startswith("!"):
+        raise RuntimeError("unknown device: %r" % name)
+    low = name.lower()
+    inst = ("operator", "wavetable", "simpler", "sampler", "analog", "drift", "meld", "electric", "tension",
+            "collision", "impulse", "instrument rack", "drum rack")
+    midi = ("arpeggiator", "chord", "scale", "velocity", "pitch", "random", "note length", "midi effect rack")
+    typ = DT_INSTRUMENT if low in inst else DT_MIDI if low in midi else DT_AUDIO
+    if low in ("instrument rack", "drum rack", "audio effect rack", "midi effect rack"):
+        return FakeRack(name, "DrumGroupDevice" if low == "drum rack" else "InstrumentGroupDevice", typ,
+                        [FakeChain("Chain")], macros=_macro_names() if low == "instrument rack" else None)
+    return FakeDevice(name, name.replace(" ", ""), typ)
+
+
+class _DeviceListMixin(object):
+    """insert_device / duplicate_device shared by tracks and chains (delete_device is per class)."""
+
+    def insert_device(self, name, index=None):
+        d = _make_native_device(name)
+        devs = list(self.devices)
+        devs.insert(len(devs) if index is None else index, d)
+        self.devices = devs
+        self._fire("devices")
+        return d
+
+    def duplicate_device(self, index):
+        src = self.devices[index]
+        d = FakeDevice(src.name, src.class_name, src.type) if not src.can_have_chains else             FakeRack(src.name, src.class_name, src.type, [FakeChain(ch.name) for ch in src.chains])
+        for p, q in zip(d.parameters, src.parameters):
+            p.value = q.value
+        devs = list(self.devices)
+        devs.insert(index + 1, d)
+        self.devices = devs
+        self._fire("devices")
+
+
+class FakeChain(_DeviceListMixin, Observable):
     _observed = ("name", "devices")
 
     def __init__(self, name, devices=()):
@@ -299,6 +339,13 @@ class FakeClip(Observable):
             self.warp_mode = 0
             self.available_warp_modes = (0, 1, 2, 3, 4, 6)
             self.warp_markers = (FakeWarpMarker(0.0, 0.0), FakeWarpMarker(float(length), float(sample_seconds)))
+
+    def __setattr__(self, name, value):
+        # Assumed Live behaviour for arrangement clips: moving start_marker moves the clip's left edge
+        # (right edge stays), so start_time follows. Unverified against real Live (see LOM_NOTES).
+        if name == "start_marker" and self.__dict__.get("is_arrangement_clip") and "start_marker" in self.__dict__:
+            self.__dict__["_arr_start"] += value - self.__dict__["start_marker"]
+        Observable.__setattr__(self, name, value)
 
     # ---- derived
     @property
@@ -534,7 +581,7 @@ class FakeLane(Observable):
         self.arrangement_clips = []
 
 
-class FakeTrack(Observable):
+class FakeTrack(_DeviceListMixin, Observable):
     _observed = ("name", "color", "arm", "mute", "solo", "current_monitoring_state", "fold_state",
                  "playing_slot_index", "fired_slot_index", "devices", "arrangement_clips", "take_lanes",
                  "input_routing_type", "input_routing_channel", "output_routing_type")
@@ -662,8 +709,9 @@ class FakeSongView(Observable):
 
 
 class FakeCue(object):
-    def __init__(self, time):
+    def __init__(self, time, name=""):
         self.time = time
+        self.name = name
 
 
 class FakeSong(Observable):
@@ -671,7 +719,7 @@ class FakeSong(Observable):
                  "punch_out", "loop", "loop_start", "loop_length", "metronome", "signature_numerator",
                  "signature_denominator", "clip_trigger_quantization", "midi_recording_quantization",
                  "count_in_duration", "back_to_arranger", "exclusive_arm", "song_length", "can_undo", "can_redo",
-                 "tracks", "return_tracks", "scenes")
+                 "root_note", "scale_name", "scale_intervals", "tracks", "return_tracks", "scenes")
 
     def __init__(self):
         Observable.__init__(self)
@@ -686,12 +734,13 @@ class FakeSong(Observable):
         self.count_in_duration = 0
         self.clip_trigger_quantization = 7
         self.midi_recording_quantization = 5
+        self.root_note, self.scale_name, self.scale_intervals = 0, "Minor", (0, 2, 3, 5, 7, 8, 10)
         self.back_to_arranger = False
         self.exclusive_arm = True
         self.tracks, self.return_tracks, self.scenes = [], [], []
         self.master_track = None
         self.view = FakeSongView()
-        self.cue_points = [FakeCue(0.0), FakeCue(16.0), FakeCue(32.0)]
+        self.cue_points = [FakeCue(0.0, "Intro"), FakeCue(16.0, "Verse"), FakeCue(32.0)]
         self._edits = self._redos = 0
         self._tap_times = []
         self.can_undo = self.can_redo = False
@@ -701,6 +750,40 @@ class FakeSong(Observable):
     def song_length(self):
         ends = [c.end_time for t in self.tracks for c in getattr(t, "arrangement_clips", [])]
         return max(ends) if ends else 0.0
+
+    def _device_lists(self):
+        out = []
+        def walk(owner):
+            out.append(owner)
+            for d in owner.devices:
+                for ch in (d.chains if d.can_have_chains else ()):
+                    walk(ch)
+        for t in list(self.tracks) + list(self.return_tracks) + [self.master_track]:
+            walk(t)
+        return out
+
+    def move_device(self, device, target, index):
+        """Live: insertion index is measured in the target list BEFORE the device is removed."""
+        src = next((o for o in self._device_lists() if device in o.devices), None)
+        if src is None or target not in self._device_lists():
+            raise RuntimeError("bad move_device args")
+        if device.can_have_chains and any(device in [x for x in ch.devices] or target is ch for ch in device.chains):
+            raise RuntimeError("cannot move a rack into itself")
+        old = src.devices.index(device)
+        tgt = list(target.devices) if target is not src else list(src.devices)
+        tgt.insert(min(index, len(tgt)), device)
+        if target is src:
+            tgt.pop(old if old < index else old + 1)
+            src.devices = tgt
+            src._fire("devices")
+        else:
+            s2 = list(src.devices)
+            s2.pop(old)
+            src.devices = s2
+            target.devices = tgt
+            src._fire("devices")
+            target._fire("devices")
+        self._edit()
 
     def _edit(self):
         self._edits += 1
@@ -825,6 +908,9 @@ class FakeSong(Observable):
         pass
 
     def jump_by(self, beats):
+        self.current_song_time = max(0.0, self.current_song_time + beats)
+
+    def scrub_by(self, beats):
         self.current_song_time = max(0.0, self.current_song_time + beats)
 
     def jump_to_next_cue(self):

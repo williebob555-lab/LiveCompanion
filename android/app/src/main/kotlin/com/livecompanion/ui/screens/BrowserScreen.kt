@@ -31,6 +31,7 @@ import com.livecompanion.net.LiveException
 import com.livecompanion.net.jsonArgs
 import com.livecompanion.state.LiveJson
 import com.livecompanion.state.LiveStore
+import com.livecompanion.ui.devices.DevicePending
 import com.livecompanion.ui.components.DenseButton
 import com.livecompanion.ui.components.DenseTextField
 import com.livecompanion.ui.components.LiveText
@@ -148,11 +149,16 @@ fun BrowserScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                                     else { m.previewing = full; client.op("browser.preview", "path" to full) }
                                 }, on = prev, onColor = LiveColors.Play)
                                 DenseButton("Load", {
+                                    // Instant feedback: a "loading..." device panel appears in the chain right away.
+                                    val isInst = m.path.firstOrNull()?.lowercase() in setOf("instruments", "drums", "sounds")
+                                    val ph = DevicePending.add(store, tr, item.name.substringBeforeLast('.'), atStart = isInst)
+                                    m.status = "Loading ${item.name}..."
                                     scope.launch {
                                         try {
                                             client.request("browser.load", jsonArgs("tr" to tr, "path" to full))
                                             m.status = "Loaded ${item.name}"
                                         } catch (e: LiveException) {
+                                            DevicePending.remove(store, ph)
                                             m.status = "Load failed: ${e.message}"
                                         }
                                         m.status?.let { store.notice(it) }

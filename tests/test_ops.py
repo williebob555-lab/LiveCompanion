@@ -8,13 +8,13 @@ from conftest import Harness
 
 SLOT = lambda tr, i: {"w": "slot", "tr": tr, "i": i}
 PROTOCOL_OPS = """song.play song.stop song.continue song.tap_tempo song.undo song.redo song.capture_midi
-song.stop_all_clips song.re_enable_automation song.jump song.seek song.cue song.set scene.fire scene.create
+song.stop_all_clips song.re_enable_automation song.jump song.seek song.scrub song.cue song.set scene.fire scene.create
 track.create track.delete track.duplicate focus.set focus.follow view.select track.set track.stop slot.fire
 slot.create slot.delete slot.duplicate slot.copy slot.move take.next clip.fire clip.stop clip.open clip.close clip.set
-clip.delete clip.duplicate_loop clip.crop clip.quantize clip.to_arr arr.create_midi arr.move notes.add notes.modify
+clip.delete clip.duplicate_loop clip.crop clip.quantize clip.to_arr arr.create_midi arr.move arr.trim notes.add notes.modify
 notes.remove notes.clear notes.transpose notes.duplicate warp.add warp.move warp.remove takes.create_lane
 takes.rename takes.promote device.open device.close device.toggle device.param device.delete device.select
-device.var chain.select browser.list browser.load browser.preview browser.preview_stop sys.info sys.probe""".split()
+device.var device.move device.insert device.duplicate chain.select browser.list browser.load browser.preview browser.preview_stop sys.info sys.probe""".split()
 
 
 def test_all_protocol_ops_registered(c):
@@ -179,6 +179,9 @@ def test_take_next_records_new_clip(c, h):
     c.until("slots", lambda d: d["slots"][6]["clip"]["name"] == "Take 1")
     c.until("focus", lambda d: d["arm"] is True)
     c.until("slots", lambda d: d["slots"][6]["clip"] is not None and d["slots"][6]["clip"]["len"] > 0.2)
+    c.ok("clip.open", loc=SLOT("t0", 6))
+    c.until("clip", lambda d: d and d["rec"] is True)
+    c.ok("clip.close")
     r2 = c.ok("take.next", tr="t0")
     assert r2["i"] == 7 and r2["name"] == "Take 2"
     c.until("slots", lambda d: d["slots"][6]["status"] != "recording" and d["slots"][7]["status"] == "recording")
@@ -214,6 +217,11 @@ def test_clip_open_set_close(c):
                       ("end_marker", 7.0, "end_marker")]:
         c.ok("clip.set", loc=loc, k=k, v=v)
         c.until("clip", lambda d, key=key, v=v: d[key] == v)
+    for k, v, sig in [("sig_num", 7, [7, 4]), ("sig_den", 8, [7, 8])]:
+        c.ok("clip.set", loc=loc, k=k, v=v)
+        c.until("clip", lambda d, sig=sig: d["signature"] == sig)
+    for k, v in [("sig_den", 3), ("sig_num", 0), ("sig_num", 100)]:
+        assert c.req("clip.set", loc=loc, k=k, v=v)["ok"] is False, (k, v)
     assert c.req("clip.set", loc=loc, k="gain", v=0.5)["ok"] is False     # audio only
     assert c.req("clip.set", loc=loc, k="loop_end", v=0.5)["ok"] is False  # before loop_start
     r = c.req("clip.set", loc=loc, k="loop_start", v=6.0)                  # after loop_end (4.0)
@@ -310,6 +318,46 @@ def test_audio_clip_and_warp(c):
     assert c.req("warp.add", beat=1)["ok"] is False
 
 
+def test_scrub_and_cues(c):
+    c.ok("song.seek", beats=8)
+    c.until("session", lambda d: abs(d["pos"] - 8) < 1e-6)
+    c.ok("song.scrub", beats=0.25)
+    c.until("session", lambda d: abs(d["pos"] - 8.25) < 1e-6)
+    c.ok("song.scrub", beats=-100)
+    c.until("session", lambda d: d["pos"] == 0.0)
+    assert c.req("song.scrub", beats="x")["ok"] is False
+    s = c.until("session", lambda d: "cues" in d)
+    assert s["cues"][1] == {"t": 16.0, "n": "Verse"}
+
+
+def test_arr_section_preview_and_trim(c, h):
+    c.ok("focus.set", tr="t0")
+    c.ok("arr.create_midi", tr="t0", start=100, len=8)
+    arr = c.until("arr", lambda d: d["tr"] == "t0" and any(x["start"] == 100 for x in d["clips"]))
+    i = [x["i"] for x in arr["clips"] if x["start"] == 100][0]
+    x = arr["clips"][i]
+    assert x["audio"] is False and isinstance(x["pn"], list) and "start_marker" in x and "end_marker" in x
+    loc = {"w": "arr", "tr": "t0", "i": i}
+    c.ok("arr.trim", loc=loc, end=106)
+    c.until("arr", lambda d: any(y["start"] == 100 and y["end"] == 106 for y in d["clips"]))
+    c.ok("arr.trim", loc=loc, start=102)
+    c.until("arr", lambda d: any(y["start"] == 102 and y["end"] == 106 for y in d["clips"]))
+    assert c.req("arr.trim", loc=loc)["ok"] is False
+    assert c.req("arr.trim", loc=loc, start=105.999, end=106)["ok"] is False
+    assert c.req("arr.trim", loc={"w": "slot", "tr": "t0", "i": 0}, end=5)["ok"] is False
+    r = c.ok("arr.move", loc=loc, start=120)
+    assert r is not None
+    arr = c.until("arr", lambda d: any(y["start"] == 120 and y["end"] == 124 for y in d["clips"]))
+    assert not any(y["start"] == 102 for y in arr["clips"])
+
+
+def test_arr_audio_has_file_path(c):
+    c.ok("focus.set", tr="t3")
+    arr = c.until("arr", lambda d: d["tr"] == "t3")
+    aud = [x for x in arr["clips"] if x["audio"]]
+    assert aud and all("file_path" in x and "warping" in x for x in aud)
+
+
 def test_arrangement_and_takes(c, h):
     c.ok("focus.set", tr="t0")
     arr = c.until("arr", lambda d: d["tr"] == "t0")
@@ -345,6 +393,56 @@ def test_arrangement_and_takes(c, h):
     c.ok("clip.open", loc={"w": "take", "tr": "t3", "lane": 0, "i": 1})
     c.until("clip", lambda d: d and d["loc"]["w"] == "take" and d["name"] == "Vox take 1b")
     assert c.req("takes.create_lane", tr="t5")["err"].startswith("unsupported")
+
+
+def test_device_move_insert_duplicate(c, h):
+    c.ok("focus.set", tr="t2")
+    c.until("devices", lambda d: d["tr"] == "t2")
+    names = lambda d: [x["name"] for x in d["devices"]]
+    base = names(c.sections["devices"])
+    assert len(base) == 3
+    t0 = time.time()
+    c.ok("device.move", tr="t2", path="0", to=2)
+    d = c.until("devices", lambda d: names(d) == [base[1], base[2], base[0]])
+    assert time.time() - t0 < 1.0
+    c.ok("device.move", tr="t2", path="2", to=0)
+    c.until("devices", lambda d: names(d) == base)
+    assert c.req("device.move", tr="t2", path="0", to=9)["ok"] is False
+    c.ok("device.insert", tr="t2", name="Reverb", i=1)
+    c.until("devices", lambda d: names(d)[1] == "Reverb" and len(d["devices"]) == 4)
+    c.ok("device.insert", tr="t2", name="Utility")
+    c.until("devices", lambda d: names(d)[-1] == "Utility")
+    assert c.req("device.insert", tr="t2", name="!nope")["ok"] is False
+    c.ok("device.duplicate", tr="t2", path="1")
+    c.until("devices", lambda d: names(d)[1:3] == ["Reverb", "Reverb"])
+    c.ok("device.delete", tr="t2", path="1")
+    c.until("devices", lambda d: names(d)[1:3] != ["Reverb", "Reverb"] and len(d["devices"]) == 5)
+    # into a rack chain
+    c.ok("device.insert", tr="t2", name="Saturator", into="2.c0")
+    c.until("devices", lambda d: any(x["name"] == "Saturator" for x in d["devices"][2]["chains"][0]["devices"]))
+
+
+def test_device_changes_reach_phone_without_lom_listener(c, h):
+    """Live applies browser loads late and a listener may not fire: the burst re-check must still deliver."""
+    c.ok("focus.set", tr="t7")
+    c.until("devices", lambda d: d["tr"] == "t7")
+    track = h.song.tracks[7]
+    n = len(c.sections["devices"]["devices"])
+    orig = track.insert_device
+
+    def silent_insert(name, index=None):
+        import threading
+        from fake_lom import _make_native_device
+
+        def later():
+            time.sleep(0.4)
+            object.__setattr__(track, "devices", list(track.devices) + [_make_native_device(name)])
+        threading.Thread(target=later, daemon=True).start()
+    track.insert_device = silent_insert
+    t0 = time.time()
+    c.ok("device.insert", tr="t7", name="Limiter")
+    c.until("devices", lambda d: len(d["devices"]) == n + 1, timeout=3)
+    assert time.time() - t0 < 1.5
 
 
 def test_devices_and_params(c):

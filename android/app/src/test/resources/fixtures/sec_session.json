@@ -5,6 +5,20 @@
   "can_redo": false,
   "can_undo": false,
   "count_in": 0,
+  "cues": [
+   {
+    "n": "Intro",
+    "t": 0.0
+   },
+   {
+    "n": "Verse",
+    "t": 16.0
+   },
+   {
+    "n": "",
+    "t": 32.0
+   }
+  ],
   "follow": false,
   "loop": false,
   "loop_len": 8.0,
@@ -18,6 +32,19 @@
   "quant": 0,
   "rec": false,
   "rec_quant": 5,
+  "scale": {
+   "intervals": [
+    0,
+    2,
+    3,
+    5,
+    7,
+    8,
+    10
+   ],
+   "name": "Minor",
+   "root": 0
+  },
   "sel_scene": 0,
   "sel_track": "t0",
   "session_rec": false,

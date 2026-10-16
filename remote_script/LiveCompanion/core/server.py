@@ -59,6 +59,7 @@ class Core(object):
         self.clients = []
         self.dirty = set()
         self.listeners_dirty = False
+        self.dev_burst = {}       # tr -> deadline (monotonic) to re-mark devices dirty (Live applies loads late)
         self._rebuild = False
         self._cid = 0
         self._next_start = 0.0
@@ -123,6 +124,13 @@ class Core(object):
         if n < 3 and len(self._err_seen) < 200:
             self.log("LiveCompanion error in %s: %s" % (where, msg))
 
+    def mark_devices(self, tr, secs=4.0):
+        """Device tree changed (load/insert/move/delete): resend `devices` now, re-check for ~4 s
+        (dedup in _push makes repeats free), and rebuild device listeners."""
+        self.dirty.add(("devices", tr))
+        self.dev_burst[tr] = time.monotonic() + secs
+        self._resync()
+
     def _resync(self):
         self.listeners_dirty = True
         self._rebuild = True
@@ -159,6 +167,13 @@ class Core(object):
             for cl in self.clients:
                 if cl.focus:
                     self.dirty.update((("focus", cl.focus), ("slots", cl.focus)))
+        if self.dev_burst:
+            for tr in list(self.dev_burst):
+                self.dirty.add(("devices", tr))
+                if now >= self.dev_burst[tr]:
+                    del self.dev_burst[tr]
+                    self._rebuild = True
+                    self.listeners_dirty = True
         if self.listeners_dirty:
             self._sync_listeners()        # attach before sending state so no change slips between the two
         if self.clients:

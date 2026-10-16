@@ -24,6 +24,7 @@
   "name": "Vox take 1",
   "pitch_coarse": 0,
   "pitch_fine": 0.0,
+  "rec": false,
   "sample_len": 66150.0,
   "sample_rate": 22050.0,
   "signature": [

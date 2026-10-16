@@ -12,14 +12,15 @@ MAX_PER_GROUP = 1500
 SONG_PROPS = ("tempo", "is_playing", "record_mode", "session_record", "arrangement_overdub", "punch_in",
               "punch_out", "loop", "loop_start", "loop_length", "metronome", "signature_numerator",
               "signature_denominator", "clip_trigger_quantization", "midi_recording_quantization",
-              "count_in_duration", "back_to_arranger", "exclusive_arm", "song_length", "can_undo", "can_redo")
+              "count_in_duration", "back_to_arranger", "exclusive_arm", "song_length", "can_undo", "can_redo",
+              "root_note", "scale_name", "scale_intervals", "cue_points")
 STRUCT_PROPS = ("tracks", "return_tracks", "scenes")
 TRACK_PROPS = ("name", "color", "arm", "mute", "solo", "current_monitoring_state", "fold_state")
 TRACK_SLOT_PROPS = ("playing_slot_index", "fired_slot_index")
 CLIP_PROPS = ("name", "color", "looping", "loop_start", "loop_end", "start_marker", "end_marker", "muted",
               "gain", "pitch_coarse", "pitch_fine", "warping", "warp_mode", "launch_mode",
               "launch_quantization", "legato", "signature_numerator", "signature_denominator", "notes",
-              "warp_markers")
+              "warp_markers", "is_recording")
 
 
 class Listeners(object):
@@ -160,7 +161,8 @@ class Listeners(object):
         acb = self._cb([("arr", ref)])
         self._attach(bag, t, "arrangement_clips", self._cb([("arr", ref)]))
         for c in seq(g(t, "arrangement_clips", ()))[:300]:
-            self._many(bag, c, ("name", "color", "muted", "looping", "start_time", "end_time"), acb)
+            self._many(bag, c, ("name", "color", "muted", "looping", "start_time", "end_time",
+                                "start_marker", "end_marker", "loop_start", "loop_end", "notes"), acb)
         # takes
         tcb = self._cb([("takes", ref)])
         self._attach(bag, t, "take_lanes", tcb)
@@ -180,8 +182,8 @@ class Listeners(object):
                 return
             self._attach(bag, d, "name", cb)
             ps = seq(g(d, "parameters", ()))
-            if ps:
-                self._attach(bag, ps[0], "value", cb)
+            for p in ps[:9]:
+                self._attach(bag, p, "value", cb)
             if g(d, "can_have_chains", False):
                 if g(d, "variation_count", None) is not None:
                     for p in ps[1:9]:

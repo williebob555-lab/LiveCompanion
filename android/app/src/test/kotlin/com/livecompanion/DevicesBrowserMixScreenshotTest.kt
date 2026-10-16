@@ -81,13 +81,19 @@ class DevicesBrowserMixScreenshotTest(private val wDp: Int, private val hDp: Int
             "returns":[{"ref":"r0","name":"A Reverb","color":8421504,"kind":"return"},{"ref":"r1","name":"B Delay with a long name here","color":8421504,"kind":"return","mute":true}],
             "master":{"ref":"m","name":"Master","color":8421504,"kind":"master"}}""")
         sec("devices", """{"tr":"t1","devices":[
-          {"path":"0","name":"Operator","cls":"Operator","on":true,"type":"instrument"},
+          {"path":"0","name":"Operator","cls":"Operator","on":true,"type":"instrument","pp":[
+            {"i":1,"name":"Algorithm","v":3,"min":0,"max":10,"str":"4","quant":true,"items":["1","2","3","4","5","6","7","8","9","10","11"]},
+            {"i":2,"name":"Filter Freq","v":0.6,"min":0,"max":1,"str":"1.2 kHz"},
+            {"i":3,"name":"Filter Res","v":0.2,"min":0,"max":1,"str":"20 %"},
+            {"i":4,"name":"Osc A Wave","v":1,"min":0,"max":3,"str":"Saw","quant":true,"items":["Sin","Saw","Sqr","Tri"]},
+            {"i":5,"name":"Transpose","v":0.5,"min":0,"max":1,"str":"0 st"},
+            {"i":6,"name":"Attack","v":0.1,"min":0,"max":1,"str":"2 ms"}]},
           {"path":"1","name":"Instrument Rack with a long name","cls":"InstrumentGroupDevice","on":true,"type":"rack",
             "macros":[{"i":0,"name":"Cutoff","v":64,"min":0,"max":127,"str":"64"},{"i":1,"name":"Res","v":20,"min":0,"max":127,"str":"20"},{"i":2,"name":"Drive","v":100,"min":0,"max":127,"str":"100"},{"i":3,"name":"Attack","v":0,"min":0,"max":127,"str":"0"},{"i":4,"name":"Release","v":50,"min":0,"max":127,"str":"50"}],
             "var":{"count":4,"sel":1},
             "chains":[{"i":0,"name":"Saw Pad","devices":[{"path":"1.c0.0","name":"Wavetable","cls":"InstrumentVector","on":true,"type":"instrument"},{"path":"1.c0.1","name":"Auto Filter","cls":"AutoFilter","on":false,"type":"audio_fx"}]},
                       {"i":1,"name":"Sub","devices":[]}]},
-          {"path":"2","name":"EQ Eight","cls":"Eq8","on":false,"type":"audio_fx"},
+          {"path":"2","name":"EQ Eight","cls":"Eq8","on":false,"type":"audio_fx","pp":[{"i":1,"name":"Freq","v":0.3,"min":0,"max":1,"str":"200 Hz"},{"i":2,"name":"Gain","v":0.5,"min":0,"max":1,"str":"0 dB"}]},
           {"path":"3","name":"Limiter","cls":"Limiter","on":true,"type":"audio_fx"}]}""")
         sec("params", """{"tr":"t1","path":"0","name":"Operator","params":[
           {"i":0,"name":"Device On","v":1,"min":0,"max":1,"str":"On","quant":true,"items":["Off","On"]},

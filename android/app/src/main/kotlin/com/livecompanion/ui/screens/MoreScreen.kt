@@ -131,7 +131,7 @@ fun MoreScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifi
                 UpdateUi.Idle -> Unit
                 UpdateUi.Checking -> LiveText("Checking...", style = LiveType.Small, color = LiveColors.TextDim)
                 is UpdateUi.UpToDate -> LiveText("Up to date (${u.v}).", style = LiveType.Small, color = LiveColors.Play)
-                is UpdateUi.Failed -> LiveText(u.msg, style = LiveType.Small, color = LiveColors.Accent, maxLines = 3)
+                is UpdateUi.Failed -> LiveText(u.msg, style = LiveType.Small, color = LiveColors.Warn, maxLines = 3)
                 is UpdateUi.Downloading -> {
                     LiveText(
                         if (u.progress >= 0) "Downloading ${(u.progress * 100).toInt()}%" else "Downloading...",

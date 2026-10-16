@@ -32,7 +32,7 @@ fun CompactTopBar(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
     BoxWithConstraints(modifier.fillMaxWidth().background(LiveColors.Panel)) {
         val gap = Arrangement.spacedBy(1.dp)
         val w = maxWidth
-        if (w >= 700.dp * fs) {
+        if (w >= 700.dp) {
             Row(Modifier.padding(1.dp), gap, Alignment.CenterVertically) {
                 TransportButtons(store, client, BarH, 26.dp)
                 TempoPos(store, client, 1.3f, 1.3f, BarH)

@@ -4,7 +4,13 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,8 +67,9 @@ import com.livecompanion.ui.theme.LiveShapes
 import com.livecompanion.ui.theme.LiveType
 
 /**
- * Session tab: the focused track's slot column. Tap a cell to fire, square button to stop,
- * long-press for the menu, big TAKE button runs `take.next`, optional scene-launch column.
+ * Session tab: the focused track's slot column. Tap a cell to fire, square button to stop, ⋯ button for the
+ * rare-action menu, hold a clip and drag it onto another slot to move it, big TAKE button runs `take.next`,
+ * optional scene-launch column.
  */
 @Composable
 fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier) {
@@ -72,6 +79,9 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
     val rt = store.rt.collectAsState()
     var showScenes by remember { mutableStateOf(true) }
     var menuSlot by remember { mutableIntStateOf(-1) }
+    var dragFrom by remember { mutableIntStateOf(-1) }
+    var dragDy by remember { mutableFloatStateOf(0f) }
+    var pitchPx by remember { mutableFloatStateOf(0f) }
     var action by remember { mutableStateOf<SlotAction?>(null) }
     val tr = slotsState.tr.ifEmpty { focus.ref }
     val goTab = LocalTabNavigator.current
@@ -135,15 +145,27 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
                             store.patchSlot(slot.i) { it.copy(status = SlotStatus.STOPPED) }
                         },
                         onSceneFire = { client.op("scene.fire", "i" to slot.i) },
-                        onLongPress = { menuSlot = slot.i },
+                        onMenu = { menuSlot = slot.i },
+                        dragOffset = if (dragFrom == slot.i) dragDy else 0f,
+                        isDropTarget = dragFrom >= 0 && dragFrom != slot.i && slot.i == dragTarget(dragFrom, dragDy, pitchPx, slots.size),
+                        onMeasured = { pitchPx = it },
+                        onDragStart = { dragFrom = slot.i; dragDy = 0f },
+                        onDrag = { dragDy += it },
+                        onDragEnd = {
+                            val to = dragTarget(dragFrom, dragDy, pitchPx, slots.size)
+                            if (dragFrom >= 0 && to != dragFrom) client.op("slot.move", "tr" to tr, "i" to dragFrom, "to_tr" to tr, "to_i" to to)
+                            dragFrom = -1; dragDy = 0f
+                        },
                     )
                 }
                 item(key = "add-scene") {
-                    LiveTextButton(
-                        "+ Scene",
-                        { client.op("scene.create", "i" to slots.size) },
-                        Modifier.fillMaxWidth(),
-                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
+                        LiveTextButton("+ Scene", { client.op("scene.create", "i" to slots.size) }, Modifier.weight(1f))
+                        LiveText(
+                            "Hold a clip and drag to move it",
+                            Modifier.weight(1.6f).padding(horizontal = 6.dp), LiveType.Label, LiveColors.TextDim, maxLines = 2,
+                        )
+                    }
                 }
             }
         }
@@ -195,7 +217,10 @@ sealed interface SlotAction {
     data class MoveTo(val i: Int) : SlotAction
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+/** Slot index a dragged row currently hovers (row pitch = measured row height + 1dp gap). */
+private fun dragTarget(from: Int, dy: Float, pitch: Float, count: Int): Int =
+    if (from < 0 || pitch <= 0f) from else (from + (dy / pitch).roundToInt()).coerceIn(0, (count - 1).coerceAtLeast(0))
+
 @Composable
 private fun SlotRow(
     slot: SlotInfo,
@@ -206,7 +231,13 @@ private fun SlotRow(
     onFire: () -> Unit,
     onStop: () -> Unit,
     onSceneFire: () -> Unit,
-    onLongPress: () -> Unit,
+    onMenu: () -> Unit,
+    dragOffset: Float,
+    isDropTarget: Boolean,
+    onMeasured: (Float) -> Unit,
+    onDragStart: () -> Unit,
+    onDrag: (Float) -> Unit,
+    onDragEnd: () -> Unit,
 ) {
     val clip = slot.clip
     val status = if (!slot.hasClip) SlotStatus.EMPTY else slot.status
@@ -218,7 +249,14 @@ private fun SlotRow(
         else -> dim(base, 0.7f)
     }
     val fg = if (!slot.hasClip) LiveColors.TextDim else onColor(cellBg)
-    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = 32.dp), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    Row(
+        Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = 32.dp)
+            .onSizeChanged { onMeasured(it.height + with(density) { 1.dp.toPx() }) }
+            .graphicsLayer { translationY = dragOffset; alpha = if (dragOffset != 0f) 0.85f else 1f }
+            .then(if (isDropTarget) Modifier.border(2.dp, LiveColors.Accent, LiveShapes.Small) else Modifier),
+        horizontalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
         if (showScene) {
             val sceneW = 58.dp * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)
             LiveButton(onSceneFire, Modifier.width(sceneW).fillMaxHeight(), minHeight = 32.dp, minWidth = sceneW, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp)) { c ->
@@ -236,7 +274,17 @@ private fun SlotRow(
                 .clip(LiveShapes.Small)
                 .background(cellBg)
                 .then(if (status == SlotStatus.TRIGGERED) Modifier.border(2.dp, LiveColors.Accent, LiveShapes.Small) else Modifier)
-                .combinedClickable(onClick = onFire, onLongClick = onLongPress)
+                .clickable(onClick = onFire)
+                .then(
+                    if (slot.hasClip) Modifier.pointerInput(slot.i) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { onDragStart() },
+                            onDrag = { change, amount -> change.consume(); onDrag(amount.y) },
+                            onDragEnd = onDragEnd,
+                            onDragCancel = onDragEnd,
+                        )
+                    } else Modifier
+                )
                 .then(
                     if (status == SlotStatus.PLAYING && clip != null && clip.len > 0) {
                         Modifier.drawBehind {
@@ -280,6 +328,7 @@ private fun SlotRow(
             LiveIconKind.Stop, onStop, Modifier.fillMaxHeight(),
             enabled = active, minHeight = 32.dp,
         )
+        LiveTextButton("\u22EF", onMenu, Modifier.fillMaxHeight(), minHeight = 32.dp)
     }
 }
 

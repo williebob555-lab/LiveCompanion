@@ -77,10 +77,19 @@ data class SessionState(
     @SerialName("sel_scene") val selScene: Int = 0,
     @SerialName("song_len") val songLen: Double = 0.0,
     val follow: Boolean = false,
+    /** Live CPU load 0..1 (application.average_process_usage). */
+    val cpu: Float = 0f,
+    /** Song scale (root pitch class, name, intervals) when Live exposes it. */
+    val scale: ScaleInfo? = null,
+    /** Locators / cue points. */
+    val cues: List<CuePoint> = emptyList(),
 ) {
     val sigNum get() = sig.getOrElse(0) { 4 }.coerceAtLeast(1)
     val sigDen get() = sig.getOrElse(1) { 4 }.coerceAtLeast(1)
 }
+
+@Serializable
+data class CuePoint(val t: Double = 0.0, val n: String = "")
 
 // ------------------------------------------------------------------ tracks (global)
 @Serializable
@@ -182,6 +191,17 @@ data class ArrClip(
     val i: Int = 0, val name: String = "", val color: Int = 0x808080,
     val start: Double = 0.0, val end: Double = 0.0,
     val audio: Boolean = false, val muted: Boolean = false, val looping: Boolean = false,
+    @SerialName("start_marker") val startMarker: Double = 0.0,
+    @SerialName("end_marker") val endMarker: Double = 0.0,
+    @SerialName("loop_start") val loopStart: Double = 0.0,
+    @SerialName("loop_end") val loopEnd: Double = 0.0,
+    /** Audio only: helper-native file path (waveform preview) + approximate warp extent in beats. */
+    @SerialName("file_path") val filePath: String = "",
+    val warping: Boolean = false,
+    @SerialName("warp_first") val warpFirst: Double = 0.0,
+    @SerialName("warp_last") val warpLast: Double = 0.0,
+    /** MIDI only: mini preview notes as [time, duration, pitch] triples (thinned by the server). */
+    val pn: List<List<Double>> = emptyList(),
 )
 
 @Serializable
@@ -223,6 +243,8 @@ data class Device(
     val chains: List<Chain> = emptyList(),
     val macros: List<Macro>? = null,
     @SerialName("var") val variations: Variations? = null,
+    /** First few parameters (index >= 1) shown inline in the signal chain; empty for racks. */
+    val pp: List<Param> = emptyList(),
 )
 
 @Serializable
@@ -233,6 +255,8 @@ data class Param(
     val i: Int = 0, val name: String = "", val v: Float = 0f,
     val min: Float = 0f, val max: Float = 1f, val str: String = "",
     val quant: Boolean = false, val items: List<String>? = null,
+    /** Live's default value (double-tap resets to it); null if the LOM did not offer one. */
+    @SerialName("def") val default: Float? = null,
 )
 
 @Serializable
@@ -249,6 +273,9 @@ data class Note(
 
 @Serializable
 data class WarpMarker(val beat: Double = 0.0, @SerialName("sample_time") val sampleTime: Double = 0.0)
+
+@Serializable
+data class ScaleInfo(val root: Int = 0, val name: String = "", val intervals: List<Int> = emptyList())
 
 @Serializable
 data class ClipState(
@@ -270,6 +297,8 @@ data class ClipState(
     @SerialName("launch_quant") val launchQuant: Int = 0,
     val legato: Boolean = false,
     val muted: Boolean = false,
+    /** True while this clip is being recorded (its length/clip_pos grow). */
+    val rec: Boolean = false,
     // audio only
     val gain: Float = 0f,
     @SerialName("gain_str") val gainStr: String = "",
@@ -305,6 +334,8 @@ data class RtFrame(
     @SerialName("clip_pos") val clipPos: Double? = null,
     /** Keyed by slot index (as string). */
     @SerialName("slot_pos") val slotPos: Map<String, Double> = emptyMap(),
+    /** Live CPU load 0..1; null when the server predates the field. */
+    val cpu: Float? = null,
 )
 
 // ------------------------------------------------------------------ locators

@@ -7,14 +7,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -35,8 +32,8 @@ import com.livecompanion.state.Loc
 import com.livecompanion.state.LiveStore
 import com.livecompanion.state.WarpMarker
 import com.livecompanion.ui.clip.AudioEditor
-import com.livecompanion.ui.clip.AudioOps
 import com.livecompanion.ui.clip.Btn
+import com.livecompanion.ui.clip.ClipEdits
 import com.livecompanion.ui.clip.ClipOps
 import com.livecompanion.ui.clip.ClipProps
 import com.livecompanion.ui.clip.DenseH
@@ -48,10 +45,13 @@ import com.livecompanion.ui.components.LiveText
 import com.livecompanion.ui.theme.LiveColors
 import com.livecompanion.ui.theme.LiveType
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Clip tab: properties panel + MIDI piano roll or audio waveform for the clip opened with clip.open.
- * With no clip open, a picker of the focused track's slot clips and arrangement clips.
+ * Clip tab: full-width, left-to-right editor (MIDI piano roll or audio waveform) for the clip opened with clip.open,
+ * with the properties in a thin collapsible strip at the bottom. With no clip open, a picker of the focused track's
+ * slot clips and arrangement clips (a recording slot is shown in red).
  */
 @Composable
 fun ClipScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier) {
@@ -74,26 +74,30 @@ private fun ClipPicker(store: LiveStore, client: LiveClient, modifier: Modifier)
             if (slotClips.isNotEmpty()) item { LiveLabel("Session slots") }
             items(slotClips, key = { "s${it.i}" }) { s ->
                 val c = s.clip!!
-                PickRow(c.name.ifBlank { if (c.audio) "Audio" else "MIDI" }, "Slot ${s.i + 1}", c.color, c.audio) { client.op("clip.open", "loc" to Loc.slot(slots.tr.ifBlank { focus.ref }, s.i)) }
+                val rec = s.status == "recording"
+                PickRow(
+                    c.name.ifBlank { if (c.audio) "Audio" else "MIDI" }, if (rec) "REC  Slot ${s.i + 1}" else "Slot ${s.i + 1}", c.color, c.audio, rec,
+                ) { client.op("clip.open", "loc" to Loc.slot(slots.tr.ifBlank { focus.ref }, s.i)) }
             }
             if (arr.clips.isNotEmpty()) item { LiveLabel("Arrangement") }
             items(arr.clips, key = { "a${it.i}" }) { a ->
-                PickRow(a.name.ifBlank { if (a.audio) "Audio" else "MIDI" }, "Bar ${(a.start / 4).toInt() + 1}", a.color, a.audio) { client.op("clip.open", "loc" to Loc.arr(arr.tr.ifBlank { focus.ref }, a.i)) }
+                PickRow(a.name.ifBlank { if (a.audio) "Audio" else "MIDI" }, "Bar ${(a.start / 4).toInt() + 1}", a.color, a.audio, false) { client.op("clip.open", "loc" to Loc.arr(arr.tr.ifBlank { focus.ref }, a.i)) }
             }
         }
     }
 }
 
 @Composable
-private fun PickRow(name: String, sub: String, color: Int, audio: Boolean, onClick: () -> Unit) {
+private fun PickRow(name: String, sub: String, color: Int, audio: Boolean, rec: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(DenseH).background(LiveColors.Panel).clickable(onClick = onClick).padding(horizontal = 6.dp),
+        Modifier.fillMaxWidth().height(DenseH).background(if (rec) LiveColors.Rec.copy(alpha = 0.28f) else LiveColors.Panel)
+            .clickable(onClick = onClick).padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         ColorChip(color)
         LiveText(name, Modifier.weight(1f), style = LiveType.Small)
         LiveText(if (audio) "audio" else "midi", style = LiveType.Label)
-        LiveText(sub, style = LiveType.Small, color = LiveColors.TextDim)
+        LiveText(sub, style = LiveType.Small, color = if (rec) LiveColors.Rec else LiveColors.TextDim)
     }
 }
 
@@ -103,77 +107,61 @@ private fun ClipEditor(clip: ClipState, store: LiveStore, client: LiveClient, mo
     val ed = remember(clip.loc) { NoteEditor(clip.notes, client) }
     LaunchedEffect(clip.notes) { if (!clip.audio) ed.reconcile(clip.notes) }
     val rt = store.rt.collectAsState() // State object only; read in draw lambdas
+    val session by store.session.collectAsState()
+    val slots by store.slots.collectAsState()
     val conn by client.state.collectAsState()
     val host = conn.target?.host.orEmpty()
-    val audioOps = remember(store, client) { storeAudioOps(store, client) }
+    val edits = remember(store, client) { storeClipEdits(store, client) }
     val close = { client.op("clip.close") }
+    // Recording: the clip says so, or it sits in a session slot whose status is "recording".
+    val loc = clip.loc
+    val slotRec = loc != null && loc["w"]?.jsonPrimitive?.content == "slot" &&
+        slots.slots.firstOrNull { it.i == loc["i"]?.jsonPrimitive?.intOrNull }?.status == "recording"
+    val rec = clip.rec || slotRec
 
     BoxWithConstraints(modifier.fillMaxSize().background(LiveColors.Bg)) {
-        val editor: @Composable (Modifier) -> Unit = { m ->
-            if (clip.audio) AudioEditor(clip, host, rt, audioOps, m)
-            else PianoRoll(clip, ed, rt, m)
-        }
-        val landShort = maxHeight < 480.dp && maxWidth > maxHeight
-        val sideW = if (maxHeight < 480.dp) 232.dp else 272.dp
-        if (maxWidth >= 720.dp || (maxWidth >= 600.dp && !landShort)) {
-            // Properties in a side column; the editor keeps the full height.
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                Column(Modifier.width(sideW).fillMaxHeight().background(LiveColors.Panel).verticalScroll(rememberScrollState()).padding(4.dp)) {
-                    ClipProps(clip, ed.takeIf { !clip.audio }, ops, client, close)
-                }
-                editor(Modifier.weight(1f).fillMaxHeight())
+        var open by remember(clip.loc) { mutableStateOf(false) }
+        val mh = maxHeight
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                if (clip.audio) AudioEditor(clip, host, rt, edits, session.tempo, rec, Modifier.fillMaxSize())
+                else PianoRoll(clip, ed, rt, edits, session.scale, session.tempo, rec, Modifier.fillMaxSize())
             }
-        } else if (landShort) {
-            // Short landscape: editor full height; properties collapsed by default, toggled into a side column.
-            var open by remember { mutableStateOf(false) }
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (open) {
-                    Column(Modifier.width(sideW).fillMaxHeight().background(LiveColors.Panel).verticalScroll(rememberScrollState()).padding(4.dp)) {
-                        ClipProps(clip, ed.takeIf { !clip.audio }, ops, client, close)
-                    }
-                }
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Row(
-                        Modifier.fillMaxWidth().height(DenseH).background(LiveColors.Panel).padding(start = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        ColorChip(clip.color)
-                        LiveText(clip.name.ifBlank { if (clip.audio) "Audio" else "MIDI" }, Modifier.weight(1f), style = LiveType.Small)
-                        Btn("Props", { open = !open }, on = open)
-                        Btn("Close", { close() })
-                    }
-                    editor(Modifier.weight(1f).fillMaxWidth())
-                }
+            if (open) {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = mh * 0.5f).background(LiveColors.Panel)
+                        .verticalScroll(rememberScrollState()).padding(4.dp),
+                ) { ClipProps(clip, ed.takeIf { !clip.audio }, ops, client, null) }
             }
-        } else {
-            val mh = maxHeight
-            var open by remember(maxHeight > 420.dp) { mutableStateOf(maxHeight > 420.dp) }
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            // Thin always-visible handle: tap to expand/collapse the properties.
+            Row(
+                Modifier.fillMaxWidth().height(26.dp).background(LiveColors.PanelHi),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 Row(
-                    Modifier.fillMaxWidth().height(DenseH).background(LiveColors.Panel).padding(start = 6.dp),
+                    Modifier.weight(1f).fillMaxSize().clickable { open = !open }.padding(horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Row(Modifier.weight(1f).fillMaxHeight().clickable { open = !open }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        LiveText(if (open) "v" else ">", style = LiveType.Small, color = LiveColors.TextDim)
-                        ColorChip(clip.color)
-                        LiveText(clip.name.ifBlank { "Clip" }, Modifier.weight(1f), style = LiveType.Small)
-                    }
-                    Btn("Close", { close() })
+                    LiveText(if (open) "v" else "^", style = LiveType.Title, color = LiveColors.Accent)
+                    LiveLabel("Properties")
+                    ColorChip(clip.color)
+                    LiveText(clip.name.ifBlank { if (clip.audio) "Audio" else "MIDI" }, Modifier.weight(1f, fill = false), style = LiveType.Small)
+                    LiveText("${clip.signature.getOrElse(0) { 4 }}/${clip.signature.getOrElse(1) { 4 }}", style = LiveType.Small, color = LiveColors.TextDim)
+                    if (rec) LiveText("REC", style = LiveType.Small, color = LiveColors.Rec)
+                    else if (clip.looping) LiveText("Loop", style = LiveType.Small, color = LiveColors.Accent)
+                    Box(Modifier.weight(1f))
                 }
-                if (open) {
-                    Column(
-                        Modifier.fillMaxWidth().heightIn(max = mh * 0.42f).background(LiveColors.Panel)
-                            .verticalScroll(rememberScrollState()).padding(4.dp),
-                    ) { ClipProps(clip, ed.takeIf { !clip.audio }, ops, client, null) }
-                }
-                editor(Modifier.weight(1f).fillMaxWidth())
+                Btn("Close", { close() }, minWidth = 44.dp)
             }
         }
     }
 }
 
-private fun storeAudioOps(store: LiveStore, client: LiveClient) = object : AudioOps {
+/** Marker/loop/warp edits for the opened clip: optimistic store update + op (sent on gesture end). */
+private fun storeClipEdits(store: LiveStore, client: LiveClient) = object : ClipEdits {
     private fun loc(): JsonObject? = store.clip.value.loc
+    private fun send(key: String, value: Any) = client.op("clip.set", "loc" to loc(), "k" to key, "v" to value)
+
     override fun set(key: String, value: Double) {
         store.updateClip {
             when (key) {
@@ -181,11 +169,27 @@ private fun storeAudioOps(store: LiveStore, client: LiveClient) = object : Audio
                 "loop_end" -> it.copy(loopEnd = value)
                 "start_marker" -> it.copy(startMarker = value)
                 "end_marker" -> it.copy(endMarker = value)
+                "sig_num" -> it.copy(signature = listOf(value.toInt(), it.signature.getOrElse(1) { 4 }))
+                "sig_den" -> it.copy(signature = listOf(it.signature.getOrElse(0) { 4 }, value.toInt()))
                 else -> it
             }
         }
-        client.op("clip.set", "loc" to loc(), "k" to key, "v" to value)
+        send(key, if (key.startsWith("sig_")) value.toInt() else value)
     }
+
+    override fun setLoop(start: Double, end: Double) {
+        val old = store.clip.value
+        store.updateClip { it.copy(loopStart = start, loopEnd = end) }
+        // Keep start<end valid at every step on the server.
+        if (start < old.loopEnd) { send("loop_start", start); send("loop_end", end) }
+        else { send("loop_end", end); send("loop_start", start) }
+    }
+
+    override fun setLooping(on: Boolean) {
+        store.updateClip { it.copy(looping = on) }
+        send("looping", on)
+    }
+
     override fun warpAdd(beat: Double) = client.op("warp.add", "loc" to loc(), "beat" to beat)
     override fun warpMove(beat: Double, to: Double) {
         store.updateClip { c -> c.copy(warpMarkers = c.warpMarkers.map { if (kotlin.math.abs(it.beat - beat) < 1e-9) WarpMarker(to, it.sampleTime) else it }) }

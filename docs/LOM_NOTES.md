@@ -19,6 +19,10 @@ Re-run: reload the control surface in Live; the file is rewritten. Unverified it
 ## Verified ABSENT
 - No `move_track` / track reordering anywhere in the API. Track order cannot be changed remotely.
 
+## Track view assumptions (unverified on real Live)
+- arr.trim sets end_marker (and loop_end when growing a looping clip) / start_marker and reads start_time/end_time back; if Live does not move the clip edge the change is reverted and an error returned.
+- arr.move =  duplicate_clip_to_arrangement then deletes the original (delete failure ignored when the copy overwrote it).
+
 ## Not yet probed (no clip existed in the probed set)
 - Clip members (notes API, warp markers, start_time settability for moving arrangement clips) `(?)`.
   Moving an arrangement clip = duplicate_clip_to_arrangement at new time + delete_clip (works per API presence).

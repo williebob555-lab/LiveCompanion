@@ -1,5 +1,6 @@
 package com.livecompanion.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,22 +12,35 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.livecompanion.net.LiveClient
+import com.livecompanion.net.Peaks
+import com.livecompanion.net.PeaksClient
+import com.livecompanion.net.PeaksResult
+import com.livecompanion.net.jsonArgs
 import com.livecompanion.state.LiveStore
 import com.livecompanion.state.Loc
 import com.livecompanion.ui.components.LiveDialog
@@ -34,22 +48,31 @@ import com.livecompanion.ui.components.LiveDialogButtons
 import com.livecompanion.ui.components.LiveText
 import com.livecompanion.ui.components.LiveTextButton
 import com.livecompanion.ui.components.LiveTextField
-import com.livecompanion.ui.components.TClip
-import com.livecompanion.ui.components.TLane
 import com.livecompanion.ui.components.TLoop
-import com.livecompanion.ui.components.Timeline
-import com.livecompanion.ui.components.adaptiveLaneHeight
 import com.livecompanion.ui.components.TimelineView
 import com.livecompanion.ui.components.liveColor
-import com.livecompanion.ui.components.timelineHeight
+import com.livecompanion.ui.track.LaneActions
+import com.livecompanion.ui.track.LaneModel
+import com.livecompanion.ui.track.PlayheadClock
+import com.livecompanion.ui.track.RecState
+import com.livecompanion.ui.track.Snap
+import com.livecompanion.ui.track.TrackLane
+import com.livecompanion.ui.track.beatUnit
+import com.livecompanion.ui.track.beatsPerBar
+import com.livecompanion.ui.track.effectiveGrid
+import com.livecompanion.ui.track.parsePos
+import com.livecompanion.ui.track.posString
+import com.livecompanion.ui.track.roundBeat
+import com.livecompanion.ui.track.snapTo
 import com.livecompanion.ui.theme.LiveColors
 import com.livecompanion.ui.theme.LiveShapes
 import com.livecompanion.ui.theme.LiveType
-import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
 
@@ -62,37 +85,83 @@ internal val ClipPalette = listOf(
 )
 
 /**
- * Arrange tab: the focused track's arrangement lane. Pinch/drag zoom+pan inside the lane only,
- * song loop brace (drag edges in the ruler), playhead, tap clip to select, tap ruler to seek.
+ * Track view: the focused track's arrangement lane, full width. Live-style bar/beat ruler (follows the song
+ * signature), clip blocks with waveform / note previews, loop brace, punch, locators and a growing RED region while
+ * recording. Direct manipulation: drag ruler = scrub, hold+drag clip = move, drag selected edges = trim, drag loop
+ * brace, pinch/two-finger zoom+pan, double-tap empty lane = new MIDI clip. See [TrackLane] for the gestures.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ArrangeScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier) {
+fun ArrangeScreen(
+    store: LiveStore, client: LiveClient, modifier: Modifier = Modifier,
+    initialSel: Int = -1, initialShowTakes: Boolean = false,
+) {
     val arr by store.arr.collectAsState()
     val session by store.session.collectAsState()
     val focus by store.focus.collectAsState()
+    val takes by store.takes.collectAsState()
     val clipSec by store.clip.collectAsState()
+    val conn by client.state.collectAsState()
     val goTab = LocalTabNavigator.current
+    val scope = rememberCoroutineScope()
     val tr = arr.tr.ifEmpty { focus.ref }
     val view = remember { TimelineView() }
+    val clock = remember { PlayheadClock() }
+    val rec = remember { RecState() }
     var follow by remember { mutableStateOf(false) }
-    var sel by remember { mutableIntStateOf(-1) }
+    var sel by remember { mutableIntStateOf(initialSel) }
+    var selTake by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var snap by remember { mutableStateOf(Snap.S16) }
+    var showTakes by remember { mutableStateOf(initialShowTakes) }
     var dialog by remember { mutableStateOf<ArrDialog?>(null) }
 
     // Selection belongs to a track; drop it when the focus changes.
-    LaunchedEffect(tr) { sel = -1 }
+    var lastTr by remember { mutableStateOf(tr) }
+    LaunchedEffect(tr) { if (tr != lastTr) { sel = -1; selTake = null; lastTr = tr } }
 
     // Sync selection from the opened clip (e.g. chosen elsewhere).
     LaunchedEffect(clipSec.loc) {
         val l = clipSec.loc?.jsonObject
         if (l != null && l["w"]?.jsonPrimitive?.contentOrNull == "arr" && l["tr"]?.jsonPrimitive?.contentOrNull == tr) {
-            l["i"]?.jsonPrimitive?.intOrNull?.let { sel = it }
+            l["i"]?.jsonPrimitive?.intOrNull?.let { sel = it; selTake = null }
         }
     }
 
-    val bpb = session.sigNum * 4.0 / session.sigDen
+    val bpb = beatsPerBar(session.sigNum, session.sigDen)
+    val unit = beatUnit(session.sigDen)
     val clips = arr.clips
     val selClip = clips.firstOrNull { it.i == sel }
+    val grid = snap.beats(unit, bpb)
+
+    // ---- playhead clock + recording progression (draw-only state, see PlayheadClock)
+    SideEffect { clock.setSong(session.tempo.toDouble(), session.loop, session.loopStart, session.loopLen) }
+    LaunchedEffect(store) {
+        clock.onFrame(session.pos, session.playing, System.nanoTime())
+        store.rt.collect { f -> clock.onFrame(f.pos, f.playing, System.nanoTime()) }
+    }
+    val recActive = session.rec && session.playing && focus.armable && focus.arm
+    SideEffect {
+        rec.punchIn = session.punchIn; rec.punchOut = session.punchOut
+        rec.loopStart = session.loopStart; rec.loopEnd = session.loopStart + session.loopLen
+    }
+    LaunchedEffect(recActive) {
+        if (recActive) rec.start = clock.shown
+        rec.active = recActive
+    }
+
+    // ---- waveform peaks for audio clips (helper, cached)
+    val peaks: SnapshotStateMap<String, Peaks> = remember { mutableStateMapOf() }
+    val host = conn.target?.host.orEmpty()
+    val paths = clips.filter { it.audio && it.filePath.isNotBlank() }.map { it.filePath }.distinct()
+    LaunchedEffect(paths, host) {
+        for (p in paths) {
+            if (p in peaks) continue
+            val cached = PeaksClient.shared.cached(p, PEAK_N)
+            if (cached != null) { peaks[p] = cached; continue }
+            val r = PeaksClient.shared.get(host, p, PEAK_N)
+            if (r is PeaksResult.Ok) peaks[p] = r.peaks
+        }
+    }
 
     // Fit once content (or at least a few bars) is known; refit on track change.
     var fitKey by remember { mutableStateOf("") }
@@ -104,97 +173,158 @@ fun ArrangeScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
         }
     }
 
-    val lanes = remember(clips, sel) {
-        listOf(TLane(clips.map { TClip("a${it.i}", it.name.ifEmpty { if (it.audio) "Audio" else "MIDI" }, it.color, it.start, it.end, it.muted, it.i == sel) }))
+    val model = remember(clips, takes, showTakes, sel, selTake, bpb, unit, grid, session.tempo, session.loop, session.loopStart, session.loopLen,
+        session.punchIn, session.punchOut, session.cues, focus.kind) {
+        LaneModel(
+            clips = clips, takes = if (takes.supported) takes.lanes else emptyList(), showTakes = showTakes && takes.supported,
+            sel = sel, selTake = selTake, bpb = bpb, unit = unit, grid = grid, tempo = session.tempo.toDouble(),
+            loop = TLoop(session.loop, session.loopStart, session.loopLen),
+            punchIn = session.punchIn, punchOut = session.punchOut, cues = session.cues, midi = focus.kind == "midi",
+        )
+    }
+
+    fun seek(beat: Double) {
+        val b = max(0.0, roundBeat(beat))
+        clock.jumpTo(b, System.nanoTime())
+        client.op("song.seek", "beats" to b)
+        store.updateSession { it.copy(pos = b) }
+    }
+
+    val actions = remember(client, store, tr, session.playing) {
+        LaneActions(
+            onScrub = { beat, done ->
+                val now = System.nanoTime()
+                clock.scrubTo(beat, now)
+                if (done) {
+                    clock.endScrub(now)
+                    client.op("song.seek", "beats" to beat)
+                    store.updateSession { it.copy(pos = beat) }
+                } else {
+                    client.sendThrottled("seek", "song.seek", jsonArgs("beats" to beat), 33)
+                }
+            },
+            onLoop = { s, l, done ->
+                client.sendThrottled("loop", "song.set", jsonArgs("k" to "loop_start", "v" to s), 40)
+                client.sendThrottled("looplen", "song.set", jsonArgs("k" to "loop_len", "v" to l), 40)
+                if (done) store.updateSession { it.copy(loopStart = s, loopLen = l) }
+            },
+            onLoopToggle = {
+                client.op("song.set", "k" to "loop", "v" to !store.session.value.loop)
+                store.updateSession { it.copy(loop = !it.loop) }
+            },
+            onSelectArr = { i -> sel = i; selTake = null },
+            onOpenArr = { i ->
+                sel = i; selTake = null
+                client.op("clip.open", "loc" to Loc.arr(tr, i))
+                goTab(Tab.Clip)
+            },
+            onSelectTake = { lane, i -> selTake = lane to i; sel = -1 },
+            onDeselect = { sel = -1; selTake = null },
+            onMove = { i, start ->
+                scope.launch {
+                    val r = client.requestOrNull("arr.move", jsonArgs("loc" to Loc.arr(tr, i), "start" to start))
+                    (r as? kotlinx.serialization.json.JsonObject)?.get("i")?.jsonPrimitive?.intOrNull?.let { sel = it }
+                }
+            },
+            onTrim = { i, s, e ->
+                val a = ArrayList<Pair<String, Any?>>()
+                a.add("loc" to Loc.arr(tr, i))
+                if (s != null) a.add("start" to s)
+                if (e != null) a.add("end" to e)
+                client.send("arr.trim", jsonArgs(*a.toTypedArray()))
+            },
+            onCreate = { beat ->
+                if (store.focus.value.kind != "midi") {
+                    store.notice("Double-tap creates MIDI clips on MIDI tracks only")
+                } else {
+                    val g = grid
+                    val len = bpb
+                    val start = if (g > 0.0 && g < bpb) snapTo(beat, g) else floor(beat / bpb) * bpb
+                    client.op("arr.create_midi", "tr" to tr, "start" to max(0.0, start), "len" to len)
+                }
+            },
+        )
     }
 
     Column(modifier.fillMaxSize().background(LiveColors.Bg), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        // ---- toggles
+        // ---- locate + snap + toggles
         FlowRow(
             Modifier.fillMaxWidth().background(LiveColors.Panel).padding(2.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
         ) {
             val m = Modifier
+            PosReadout(clock, bpb, unit) { dialog = ArrDialog.Locate }
+            DBtn("<", {
+                val g = effectiveGrid(grid)
+                seek(max(0.0, ceil(clock.shown / g - 1e-6) * g - g))
+            }, m)
+            DBtn(">", {
+                val g = effectiveGrid(grid)
+                seek(floor(clock.shown / g + 1e-6) * g + g)
+            }, m)
+            for (s in Snap.entries) DBtn(s.label, { snap = s }, m, on = snap == s)
             DBtn("Follow", { follow = !follow }, m, on = follow)
-            DBtn("Loop", { client.op("song.set", "k" to "loop", "v" to !session.loop); store.updateSession { it.copy(loop = !it.loop) } }, m, on = session.loop)
-            DBtn("Punch In", { client.op("song.set", "k" to "punch_in", "v" to !session.punchIn); store.updateSession { it.copy(punchIn = !it.punchIn) } }, m, on = session.punchIn)
-            DBtn("Punch Out", { client.op("song.set", "k" to "punch_out", "v" to !session.punchOut); store.updateSession { it.copy(punchOut = !it.punchOut) } }, m, on = session.punchOut)
-            DBtn("Arm", { client.op("track.set", "tr" to tr, "k" to "arm", "v" to !focus.arm); store.updateFocus { it.copy(arm = !it.arm) } }, m, on = focus.arm, onColor = LiveColors.Rec, enabled = focus.armable)
-            DBtn("Arr Rec", { client.op("song.set", "k" to "rec", "v" to !session.rec); store.updateSession { it.copy(rec = !it.rec) } }, m, on = session.rec, onColor = LiveColors.Rec)
-            DBtn("Overdub", { client.op("song.set", "k" to "overdub", "v" to !session.overdub); store.updateSession { it.copy(overdub = !it.overdub) } }, m, on = session.overdub)
+            DBtn("Loop", { actions.onLoopToggle() }, m, on = session.loop)
+            DBtn("In", { client.op("song.set", "k" to "punch_in", "v" to !session.punchIn); store.updateSession { it.copy(punchIn = !it.punchIn) } }, m, on = session.punchIn, onColor = LiveColors.Rec)
+            DBtn("Out", { client.op("song.set", "k" to "punch_out", "v" to !session.punchOut); store.updateSession { it.copy(punchOut = !it.punchOut) } }, m, on = session.punchOut, onColor = LiveColors.Rec)
             DBtn("Fit", { fitArrange(view, clips.map { it.start to it.end }, session.loopStart, session.loopLen, bpb) }, m)
-            DBtn(
-                "+ MIDI clip",
-                {
-                    val start = if (selClip != null) selClip.end else floor(store.rt.value.pos / bpb) * bpb
-                    client.op("arr.create_midi", "tr" to tr, "start" to start, "len" to bpb)
-                },
-                m, enabled = focus.kind == "midi" && tr.isNotEmpty(),
-            )
+            if (takes.supported && takes.lanes.isNotEmpty()) DBtn("Takes", { showTakes = !showTakes }, m, on = showTakes)
         }
 
-        // ---- timeline
-        Timeline(
-            view = view,
-            lanes = lanes,
-            beatsPerBar = bpb,
-            rt = store.rt,
-            laneHeight = adaptiveLaneHeight(1, 64.dp, 260.dp, 0.4f),
-            loop = TLoop(session.loop, session.loopStart, session.loopLen),
-            onLoopChange = { s, l, done ->
-                client.opThrottled("loop", "song.set", "k" to "loop_start", "v" to s)
-                client.opThrottled("looplen", "song.set", "k" to "loop_len", "v" to l)
-                if (done) store.updateSession { it.copy(loopStart = s, loopLen = l) }
-            },
-            follow = follow,
-            onRulerTap = { b ->
-                client.op("song.seek", "beats" to b)
-            },
-            onClipTap = { _, c ->
-                val ac = clips.firstOrNull { "a${it.i}" == c.key } ?: return@Timeline
-                sel = ac.i
-                client.op("clip.open", "loc" to Loc.arr(tr, ac.i))
-            },
-            onEmptyTap = { _, _ -> sel = -1 },
+        // ---- the lane
+        TrackLane(
+            view = view, model = model, actions = actions, clock = clock, rec = rec, peaks = peaks, follow = follow,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
         )
 
-        // ---- selection info + actions
+        // ---- selection toolbar (rare actions as visible buttons, no menus)
         Column(
-            Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).background(LiveColors.Panel).padding(4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            Modifier.fillMaxWidth().heightIn(min = 32.dp).background(LiveColors.Panel).padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalArrangement = Arrangement.Center,
         ) {
-            if (selClip == null) {
-                LiveText(
-                    if (clips.isEmpty()) "No arrangement clips on this track" else "Tap a clip to select. Tap the ruler to seek; drag loop edges in the ruler; pinch to zoom.",
-                    style = LiveType.Small, color = LiveColors.TextDim, maxLines = 3,
-                )
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.size(10.dp).background(liveColor(selClip.color), LiveShapes.Small))
-                    LiveText(selClip.name.ifEmpty { if (selClip.audio) "Audio" else "MIDI" }, Modifier.weight(1f, fill = false), LiveType.Title)
-                    LiveText(
-                        "${barPos(selClip.start, bpb)} - ${barPos(selClip.end, bpb)}  (${fmtBars((selClip.end - selClip.start) / bpb)} bars)",
-                        style = LiveType.Small, color = LiveColors.TextDim,
-                    )
-                }
+            val st = selTake
+            if (selClip != null) {
                 val loc = Loc.arr(tr, selClip.i)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    DBtn("Open in Clip", {
-                        client.op("clip.open", "loc" to loc)
-                        goTab(Tab.Clip)
-                    }, Modifier)
-                    DBtn("Fire", {
-                        client.op("song.seek", "beats" to selClip.start)
-                        if (!session.playing) client.op("song.play")
-                    }, Modifier)
-                    DBtn("Dup loop", { client.op("clip.duplicate_loop", "loc" to loc) }, Modifier)
-                    DBtn("Crop", { client.op("clip.crop", "loc" to loc) }, Modifier)
-                    DBtn("Mute", { client.op("clip.set", "loc" to loc, "k" to "muted", "v" to !selClip.muted) }, Modifier, on = selClip.muted, onColor = LiveColors.MuteOn)
-                    DBtn("Rename", { dialog = ArrDialog.Rename }, Modifier)
-                    DBtn("Color", { dialog = ArrDialog.Color }, Modifier)
-                    DBtn("Delete", { client.op("clip.delete", "loc" to loc); sel = -1 }, Modifier, on = true, onColor = LiveColors.Rec)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(10.dp).background(liveColor(selClip.color), LiveShapes.Small))
+                    LiveText(
+                        selClip.name.ifEmpty { if (selClip.audio) "Audio" else "MIDI" },
+                        Modifier.widthIn(max = 140.dp), LiveType.Small,
+                    )
+                    LiveText(
+                        "${posString(selClip.start, bpb, unit)} - ${posString(selClip.end, bpb, unit)}",
+                        style = LiveType.Small, color = LiveColors.TextDim, modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                    DBtn("Edit", { client.op("clip.open", "loc" to loc); goTab(Tab.Clip) })
+                    DBtn("Dup", { client.op("clip.to_arr", "loc" to loc, "time" to selClip.end) })
+                    DBtn("Mute", { client.op("clip.set", "loc" to loc, "k" to "muted", "v" to !selClip.muted) }, on = selClip.muted, onColor = LiveColors.MuteOn)
+                    DBtn("Rename", { dialog = ArrDialog.Rename })
+                    DBtn("Color", { dialog = ArrDialog.Color })
+                    DBtn("Delete", { client.op("clip.delete", "loc" to loc); sel = -1 }, on = true, onColor = LiveColors.Rec)
                 }
+            } else if (st != null) {
+                val tl = takes.lanes.firstOrNull { it.i == st.first }
+                val tc = tl?.clips?.firstOrNull { it.i == st.second }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    LiveText(tc?.name?.ifEmpty { tl.name } ?: "Take", Modifier.widthIn(max = 160.dp), LiveType.Small)
+                    if (tc != null) LiveText("${posString(tc.start, bpb, unit)} - ${posString(tc.end, bpb, unit)}", style = LiveType.Small, color = LiveColors.TextDim, modifier = Modifier.padding(horizontal = 4.dp))
+                    DBtn("To main lane", { client.op("takes.promote", "loc" to Loc.take(tr, st.first, st.second)) })
+                    DBtn("Edit", { client.op("clip.open", "loc" to Loc.take(tr, st.first, st.second)); goTab(Tab.Clip) })
+                }
+            } else {
+                LiveText(
+                    if (clips.isEmpty()) "No clips on this track - double-tap the lane to create a MIDI clip"
+                    else "Tap clip = select, hold + drag = move, drag selected edges = trim, drag ruler = scrub",
+                    style = LiveType.Small, color = LiveColors.TextDim, maxLines = 2,
+                )
             }
         }
     }
@@ -207,11 +337,50 @@ fun ArrangeScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
         ArrDialog.Color -> if (sc != null) ColorDialog({ dialog = null }) { c ->
             client.op("clip.set", "loc" to Loc.arr(tr, sc.i), "k" to "color", "v" to c); dialog = null
         } else dialog = null
+        ArrDialog.Locate -> LocateDialog(posString(clock.shown, bpb, unit), bpb, unit, { dialog = null }) { b ->
+            seek(b); dialog = null
+        }
         null -> Unit
     }
 }
 
-private enum class ArrDialog { Rename, Color }
+private const val PEAK_N = 1024
+
+private enum class ArrDialog { Rename, Color, Locate }
+
+/** Playhead position as bar.beat.sixteenth, drawn (not composed) so it ticks at frame rate for free. Tap to type a position. */
+@Composable
+private fun PosReadout(clock: PlayheadClock, bpb: Double, unit: Double, onClick: () -> Unit) {
+    val tm = rememberTextMeasurer()
+    val style = LiveType.Mono.copy(fontSize = 12.sp, color = LiveColors.Text)
+    val w = with(LocalDensity.current) { (12.sp * 7.2f).toDp() } + 12.dp
+    Canvas(
+        Modifier.size(w, DenseH)
+            .background(LiveColors.Bg, LiveShapes.Small).border(1.dp, LiveColors.Line, LiveShapes.Small)
+            .clickable(onClick = onClick),
+    ) {
+        val l = tm.measure(posString(clock.shown, bpb, unit), style, maxLines = 1)
+        drawText(l, topLeft = Offset((size.width - l.size.width) / 2f, (size.height - l.size.height) / 2f))
+    }
+}
+
+@Composable
+private fun LocateDialog(current: String, bpb: Double, unit: Double, onDismiss: () -> Unit, onOk: (Double) -> Unit) {
+    var text by remember { mutableStateOf(current) }
+    var err by remember { mutableStateOf(false) }
+    val go = {
+        val b = parsePos(text, bpb, unit)
+        if (b == null) err = true else onOk(b)
+    }
+    LiveDialog("Locate (bar.beat.sixteenth)", onDismiss) {
+        LiveTextField(text, { text = it; err = false }, onDone = { go() })
+        if (err) LiveText("Use bar.beat.sixteenth, e.g. 5.2.3 (numbers from 1)", style = LiveType.Small, color = LiveColors.Rec, maxLines = 2)
+        LiveDialogButtons {
+            LiveTextButton("Cancel", onDismiss, minWidth = 72.dp)
+            LiveTextButton("Go", { go() }, on = true, minWidth = 72.dp)
+        }
+    }
+}
 
 private fun fitArrange(view: TimelineView, spans: List<Pair<Double, Double>>, loopStart: Double, loopLen: Double, bpb: Double) {
     var from = spans.minOfOrNull { it.first } ?: 0.0

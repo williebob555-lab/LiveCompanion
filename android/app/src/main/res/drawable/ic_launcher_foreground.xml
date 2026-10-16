@@ -1,4 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  LiveCompanion mark, same family as LivePatch (C:\LivePatch\brand): a purple "cable" draws the L and plugs into a
+  light-blue socket that forms the C. 256-unit artwork scaled into the 66dp adaptive safe zone.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FFA22B" android:pathData="M40,34 L76,54 L40,74 Z" />
+    <group android:scaleX="0.3" android:scaleY="0.3" android:translateX="15" android:translateY="14">
+        <path
+            android:pathData="M62,60 V176 H130"
+            android:strokeColor="#C9A2FF" android:strokeWidth="24"
+            android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path
+            android:pathData="M194,154.1 A34,34 0 1 0 194,197.9"
+            android:strokeColor="#5FB2FF" android:strokeWidth="17"
+            android:strokeLineCap="round" />
+    </group>
 </vector>

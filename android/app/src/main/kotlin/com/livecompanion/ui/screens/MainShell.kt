@@ -18,6 +18,10 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.Dp
+import com.livecompanion.ui.theme.LiveShapes
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -52,9 +56,9 @@ import com.livecompanion.ui.theme.LiveColors
 import com.livecompanion.ui.theme.LiveType
 import kotlinx.coroutines.delay
 
-enum class Tab(val label: String) {
-    Session("Session"), Arrange("Arrange"), Takes("Takes"), Clip("Clip"),
-    Devices("Devices"), Browser("Browser"), Mix("Mix"), More("More"),
+enum class Tab(val label: String, val lowPriority: Boolean = false) {
+    Arrange("Arrange"), Session("Session"), Tracks("Tracks"), Clip("Clip"),
+    Devices("Devices"), Browser("Browser"), Mix("Mix"), Takes("Takes", lowPriority = true), More("More"),
 }
 
 /** App-level actions that screens (e.g. More/Settings) need without owning navigation. */
@@ -65,16 +69,23 @@ class AppActions(
 
 val LocalAppActions = staticCompositionLocalOf { AppActions() }
 
-/** Lets any screen switch the shell's tab (e.g. Session "Edit clip" -> Clip). In two-pane, Session maps to Clip. */
+/** Lets any screen switch the shell's tab (e.g. Session "Edit clip" -> Clip). */
 val LocalTabNavigator = staticCompositionLocalOf<(Tab) -> Unit> { {} }
 
-/** Width at/above which the shell becomes two-pane (docs/UI.md: Medium/Expanded). */
+/** Width at/above which the shell uses the left tab rail even in portrait (tablets). */
 val TWO_PANE_MIN_WIDTH = 600.dp
 
+/** Minimum cutout inset that is used for the read-only [InfoStrip]. */
+private val STRIP_MIN = 28.dp
+
 /**
- * Main shell: fixed transport bar, track header, fixed tab row, tab body.
- * Compact: one pane. Medium/Expanded (>= 600dp): left = Session slot list (always visible unless collapsed with the
- * rail's List toggle, so the Session tab is dropped from the rail meanwhile), right = selected tab.
+ * Main shell: fixed transport bar, track header, tab navigation, tab body. TRACK VIEW (Arrange) is the front tab.
+ * Landscape / wide: slim tab rail on the left; portrait: two-line tab row. There is no permanent side pane:
+ * Session is a normal tab.
+ *
+ * Landscape + display cutout: the cutout-side inset is not left blank, it renders a read-only [InfoStrip]
+ * (position, tempo, signature, CPU, connection, focused-track meter). [cutoutOverride] (left, right) lets
+ * screenshot tests simulate a cutout without a real window.
  *
  * While the connection is not CONNECTED (lost, retrying) the top bar is replaced in place by a status strip with
  * Disconnect (no layout change) and the body is dimmed and ignores touches, so nothing can be edited optimistically.
@@ -82,14 +93,12 @@ val TWO_PANE_MIN_WIDTH = 600.dp
  */
 @Composable
 fun MainShell(
-    store: LiveStore, client: LiveClient, modifier: Modifier = Modifier, initialTab: Tab = Tab.Session,
-    statusOverride: ConnStatus? = null,
+    store: LiveStore, client: LiveClient, modifier: Modifier = Modifier, initialTab: Tab = Tab.Arrange,
+    statusOverride: ConnStatus? = null, cutoutOverride: Pair<Dp, Dp>? = null,
 ) {
     var selected by rememberSaveable { mutableStateOf(initialTab) }
     val conn by client.state.collectAsState()
     val live = (statusOverride ?: conn.status) == ConnStatus.CONNECTED
-    val prefs = LocalAppActions.current.prefs
-    var paneHidden by rememberSaveable { mutableStateOf(prefs?.sessionPaneHidden ?: false) }
     var notice by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(store) { store.notices.collect { notice = it } }
     LaunchedEffect(notice) {
@@ -104,60 +113,61 @@ fun MainShell(
                 n,
                 Modifier.fillMaxWidth().background(LiveColors.Panel).clickable { notice = null }
                     .padding(horizontal = 8.dp, vertical = 6.dp),
-                LiveType.Small, LiveColors.Accent,
+                LiveType.Small, LiveColors.Warn,
             )
         }
     }
 
+    val d = LocalDensity.current
+    val cut = WindowInsets.displayCutout
+    val cutL = cutoutOverride?.first ?: with(d) { cut.getLeft(d, LayoutDirection.Ltr).toDp() }
+    val cutR = cutoutOverride?.second ?: with(d) { cut.getRight(d, LayoutDirection.Ltr).toDp() }
+
     CompositionLocalProvider(LocalTabNavigator provides { t: Tab -> selected = t }) {
-    BoxWithConstraints(modifier.fillMaxSize().background(LiveColors.Bg)) {
-        // Landscape phones and anything >= 600dp wide: tab rail on the left, one top bar, everything else editor.
-        val rail = maxWidth >= TWO_PANE_MIN_WIDTH || maxWidth > maxHeight
-        if (rail) {
-            val fs = LocalDensity.current.fontScale.coerceAtLeast(1f)
-            val railW = ((if (maxWidth >= 840.dp) 68.dp else 56.dp) * fs).coerceIn(56.dp, 84.dp)
-            val bodyW = maxWidth - railW - 1.dp
-            val two = bodyW >= TWO_PANE_MIN_WIDTH
-            val paneShown = two && !paneHidden
-            val tab = if (paneShown && selected == Tab.Session) Tab.Clip else selected
-            // Back: any non-home tab returns to Session first; only home asks to disconnect (MainActivity).
-            val home = selected == Tab.Session || (paneShown && selected == Tab.Clip)
-            BackHandler(enabled = !home) { selected = Tab.Session }
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-                TabRail(
-                    Tab.entries.filter { !(paneShown && it == Tab.Session) }, tab, Modifier.width(railW).fillMaxHeight(),
-                    footer = if (two) {
-                        { RailToggle("List", paneShown) { paneHidden = !paneHidden; prefs?.sessionPaneHidden = paneHidden } }
-                    } else null,
-                ) { selected = it }
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    TopChrome(live, client) { CompactTopBar(store, client) }
-                    if (paneShown) {
-                        Gated(live, Modifier.fillMaxWidth().weight(1f)) {
-                            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-                                SessionScreen(store, client, Modifier.width((bodyW * 0.38f).coerceIn(240.dp, 380.dp)).fillMaxHeight())
-                                TabBody(tab, store, client, Modifier.weight(1f).fillMaxHeight())
+    BoxWithConstraints(
+        modifier.fillMaxSize().background(LiveColors.Bg).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical)),
+    ) {
+        val land = maxWidth > maxHeight
+        val stripL = if (land && cutL >= STRIP_MIN) cutL else 0.dp
+        val stripR = if (land && cutR >= STRIP_MIN) cutR else 0.dp
+        // Sides without a strip keep their inset (cutout / nav bar) so content never touches a notch.
+        val padL = if (stripL > 0.dp) 0.dp else cutL.coerceAtLeast(2.dp)
+        val padR = if (stripR > 0.dp) 0.dp else cutR.coerceAtLeast(2.dp)
+        val contentW = maxWidth - stripL - stripR - padL - padR
+        val rail = contentW >= TWO_PANE_MIN_WIDTH || land
+        Row(Modifier.fillMaxSize()) {
+            if (stripL > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripL).fillMaxHeight())
+            Box(Modifier.width(padL))
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                // Back: any non-home tab returns to Arrange first; only home asks to disconnect (MainActivity).
+                BackHandler(enabled = selected != Tab.Arrange) { selected = Tab.Arrange }
+                if (rail) {
+                    val fs = LocalDensity.current.fontScale.coerceAtLeast(1f)
+                    val railW = (52.dp * fs).coerceIn(52.dp, 80.dp)
+                    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                        TabRail(Tab.entries, selected, Modifier.width(railW).fillMaxHeight()) { selected = it }
+                        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            TopChrome(live, client) { CompactTopBar(store, client) }
+                            Gated(live, Modifier.fillMaxWidth().weight(1f)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
+                            noticeBar()
+                        }
+                    }
+                } else {
+                    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        TopChrome(live, client) {
+                            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                TransportBar(store, client)
+                                TrackHeader(store, client)
                             }
                         }
-                    } else {
-                        Gated(live, Modifier.fillMaxWidth().weight(1f)) { TabBody(tab, store, client, Modifier.fillMaxSize()) }
-                    }
-                    noticeBar()
-                }
-            }
-        } else {
-            BackHandler(enabled = selected != Tab.Session) { selected = Tab.Session }
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                TopChrome(live, client) {
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        TransportBar(store, client)
-                        TrackHeader(store, client)
+                        TabRow(Tab.entries, selected) { selected = it }
+                        Gated(live, Modifier.fillMaxWidth().weight(1f)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
+                        noticeBar()
                     }
                 }
-                TabRow(Tab.entries, selected) { selected = it }
-                Gated(live, Modifier.fillMaxWidth().weight(1f)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
-                noticeBar()
             }
+            Box(Modifier.width(padR))
+            if (stripR > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripR).fillMaxHeight())
         }
     }
     }
@@ -209,22 +219,11 @@ private fun ConnectionStrip(client: LiveClient, modifier: Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        LiveText(text, Modifier.weight(1f), LiveType.Small, LiveColors.Accent, maxLines = 2)
+        LiveText(text, Modifier.weight(1f), LiveType.Small, LiveColors.Warn, maxLines = 2)
         LiveTextButton(
             if (conn.status == ConnStatus.CONNECTING) "Cancel" else "Disconnect",
             actions.disconnect, minWidth = 88.dp, minHeight = 32.dp,
         )
-    }
-}
-
-/** Fixed rail toggle (no animation): lit while the left Session pane is visible. */
-@Composable
-private fun RailToggle(label: String, on: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier.fillMaxWidth().height(36.dp).background(if (on) LiveColors.PanelHi else LiveColors.Panel).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        LiveText(label, Modifier.padding(horizontal = 2.dp), LiveType.Small, if (on) LiveColors.Accent else LiveColors.TextDim, textAlign = TextAlign.Center)
     }
 }
 
@@ -241,36 +240,31 @@ fun Modifier.symmetricSafePadding(): Modifier {
 }
 
 /**
- * Narrow vertical tab rail for landscape / wide layouts: full labels, items grouped at the top at a fixed
- * 36-44dp pitch (not stretched over the full height), then the optional [footer] (pane toggle).
+ * Slim vertical tab rail for landscape / wide layouts: full labels, items grouped at the top at a fixed
+ * 30-42dp pitch (scrolls if the screen is too short). Low-priority tabs (Takes) are drawn dimmer.
  */
 @Composable
-fun TabRail(
-    tabs: List<Tab>, selected: Tab, modifier: Modifier = Modifier,
-    footer: (@Composable () -> Unit)? = null, onSelect: (Tab) -> Unit,
-) {
+fun TabRail(tabs: List<Tab>, selected: Tab, modifier: Modifier = Modifier, onSelect: (Tab) -> Unit) {
     BoxWithConstraints(modifier.background(LiveColors.Panel)) {
-        val itemH = (maxHeight / (tabs.size + 1)).coerceIn(34.dp, 44.dp)
-        val style = if (maxWidth >= 64.dp) LiveType.Body else LiveType.Small
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        val itemH = (maxHeight / (tabs.size + 1)).coerceIn(30.dp, 42.dp)
+        val style = LiveType.Small
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(2.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             for (t in tabs) {
                 val on = t == selected
                 Box(
                     Modifier.fillMaxWidth().height(itemH)
+                        .clip(LiveShapes.Small)
                         .background(if (on) LiveColors.PanelHi else LiveColors.Panel)
                         .clickable { onSelect(t) },
                     contentAlignment = Alignment.Center,
                 ) {
                     LiveText(
                         t.label, Modifier.padding(horizontal = 2.dp), style,
-                        if (on) LiveColors.Accent else LiveColors.Text, textAlign = TextAlign.Center,
+                        if (on) LiveColors.Accent else if (t.lowPriority) LiveColors.TextDim else LiveColors.Text,
+                        textAlign = TextAlign.Center,
                     )
-                    if (on) Box(Modifier.align(Alignment.CenterStart).width(3.dp).fillMaxHeight(0.6f).background(LiveColors.Accent))
+                    if (on) Box(Modifier.align(Alignment.CenterStart).width(2.dp).fillMaxHeight(0.6f).background(LiveColors.Accent))
                 }
-            }
-            if (footer != null) {
-                Box(Modifier.fillMaxWidth().height(1.dp).background(LiveColors.Line))
-                footer()
             }
         }
     }
@@ -279,8 +273,9 @@ fun TabRail(
 @Composable
 private fun TabBody(tab: Tab, store: LiveStore, client: LiveClient, modifier: Modifier) {
     when (tab) {
-        Tab.Session -> SessionScreen(store, client, modifier)
         Tab.Arrange -> ArrangeScreen(store, client, modifier)
+        Tab.Session -> SessionScreen(store, client, modifier)
+        Tab.Tracks -> TracksScreen(store, client, modifier)
         Tab.Takes -> TakesScreen(store, client, modifier)
         Tab.Clip -> ClipScreen(store, client, modifier)
         Tab.Devices -> DevicesScreen(store, client, modifier)
@@ -308,6 +303,7 @@ fun TabRow(tabs: List<Tab>, selected: Tab, modifier: Modifier = Modifier, onSele
                         Modifier
                             .weight(1f)
                             .height(32.dp)
+                            .clip(LiveShapes.Small)
                             .background(if (on) LiveColors.PanelHi else LiveColors.Panel)
                             .clickable { onSelect(t) }
                             .padding(horizontal = 1.dp),
@@ -316,7 +312,7 @@ fun TabRow(tabs: List<Tab>, selected: Tab, modifier: Modifier = Modifier, onSele
                         LiveText(
                             t.label,
                             style = LiveType.Small,
-                            color = if (on) LiveColors.Accent else LiveColors.Text,
+                            color = if (on) LiveColors.Accent else if (t.lowPriority) LiveColors.TextDim else LiveColors.Text,
                             textAlign = TextAlign.Center,
                         )
                         if (on) Box(Modifier.align(Alignment.BottomCenter).width(24.dp).height(2.dp).background(LiveColors.Accent))

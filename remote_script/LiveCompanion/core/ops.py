@@ -110,6 +110,7 @@ class Ops(object):
         t["song.re_enable_automation"] = lambda c, a: _call(self.song, "re_enable_automation")
         t["song.jump"] = self.song_jump
         t["song.seek"] = self.song_seek
+        t["song.scrub"] = self.song_scrub
         t["song.cue"] = self.song_cue
         t["song.set"] = self.song_set
         t["scene.fire"] = self.scene_fire
@@ -141,6 +142,7 @@ class Ops(object):
         t["clip.to_arr"] = self.clip_to_arr
         t["arr.create_midi"] = self.arr_create_midi
         t["arr.move"] = self.arr_move
+        t["arr.trim"] = self.arr_trim
         t["notes.add"] = self.notes_add
         t["notes.modify"] = self.notes_modify
         t["notes.remove"] = self.notes_remove
@@ -159,6 +161,9 @@ class Ops(object):
         t["device.param"] = self.device_param
         t["device.delete"] = self.device_delete
         t["device.select"] = self.device_select
+        t["device.move"] = self.device_move
+        t["device.insert"] = self.device_insert
+        t["device.duplicate"] = self.device_duplicate
         t["device.var"] = self.device_var
         t["chain.select"] = self.chain_select
         t["browser.list"] = self.browser_list
@@ -222,6 +227,14 @@ class Ops(object):
 
     def song_seek(self, c, a):
         _put(self.song, "current_song_time", float(max(0.0, _n(need(a, "beats"), "beats"))))
+
+    def song_scrub(self, c, a):
+        """Relative scrub (LOM scrub_by); falls back to a clamped relative seek."""
+        b = _n(need(a, "beats"), "beats")
+        if hasattr(self.song, "scrub_by"):
+            self.song.scrub_by(b)
+        else:
+            _put(self.song, "current_song_time", float(max(0.0, num(g(self.song, "current_song_time", 0.0)) + b)))
 
     def song_cue(self, c, a):
         d = need(a, "dir")
@@ -547,6 +560,13 @@ class Ops(object):
             if v not in S.WARP_MODE_IDS:
                 raise BadArgs("unknown warp mode")
             _put(clip, "warp_mode", S.WARP_MODE_IDS[v])
+        elif k == "sig_num":
+            _put(clip, "signature_numerator", _i(v, k, 1, 99))
+        elif k == "sig_den":
+            d = _i(v, k, 1, 16)
+            if d not in (1, 2, 4, 8, 16):
+                raise BadArgs("bad denominator")
+            _put(clip, "signature_denominator", d)
         elif k == "launch_mode":
             _put(clip, "launch_mode", _i(v, k, 0, 3))
         elif k == "launch_quant":
@@ -586,8 +606,59 @@ class Ops(object):
         start = float(_n(need(a, "start"), "start", 0.0))
         if not hasattr(cr.track, "duplicate_clip_to_arrangement") or not hasattr(cr.track, "delete_clip"):
             raise Unsupported("moving arrangement clips")
-        cr.track.duplicate_clip_to_arrangement(cr.clip, start)
-        cr.track.delete_clip(cr.clip)
+        old = num(g(cr.clip, "start_time", 0.0))
+        if abs(old - start) < 1e-6:
+            return {"i": cr.index}
+        new = cr.track.duplicate_clip_to_arrangement(cr.clip, start)
+        try:
+            cr.track.delete_clip(cr.clip)
+        except Exception:
+            pass      # the copy may have overwritten the (stale) original when the move overlaps it
+        clips = list(seq(g(cr.track, "arrangement_clips", ())))
+        for k, x in enumerate(clips):
+            if x is new:
+                return {"i": k}
+        return {"i": None}
+
+    def arr_trim(self, c, a):
+        """Trim an arrangement clip's edges to absolute beats. Best effort via the clip markers; verified by
+        reading start_time/end_time back, reverted + error if this Live build did not honour it."""
+        cr = self._clip(a)
+        if cr.kind == "slot":
+            raise BadArgs("not an arrangement clip")
+        if "start" not in a and "end" not in a:
+            raise BadArgs("start or end required")
+        clip = cr.clip
+        cs, ce = num(g(clip, "start_time", 0.0)), num(g(clip, "end_time", 0.0))
+        ns = float(_n(a["start"], "start", 0.0)) if "start" in a else cs
+        ne = float(_n(a["end"], "end", 0.0)) if "end" in a else ce
+        if ne - ns < 0.01:
+            raise BadArgs("clip would be empty")
+        for attr in ("start_marker", "end_marker"):
+            if not hasattr(clip, attr):
+                raise Unsupported("trimming arrangement clips")
+        saved = {k: g(clip, k, None) for k in ("start_marker", "end_marker", "loop_start", "loop_end")}
+        err = ""
+        try:
+            if abs(ne - ce) > 1e-6:
+                new_end = saved["end_marker"] + (ne - ce)
+                if saved["loop_end"] is not None and g(clip, "looping", False) and new_end > saved["loop_end"]:
+                    clip.loop_end = new_end
+                clip.end_marker = new_end
+            if abs(ns - cs) > 1e-6:
+                clip.start_marker = saved["start_marker"] + (ns - cs)
+            ok = (abs(num(g(clip, "start_time", 0.0)) - ns) < 1e-3 and abs(num(g(clip, "end_time", 0.0)) - ne) < 1e-3)
+        except Exception as e:
+            ok = False
+            err = repr(e)
+        if not ok:
+            for k, v in saved.items():
+                try:
+                    if v is not None:
+                        setattr(clip, k, v)
+                except Exception:
+                    pass
+            raise Unsupported("trimming this clip edge (" + (err or "Live ignored the marker change") + ")")
 
     # ------------------------------------------------------------ notes
     def _note_args(self, n, need_id=False):
@@ -790,9 +861,60 @@ class Ops(object):
         p = ps[i]
         p.value = max(num(g(p, "min", 0.0)), min(num(g(p, "max", 1.0), 1.0), v))
 
+    def _container(self, tr, into):
+        """-> container object for device lists: the track (into empty) or a rack chain ("2.c1")."""
+        track = resolve_track(self.song, tr)
+        if not into:
+            return track
+        head, _, last = into.rpartition(".")
+        if not (last[:1] == "c" and last[1:].isdigit()) or not head:
+            raise BadArgs("bad container path")
+        d, _, _ = resolve_device(self.song, tr, head)
+        chains = seq(g(d, "chains", ()))
+        ci = int(last[1:])
+        if ci >= len(chains):
+            raise BadArgs("no such chain")
+        return chains[ci]
+
+    def device_move(self, c, a):
+        """device.move {tr,path,to,into?}: `to` = final index in the destination (track, or rack chain
+        `into` like "2.c1"). Live's move_device takes an insertion index measured before removal."""
+        tr, path, d, owner, idx = self._dev(a)
+        to = _i(need(a, "to"), "to", 0)
+        into = a.get("into")
+        dest = self._container(tr, into) if into else owner
+        n = len(seq(g(dest, "devices", ())))
+        if dest is owner:
+            if to >= n:
+                raise BadArgs("index out of range")
+            if to == idx:
+                return
+            ins = to + 1 if to > idx else to
+        else:
+            ins = min(to, n)
+        _call(self.song, "move_device", d, dest, ins)
+        self.core.mark_devices(tr)
+
+    def device_insert(self, c, a):
+        tr = need(a, "tr", str)
+        name = need(a, "name", str)
+        into = a.get("into")
+        dest = self._container(tr, into)
+        n = len(seq(g(dest, "devices", ())))
+        i = a.get("i")
+        i = n if i is None else min(_i(i, "i", 0), n)
+        _call(dest, "insert_device", name, i)
+        self.core.mark_devices(tr)
+
+    def device_duplicate(self, c, a):
+        tr, path, d, owner, idx = self._dev(a)
+        _call(owner, "duplicate_device", idx)
+        self.core.mark_devices(tr)
+
     def device_delete(self, c, a):
-        _, _, d, owner, idx = self._dev(a)
+        tr, _, d, owner, idx = self._dev(a)
         _call(owner, "delete_device", idx)
+        self.core.mark_devices(tr)
 
     def device_select(self, c, a):
         _, _, d, _, _ = self._dev(a)
@@ -893,6 +1015,7 @@ class Ops(object):
         if g(view, "selected_track", None) != t:
             _put(view, "selected_track", t)
         _call(self._browser(), "load_item", item)
+        self.core.mark_devices(need(a, "tr", str))
 
     def browser_preview(self, c, a):
         item = self._bitem(need(a, "path", list))

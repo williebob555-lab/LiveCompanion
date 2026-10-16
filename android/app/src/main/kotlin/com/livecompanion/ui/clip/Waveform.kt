@@ -6,14 +6,15 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -26,13 +27,16 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.livecompanion.net.Peaks
 import com.livecompanion.net.PeaksClient
@@ -45,20 +49,11 @@ import com.livecompanion.ui.components.liveColor
 import com.livecompanion.ui.theme.LiveColors
 import com.livecompanion.ui.theme.LiveType
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
-
-/** Callbacks the waveform uses to edit the clip (wired to client ops + optimistic store updates). */
-interface AudioOps {
-    fun set(key: String, value: Double)
-    fun warpAdd(beat: Double)
-    fun warpMove(beat: Double, to: Double)
-    fun warpRemove(beat: Double)
-}
 
 /**
  * Maps the editor's x axis (beats when warped, seconds otherwise) to file time in seconds.
@@ -115,16 +110,35 @@ fun peakBuckets(widthPx: Int, fullSpan: Double, visSpan: Double): Int {
     return n
 }
 
-private class WfDrag(val kind: String, val key: String, val origin: Double) // kind: loop | mark | warp
+/** (min,max) of [peaks] over file time [loSec,hiSec], amplitude-scaled by [gain] and clamped to -1..1. Null if outside the file. */
+fun peakWindow(peaks: Peaks, fileSec: Double, loSec: Double, hiSec: Double, gain: Float): Pair<Float, Float>? {
+    if (fileSec <= 0 || hiSec < 0 || loSec > fileSec) return null
+    val n = peaks.n
+    val i0 = floor(loSec / fileSec * n).toInt().coerceIn(0, n - 1)
+    val i1 = ceil(hiSec / fileSec * n).toInt().coerceIn(i0 + 1, n)
+    var mn = 0f
+    var mx = 0f
+    for (i in i0 until i1) {
+        if (peaks.min[i] < mn) mn = peaks.min[i]
+        if (peaks.max[i] > mx) mx = peaks.max[i]
+    }
+    return (mn * gain).coerceIn(-1f, 0f) to (mx * gain).coerceIn(0f, 1f)
+}
 
 @Composable
-fun AudioEditor(clip: ClipState, host: String, rt: State<RtFrame>, ops: AudioOps, modifier: Modifier = Modifier, peaksClient: PeaksClient = PeaksClient.shared) {
+fun AudioEditor(
+    clip: ClipState, host: String, rt: State<RtFrame>, ops: ClipEdits, tempo: Float, rec: Boolean,
+    modifier: Modifier = Modifier, peaksClient: PeaksClient = PeaksClient.shared,
+) {
     val density = LocalDensity.current
     val tm = rememberTextMeasurer()
-    val stripH = with(density) { 20.dp.toPx() }
-    val hit = with(density) { 18.dp.toPx() }
     val lblSp = with(density) { 9.dp.toSp() }
+    val hitPx = with(density) { 18.dp.toPx() }
     val fileSecClip = if (clip.sampleRate > 0) clip.sampleLen / clip.sampleRate else 0.0
+    val num = clip.signature.getOrElse(0) { 4 }
+    val den = clip.signature.getOrElse(1) { 4 }
+    val seconds = !clip.warping
+    val axis = remember(seconds, num, den) { AxisSpec(seconds, num, den) }
 
     var peaks by remember(clip.filePath) { mutableStateOf<Peaks?>(null) }
     var err by remember(clip.filePath) { mutableStateOf<String?>(null) }
@@ -132,281 +146,219 @@ fun AudioEditor(clip: ClipState, host: String, rt: State<RtFrame>, ops: AudioOps
     val fallbackAxis = max(max(clip.endMarker, clip.loopEnd), 1.0)
     val map = remember(clip.warping, clip.warpMarkers, fileSec, fallbackAxis) { AudioMap(clip.warping, clip.warpMarkers, fileSec, fallbackAxis) }
     val extent = remember(clip.loopStart, clip.loopEnd, clip.startMarker, clip.endMarker, clip.len, map, fileSec) { audioExtent(clip, map, fileSec) }
+    val gain = remember(clip.gainStr, clip.gain) { gainLinear(clip.gainStr, clip.gain) }
 
-    var v0 by remember(clip.loc, clip.filePath) { mutableDoubleStateOf(extent.first) }
-    var v1 by remember(clip.loc, clip.filePath) { mutableDoubleStateOf(extent.second) }
-    var inited by remember(clip.loc, clip.filePath) { mutableStateOf(false) }
-    if (!inited && fileSec > 0) { v0 = extent.first; v1 = extent.second; inited = true }
-    var drag by remember { mutableStateOf<WfDrag?>(null) }
-    var dragVal by remember { mutableDoubleStateOf(0.0) }
+    val v = remember(clip.loc, clip.filePath, seconds) { ClipView(if (seconds) 2f else 3f, if (seconds) 60000f else 1500f) }
+    v.leftW = with(density) { 44.dp.toPx() }
+    v.braceH = with(density) { 14.dp.toPx() }
+    v.rulerH = with(density) { 17.dp.toPx() }
+    var sub by remember { mutableStateOf(Subdiv()) }
+    var snap by remember { mutableStateOf(true) }
+    var warpAddMode by remember { mutableStateOf(false) }
+    var selWarp by remember(clip.loc) { mutableStateOf<Double?>(null) }
+    var dragWarp by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var sigDialog by remember { mutableStateOf(false) }
+    val stepNow = if (seconds) 0.0 else gridStepFor(sub, v.ppu, axis.beatLen, axis.barLen)
+    val head = rememberPlayhead(rt, clip, tempo, seconds, rec) { h ->
+        if (rec && v.width > 0f && v.xOf(h) > v.width * 0.9f) v.x0 = h - (v.width * 0.4f - v.leftW) / v.ppu.toDouble()
+    }
 
-    BoxWithConstraints(modifier.background(LiveColors.Bg).clipToBounds()) {
-        val widthPx = with(density) { maxWidth.roundToPx() }
-        val fullSpan = max(extent.second - extent.first, 1e-6)
-        val n = peakBuckets(widthPx, fullSpan, max(v1 - v0, 1e-6))
-        LaunchedEffect(clip.filePath, n, host) {
-            if (clip.filePath.isBlank()) { err = "No file"; return@LaunchedEffect }
-            while (true) {
-                when (val r = peaksClient.get(host, clip.filePath, n)) {
-                    is PeaksResult.Ok -> { peaks = r.peaks; err = null; break }
-                    is PeaksResult.Err -> { err = r.msg; delay(4000) }
-                }
-            }
+    BoxWithConstraints(modifier.fillMaxSize().background(LiveColors.Bg)) {
+        val twoRows = maxHeight >= 330.dp
+        val gridTools: @Composable () -> Unit = {
+            GridControls(sub, { sub = it }, snap, { snap = it }, "$num/$den", { sigDialog = true }, stepLabel(stepNow), showSub = !seconds)
         }
-
-        val clipS = rememberUpdatedState(clip)
-        val opsS = rememberUpdatedState(ops)
-        val mapS = rememberUpdatedState(map)
-        val color = liveColor(clip.color)
-
-        Canvas(
-            Modifier.fillMaxSize().systemGestureExclusion().pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    val w = size.width.toFloat()
-                    val h = size.height.toFloat()
-                    fun ax(x: Float) = v0 + (x / w) * (v1 - v0)
-                    fun xs(a: Double) = ((a - v0) / (v1 - v0) * w).toFloat()
-                    val c0 = clipS.value
-                    val zone = if (down.position.y < stripH) 0 else if (down.position.y > h - stripH) 2 else 1
-                    // pick a target
-                    var target: WfDrag? = null
-                    var bestD = hit
-                    fun consider(kind: String, key: String, value: Double) {
-                        val d = abs(xs(value) - down.position.x)
-                        if (d <= bestD) { bestD = d; target = WfDrag(kind, key, value) }
-                    }
-                    when (zone) {
-                        0 -> { consider("loop", "loop_start", c0.loopStart); consider("loop", "loop_end", c0.loopEnd) }
-                        2 -> { consider("mark", "start_marker", c0.startMarker); consider("mark", "end_marker", c0.endMarker) }
-                        else -> if (c0.warping) for (wm in c0.warpMarkers) consider("warp", "w", wm.beat)
-                    }
-                    val tgt = target
-                    val slop = viewConfiguration.touchSlop
-                    val outcome = withTimeoutOrNull<String>(viewConfiguration.longPressTimeoutMillis) {
-                        while (true) {
-                            val ev = awaitPointerEvent()
-                            val pressed = ev.changes.filter { it.pressed }
-                            if (pressed.isEmpty()) return@withTimeoutOrNull "up"
-                            if (pressed.size >= 2) return@withTimeoutOrNull "multi"
-                            if ((pressed[0].position - down.position).getDistance() > slop) return@withTimeoutOrNull "move"
+        val waveTools: @Composable () -> Unit = {
+            if (clip.warping) {
+                ToolBtn("Warp +", { warpAddMode = !warpAddMode }, on = warpAddMode, minWidth = 48.dp)
+                ToolBtn("Del warp", { selWarp?.let { ops.warpRemove(it); selWarp = null } }, enabled = selWarp != null, minWidth = 54.dp)
+            }
+            ToolCaption("GAIN " + clip.gainStr.ifBlank { "%.2f".format(clip.gain) })
+        }
+        Column(Modifier.fillMaxSize()) {
+            if (twoRows) { ToolRow { gridTools() }; ToolRow { waveTools() } } else ToolRow { gridTools(); waveTools() }
+            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().onSizeChanged { v.width = it.width.toFloat(); v.height = it.height.toFloat() }) {
+                v.fitReq
+                if (v.width > 0f && !v.inited && (fileSec > 0 || rec)) {
+                    v.inited = true
+                    v.fit(extent.first, extent.second)
+                }
+                val widthPx = v.width.toInt().coerceAtLeast(256)
+                val fullSpan = max(extent.second - extent.first, 1e-6)
+                val n = peakBuckets(widthPx, fullSpan, max((v.width - v.leftW) / v.ppu.toDouble(), 1e-6))
+                LaunchedEffect(clip.filePath, n, host, rec) {
+                    if (rec) return@LaunchedEffect
+                    if (clip.filePath.isBlank()) { err = "No file"; return@LaunchedEffect }
+                    while (true) {
+                        when (val r = peaksClient.get(host, clip.filePath, n)) {
+                            is PeaksResult.Ok -> { peaks = r.peaks; err = null; break }
+                            is PeaksResult.Err -> { err = r.msg; delay(4000) }
                         }
-                        @Suppress("UNREACHABLE_CODE") "up"
                     }
-                    // Snap: whole beats by default, subdividing as you zoom in (and bars when zoomed far out); seconds otherwise.
-                    val ppu0 = (w / (v1 - v0)).toFloat()
-                    val snapStep = if (c0.warping) {
-                        var st = 1.0
-                        while (ppu0 * st > 90f && st > 1.0 / 64) st /= 2
-                        while (ppu0 * st < 16f && st < 64) st *= 2
-                        st
-                    } else niceSecStep(ppu0) / 2
-                    fun snapV(a: Double) = if (snapStep > 0) Math.rint(a / snapStep) * snapStep else a
+                }
+                val clipS = rememberUpdatedState(clip)
+                val opsS = rememberUpdatedState(ops)
+                val axisS = rememberUpdatedState(axis)
+                val subS = rememberUpdatedState(sub)
+                val snapS = rememberUpdatedState(snap)
+                val addS = rememberUpdatedState(warpAddMode)
+                val color = liveColor(clip.color)
 
-                    if (outcome == null) { // long press
-                        if (c0.warping) {
-                            if (tgt != null && tgt.kind == "warp") opsS.value.warpRemove(tgt.origin)
-                            else if (tgt == null && zone == 1) opsS.value.warpAdd(snapV(ax(down.position.x)))
-                        }
-                        // swallow the rest of the gesture
-                        while (true) {
-                            val ev = awaitPointerEvent()
-                            if (ev.changes.none { it.pressed }) break
-                        }
-                        return@awaitEachGesture
-                    }
-                    if (outcome == "up") return@awaitEachGesture
-
-                    var lastPos = down.position
-                    var transforming = outcome == "multi"
-                    if (!transforming && tgt != null) {
-                        drag = tgt; dragVal = tgt.origin
-                    }
-                    try {
-                        while (true) {
-                            val ev = awaitPointerEvent()
-                            val pressed = ev.changes.filter { it.pressed }
-                            if (pressed.isEmpty()) break
-                            if (pressed.size >= 2) {
-                                if (!transforming) { transforming = true; drag = null }
-                                val a = pressed[0]; val b = pressed[1]
-                                val pcx = (a.previousPosition.x + b.previousPosition.x) / 2
-                                val ccx = (a.position.x + b.position.x) / 2
-                                val ps = abs(a.previousPosition.x - b.previousPosition.x)
-                                val cs = abs(a.position.x - b.position.x)
-                                val z = if (ps > 24f) ps / cs else 1f // span ratio inverted: >1 means zoom in
-                                val anchor = ax(pcx)
-                                val newSpan = ((v1 - v0) * z).coerceIn(fullSpan / 400, fullSpan * 3)
-                                v0 = anchor - (ccx / w) * newSpan
-                                v1 = v0 + newSpan
-                                ev.changes.forEach { it.consume() }
-                                continue
+                Canvas(
+                    Modifier.fillMaxSize().systemGestureExclusion().pointerInput(Unit) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val c0 = clipS.value
+                            val ax = axisS.value
+                            val step = if (ax.seconds) 0.0 else snapStepFor(subS.value, snapS.value, v.ppu, ax.beatLen, ax.barLen)
+                            if (down.position.y < v.topH && down.position.x >= v.leftW) {
+                                clipTopGesture(down, v, c0, opsS.value, step, hitPx)
+                                return@awaitEachGesture
                             }
-                            if (transforming) { ev.changes.forEach { it.consume() }; continue }
-                            val c = pressed[0]
-                            lastPos = c.position
-                            if (tgt != null) {
-                                var nv = snapV(ax(c.position.x))
-                                if (tgt.key == "loop_start") nv = min(nv, c0.loopEnd - 0.01)
-                                if (tgt.key == "loop_end") nv = max(nv, c0.loopStart + 0.01)
-                                if (tgt.kind != "warp") nv = max(0.0, nv).let { if (tgt.key == "loop_start" || tgt.key == "loop_end") nv else it }
-                                dragVal = nv
-                            } else {
-                                val dx = c.positionChange().x
-                                val span = v1 - v0
-                                v0 -= dx / w * span; v1 -= dx / w * span
+                            // nearest warp marker
+                            var target: Double? = null
+                            if (c0.warping && down.position.x >= v.leftW) {
+                                var bestD = hitPx
+                                for (wm in c0.warpMarkers) {
+                                    val d = abs(v.xOf(wm.beat) - down.position.x)
+                                    if (d <= bestD) { bestD = d; target = wm.beat }
+                                }
                             }
-                            c.consume()
+                            val tgt = target
+                            if (tgt != null) selWarp = tgt
+                            var moved = false
+                            var transforming = false
+                            try {
+                                while (true) {
+                                    val ev = awaitPointerEvent()
+                                    val pressed = ev.changes.filter { it.pressed }
+                                    if (pressed.isEmpty()) {
+                                        if (!moved && !transforming) {
+                                            if (tgt == null) {
+                                                if (addS.value && c0.warping) opsS.value.warpAdd(snapValue(v.unitOf(down.position.x), step).coerceAtLeast(0.0))
+                                                else selWarp = null
+                                            }
+                                        } else if (tgt != null && !transforming) {
+                                            val d = dragWarp
+                                            if (d != null && abs(d.second - d.first) > 1e-6) { opsS.value.warpMove(d.first, d.second); selWarp = d.second }
+                                        }
+                                        break
+                                    }
+                                    if (pressed.size >= 2) {
+                                        transforming = true; dragWarp = null
+                                        v.transformX(pressed[0], pressed[1])
+                                        ev.changes.forEach { it.consume() }
+                                        continue
+                                    }
+                                    if (transforming) { ev.changes.forEach { it.consume() }; continue }
+                                    val p = pressed[0]
+                                    if (!moved) {
+                                        if ((p.position - down.position).getDistance() <= viewConfiguration.touchSlop) continue
+                                        moved = true
+                                    }
+                                    if (tgt != null) {
+                                        dragWarp = tgt to max(0.0, snapValue(v.unitOf(p.position.x), step))
+                                    } else {
+                                        v.x0 = max(v.minX, v.x0 - p.positionChange().x / v.ppu.toDouble())
+                                    }
+                                    p.consume()
+                                }
+                            } finally { dragWarp = null }
                         }
-                    } finally {
-                        val d = drag
-                        if (d != null && !transforming) {
-                            if (d.kind == "warp") { if (abs(dragVal - d.origin) > 1e-6) opsS.value.warpMove(d.origin, dragVal) }
-                            else if (abs(dragVal - d.origin) > 1e-6) opsS.value.set(d.key, dragVal)
+                    },
+                ) {
+                    drawWave(clip, peaks, map, v, axis, if (seconds) 0.0 else gridStepFor(sub, v.ppu, axis.beatLen, axis.barLen), fileSec, color, gain, selWarp, dragWarp, tm, lblSp, "$num/$den", sub.label(if (sub.adaptive && !seconds) gridStepFor(sub, v.ppu, axis.beatLen, axis.barLen) else null))
+                }
+                ZoomPad(Modifier.align(Alignment.BottomEnd), { v.zoomX(it) }, null, { v.requestFit() })
+                Canvas(Modifier.fillMaxSize()) {
+                    val h = head() ?: if (rec) clip.loopEnd else null
+                    if (rec) {
+                        drawRecRegion(v, 0.0, h ?: 0.0, v.topH, size.height)
+                        drawText(tm, "RECORDING", Offset(v.leftW + 8f, v.topH + 6f), TextStyle(fontSize = lblSp, color = LiveColors.Rec))
+                    }
+                    if (h != null) drawPlayhead(v, h, if (rec) LiveColors.Rec else LiveColors.Play, v.braceH, size.height)
+                }
+                if (peaks == null && !rec) {
+                    Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                        val msg = if (err != null) "Helper not running" else "Loading waveform..."
+                        Box(Modifier.background(LiveColors.PanelHi).padding(horizontal = 10.dp, vertical = 6.dp)) {
+                            LiveText(msg, style = LiveType.Small, color = LiveColors.TextDim)
                         }
-                        drag = null
                     }
                 }
-            },
-        ) {
-            drawWave(clip, peaks, map, v0, v1, fileSec, color, stripH, drag, dragVal, tm, lblSp)
-            val pos = rt.value.clipPos
-            if (pos != null) {
-                val x = ((pos - v0) / (v1 - v0) * size.width).toFloat()
-                if (x in 0f..size.width) drawLine(LiveColors.Play, Offset(x, 0f), Offset(x, size.height), 1.5f)
             }
         }
-        if (peaks == null) {
-            Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                val msg = if (err != null) "Helper not running" else "Loading waveform..."
-                Box(Modifier.background(LiveColors.PanelHi).padding(horizontal = 10.dp, vertical = 6.dp)) {
-                    LiveText(msg, style = LiveType.Small, color = LiveColors.TextDim)
-                }
-            }
-        }
+    }
+    if (sigDialog) SigDialog(num, den, { sigDialog = false }) { n, d ->
+        ops.set("sig_num", n.toDouble()); ops.set("sig_den", d.toDouble())
     }
 }
 
 private fun DrawScope.drawWave(
-    clip: ClipState, peaks: Peaks?, map: AudioMap, v0: Double, v1: Double, fileSec: Double, color: Color,
-    stripH: Float, drag: WfDrag?, dragVal: Double, tm: TextMeasurer, lblSp: androidx.compose.ui.unit.TextUnit,
+    clip: ClipState, peaks: Peaks?, map: AudioMap, v: ClipView, axis: AxisSpec, step: Double, fileSec: Double, color: Color, gain: Float,
+    selWarp: Double?, dragWarp: Pair<Double, Double>?, tm: TextMeasurer, lblSp: TextUnit, sigLabel: String, gridLabel: String,
 ) {
     val w = size.width
     val h = size.height
-    val span = max(v1 - v0, 1e-9)
-    fun xs(a: Double) = ((a - v0) / span * w).toFloat()
-    val top = stripH
-    val bot = h - stripH
-    val mid = (top + bot) / 2f
-    val half = (bot - top) / 2f
+    val top = v.topH
+    val mid = (top + h) / 2f
+    val half = (h - top) / 2f - 2f
     val lbl = TextStyle(fontSize = lblSp, color = LiveColors.TextDim)
 
-    // strips
-    drawRect(LiveColors.Panel, Offset(0f, 0f), Size(w, top))
-    drawRect(LiveColors.Panel, Offset(0f, bot), Size(w, stripH))
-    drawRect(Color(0xFF202020), Offset(0f, top), Size(w, bot - top))
-
-    // grid + labels (beats when warped, seconds otherwise)
-    val ppu = (w / span).toFloat()
-    val step = if (clip.warping) gridStep(ppu, 12f).coerceAtLeast(1.0) else niceSecStep(ppu)
-    var k = floor(v0 / step).toLong()
-    val kEnd = ceil(v1 / step).toLong()
-    var lastLabelX = -1000f
-    while (k <= kEnd) {
-        val t = k * step
-        val x = xs(t)
-        drawLine(Color(0xFF333333), Offset(x, top), Offset(x, bot), 1f)
-        if (x - lastLabelX > 36f && x >= 0f) {
-            val label = if (clip.warping) "${(t + 1).toLong()}" else fmtSec(t)
-            drawText(tm, label, Offset(x + 2f, 3f), lbl)
-            lastLabelX = x
-        }
-        k++
-    }
-    drawLine(Color(0xFF3A3A3A), Offset(0f, mid), Offset(w, mid), 1f)
-
-    // peaks
-    if (peaks != null && peaks.n > 0 && fileSec > 0) {
-        val n = peaks.n
-        val cols = w.toInt().coerceAtLeast(1)
-        for (cx in 0 until cols) {
-            val s0 = map.secOf(v0 + cx.toDouble() / cols * span)
-            val s1 = map.secOf(v0 + (cx + 1.0) / cols * span)
-            val lo = min(s0, s1)
-            val hi = max(s0, s1)
-            if (hi < 0 || lo > fileSec) continue
-            val i0 = floor(lo / fileSec * n).toInt().coerceIn(0, n - 1)
-            val i1 = ceil(hi / fileSec * n).toInt().coerceIn(i0 + 1, n)
-            var mn = 0f
-            var mx = 0f
-            for (i in i0 until i1) {
-                if (peaks.min[i] < mn) mn = peaks.min[i]
-                if (peaks.max[i] > mx) mx = peaks.max[i]
+    drawRect(Color(0xFF202020), Offset(v.leftW, top), Size(w - v.leftW, h - top))
+    clipRect(v.leftW, top, w, h) {
+        drawTimeGrid(v, axis, step, top, h)
+        drawLine(Color(0xFF3A3A3A), Offset(v.leftW, mid), Offset(w, mid), 1f)
+        // peaks, gain-scaled
+        if (peaks != null && peaks.n > 0 && fileSec > 0) {
+            val c0 = v.leftW.toInt()
+            val cols = (w - v.leftW).toInt().coerceAtLeast(1)
+            val span = cols / v.ppu.toDouble()
+            val a0 = v.unitOf(v.leftW)
+            val clipCol = Color(0xFFFF6A5F)
+            for (cx in 0 until cols) {
+                val s0 = map.secOf(a0 + cx.toDouble() / cols * span)
+                val s1 = map.secOf(a0 + (cx + 1.0) / cols * span)
+                val win = peakWindow(peaks, fileSec, min(s0, s1), max(s0, s1), gain) ?: continue
+                val y0 = mid - win.second * half
+                val y1 = mid - win.first * half
+                val hot = win.second >= 0.999f || win.first <= -0.999f
+                drawRect(if (hot) clipCol else color, Offset(c0 + cx.toFloat(), y0), Size(1f, max(1f, y1 - y0)))
             }
-            val y0 = mid - mx.coerceIn(0f, 1f) * half
-            val y1 = mid - mn.coerceIn(-1f, 0f) * half
-            drawRect(color, Offset(cx.toFloat(), y0), Size(1f, max(1f, y1 - y0)))
+        }
+        val ls = v.pvLs ?: clip.loopStart
+        val le = v.pvLe ?: clip.loopEnd
+        val sm = v.pvSm ?: clip.startMarker
+        val em = v.pvEm ?: clip.endMarker
+        val (ra, rb) = if (clip.looping) ls to le else sm to em
+        drawOutsideDim(v, ra, rb, top, h)
+        // start / end lines through the waveform
+        for (u in listOf(sm, em)) {
+            val x = v.xOf(u)
+            drawLine(Color(0xAAE2E2E2), Offset(x, top), Offset(x, h), 1f)
+        }
+        // warp markers
+        if (clip.warping) {
+            val wc = Color(0xFFE8C547)
+            for (wm in clip.warpMarkers) {
+                val b = if (dragWarp != null && abs(dragWarp.first - wm.beat) < 1e-9) dragWarp.second else wm.beat
+                val x = v.xOf(b)
+                if (x < v.leftW - 10f || x > w + 10f) continue
+                val sel = selWarp != null && (abs(selWarp - wm.beat) < 1e-9 || (dragWarp != null && abs(dragWarp.second - b) < 1e-9))
+                val c = if (sel) Color.White else wc
+                drawLine(c, Offset(x, top), Offset(x, h), if (sel) 2f else 1f)
+                val r = if (sel) 8f else 6f
+                val p = Path().apply { moveTo(x - r, top); lineTo(x + r, top); lineTo(x, top + r * 1.5f); close() }
+                drawPath(p, c)
+            }
         }
     }
-
-    fun val_(key: String, base: Double) = if (drag != null && drag.key == key && drag.kind != "warp") dragVal else base
-    val ls = val_("loop_start", clip.loopStart)
-    val le = val_("loop_end", clip.loopEnd)
-    val sm = val_("start_marker", clip.startMarker)
-    val em = val_("end_marker", clip.endMarker)
-
-    // outside-of-region dim (loop when looping else start..end)
-    val (ra, rb) = if (clip.looping) ls to le else sm to em
-    if (rb > ra) {
-        val xa = xs(ra).coerceIn(0f, w)
-        val xb = xs(rb).coerceIn(0f, w)
-        drawRect(Color(0x88000000), Offset(0f, top), Size(xa, bot - top))
-        drawRect(Color(0x88000000), Offset(xb, top), Size(w - xb, bot - top))
-    }
-    // start/end markers (bottom strip)
-    for ((x, txt) in listOf(xs(sm) to "S", xs(em) to "E")) {
-        drawLine(Color(0xFFDDDDDD), Offset(x, top), Offset(x, h), 1f)
-        val flagW = 14f * (stripH / 40f) + 8f
-        val left = if (txt == "S") x else x - flagW
-        drawRect(Color(0xFFDDDDDD), Offset(left, bot), Size(flagW, stripH))
-        drawText(tm, txt, Offset(left + flagW / 2 - 3f, bot + 3f), TextStyle(fontSize = lblSp, color = Color.Black))
-    }
-    // loop brace (top strip)
-    run {
-        val xa = xs(ls)
-        val xb = xs(le)
-        val flagW = 14f * (stripH / 40f) + 8f
-        val c = if (clip.looping) LiveColors.Accent else LiveColors.TextDim
-        drawLine(c, Offset(xa, 0f), Offset(xa, bot), 1.5f)
-        drawLine(c, Offset(xb, 0f), Offset(xb, bot), 1.5f)
-        drawRect(c, Offset(xa, 0f), Size(flagW, stripH))
-        drawRect(c, Offset(xb - flagW, 0f), Size(flagW, stripH))
-        drawLine(c, Offset(xa, 1f), Offset(xb, 1f), 2f)
-        drawText(tm, "L", Offset(xa + flagW / 2 - 3f, 3f), TextStyle(fontSize = lblSp, color = Color.Black))
-    }
-    // warp markers
-    if (clip.warping) {
-        val wc = Color(0xFFE8C547)
-        for (wm in clip.warpMarkers) {
-            val b = if (drag != null && drag.kind == "warp" && abs(drag.origin - wm.beat) < 1e-9) dragVal else wm.beat
-            val x = xs(b)
-            if (x < -10f || x > w + 10f) continue
-            drawLine(wc, Offset(x, top), Offset(x, bot), 1f)
-            val p = Path().apply { moveTo(x - 5f, top); lineTo(x + 5f, top); lineTo(x, top + 8f); close() }
-            drawPath(p, wc)
-        }
-    }
-}
-
-private fun niceSecStep(ppu: Float): Double {
-    val steps = doubleArrayOf(0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0)
-    for (s in steps) if (s * ppu >= 40f) return s
-    return 600.0
-}
-
-private fun fmtSec(t: Double): String {
-    if (t < 0) return ""
-    val m = (t / 60).toInt()
-    val s = t - m * 60
-    return if (m > 0) "$m:${"%02d".format(s.toInt())}" else if (s == floor(s)) "${s.toInt()}s" else "%.2fs".format(s)
+    drawClipTop(v, clip, axis, step, tm, lblSp, sigLabel, if (axis.seconds) "seconds" else gridLabel)
+    // amplitude gutter
+    drawRect(Color(0xFF1E1E1E), Offset(0f, top), Size(v.leftW, h - top))
+    drawText(tm, "+1", Offset(3f, top + 2f), lbl)
+    drawText(tm, "0", Offset(3f, mid - lblSp.value * 0.6f), lbl)
+    drawText(tm, "-1", Offset(3f, h - lblSp.value * 1.6f), lbl)
+    if (clip.gainStr.isNotBlank()) drawText(tm, clip.gainStr, Offset(3f, top + (h - top) / 4f), TextStyle(fontSize = lblSp, color = LiveColors.Text))
+    drawLine(LiveColors.Line, Offset(v.leftW, top), Offset(v.leftW, h), 1f)
 }

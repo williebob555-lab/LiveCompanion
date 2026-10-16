@@ -20,6 +20,7 @@ def test_global_sections_on_connect(h):
               "loop_start", "loop_len", "metronome", "count_in", "quant", "rec_quant", "can_undo", "can_redo",
               "back_to_arr", "auto_arm", "view", "sel_track", "sel_scene", "song_len", "follow"):
         assert k in s, k
+    assert s["scale"] == {"root": 0, "name": "Minor", "intervals": [0, 2, 3, 5, 7, 8, 10]}
     assert s["tempo"] == 120.0 and s["sig"] == [4, 4] and s["view"] == "session" and s["sel_track"] == "t0"
     t = c.sections["tracks"]
     assert len(t["tracks"]) == 8 and len(t["returns"]) == 2 and t["master"]["kind"] == "master"

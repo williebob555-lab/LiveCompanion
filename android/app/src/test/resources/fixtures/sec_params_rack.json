@@ -3,6 +3,7 @@
   "name": "Drum Rack",
   "params": [
    {
+    "def": 1.0,
     "i": 0,
     "items": [
      "Off",

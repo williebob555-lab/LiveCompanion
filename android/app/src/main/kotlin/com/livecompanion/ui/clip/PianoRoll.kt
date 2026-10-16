@@ -8,16 +8,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -42,12 +38,12 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.livecompanion.state.ClipState
 import com.livecompanion.state.Note
 import com.livecompanion.state.RtFrame
+import com.livecompanion.state.ScaleInfo
 import com.livecompanion.ui.components.liveColor
 import com.livecompanion.ui.theme.LiveColors
 import kotlin.math.abs
@@ -60,163 +56,218 @@ import kotlin.math.roundToInt
 enum class RollMode { Draw, Select }
 enum class Lane { Vel, Prob }
 
-const val MIN_PPB = 3f
-const val MAX_PPB = 1200f
-
-/** Viewport + in-flight gesture preview for the roll. All reads happen in draw lambdas / gesture code. */
+/** Viewport (horizontal part shared via [v]) + vertical rows + in-flight gesture previews for the roll. */
 class RollView {
-    var ppb by mutableFloatStateOf(60f)      // pixels per beat
-    var ppk by mutableFloatStateOf(24f)      // pixels per key row
-    var x0 by mutableDoubleStateOf(0.0)      // beat at the left edge of the grid area
-    var top by mutableFloatStateOf(72f)      // pitch value at the top edge of the grid area
-    var kbW = 40f
-    var rulerH = 20f
-    var inited = false
+    val v = ClipView(3f, 1500f)
+    var ppk by mutableFloatStateOf(18f)       // pixels per key row
+    var topRow by mutableFloatStateOf(40f)    // row index (0 = pitch 127) at the top edge of the note area
+    var fold by mutableStateOf(false)
+    var foldRows: IntArray = IntArray(0)      // pitches, descending (only used when fold)
 
     // gesture previews
-    var dt by mutableDoubleStateOf(0.0)
-    var dp by mutableIntStateOf(0)
-    var dd by mutableDoubleStateOf(0.0)
+    var dt by androidx.compose.runtime.mutableDoubleStateOf(0.0)
+    var dr by mutableIntStateOf(0)             // rows moved down
+    var dd by androidx.compose.runtime.mutableDoubleStateOf(0.0)
     var box by mutableStateOf<Rect?>(null)
     var ghost by mutableStateOf<Note?>(null)
 
-    fun xOf(beat: Double): Float = kbW + ((beat - x0) * ppb).toFloat()
-    fun beatOf(x: Float): Double = x0 + (x - kbW) / ppb.toDouble()
-    fun yTop(pitch: Int): Float = rulerH + (top - pitch - 1) * ppk
-    fun pitchValOf(y: Float): Float = top - (y - rulerH) / ppk
-    fun pitchOf(y: Float): Int = floor(pitchValOf(y)).toInt()
+    val rowCount get() = if (fold) foldRows.size else 128
+    fun rowOf(p: Int): Int = if (fold) foldRows.indexOf(p) else 127 - p
+    fun pitchAt(row: Int): Int? = if (fold) foldRows.getOrNull(row) else (127 - row).takeIf { it in 0..127 }
+    fun yTop(row: Int): Float = v.topH + (row - topRow) * ppk
+    fun rowAtY(y: Float): Int = floor(topRow + (y - v.topH) / ppk).toInt()
+    fun clampTop() {
+        val maxTop = max(0f, rowCount - 1f)
+        topRow = topRow.coerceIn(-1f, maxTop)
+    }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+private val RowDark = Color(0xFF1F1F1F)
+private val RowLight = Color(0xFF282828)
+private val RowOutScale = Color(0xFF1A1A1A)
+private val RowInScale = Color(0xFF2D2D2D)
+
 @Composable
-fun PianoRoll(clip: ClipState, ed: NoteEditor, rt: State<RtFrame>, modifier: Modifier = Modifier) {
+fun PianoRoll(
+    clip: ClipState, ed: NoteEditor, rt: State<RtFrame>, ops: ClipEdits, scale: ScaleInfo?, tempo: Float, rec: Boolean,
+    modifier: Modifier = Modifier,
+) {
     val density = LocalDensity.current
     var mode by remember { mutableStateOf(RollMode.Select) }
     var snap by remember { mutableStateOf(true) }
-    var gridIdx by remember { mutableIntStateOf(1) }
+    var sub by remember { mutableStateOf(Subdiv()) }
     var lane by remember { mutableStateOf(Lane.Vel) }
-    val view = remember(clip.loc) { RollView() }
-    view.kbW = with(density) { 34.dp.toPx() }
-    view.rulerH = with(density) { 18.dp.toPx() }
-    val bb = barBeats(clip.signature.getOrElse(0) { 4 }, clip.signature.getOrElse(1) { 4 })
-    val grid = GRID_OPTS[gridIdx].len(bb)
-    val tm = rememberTextMeasurer()
-    var gridSize by remember { mutableStateOf(IntSize.Zero) }
+    var showScale by remember { mutableStateOf(scale != null) }
+    var sigDialog by remember { mutableStateOf(false) }
     var confirmDel by remember { mutableStateOf(false) }
-
-    // Initial fit once the size is known (and per clip).
-    if (gridSize.width > 0 && gridSize.height > 0 && !view.inited) {
-        view.inited = true
-        val (a, b) = if (clip.looping || clip.endMarker <= clip.startMarker) clip.loopStart to clip.loopEnd else clip.startMarker to clip.endMarker
-        val span = if (b > a) b - a else if (clip.len > 0) clip.len else 4.0
-        val gw = gridSize.width - view.kbW
-        view.ppb = (gw / (span * 1.02)).toFloat().coerceIn(MIN_PPB, MAX_PPB)
-        view.x0 = (if (b > a) a else 0.0) - span * 0.01
-        val ps = ed.notes.map { it.p }
-        val lo = ps.minOrNull() ?: 55
-        val hi = ps.maxOrNull() ?: 72
-        val rows = (hi - lo + 5).coerceAtLeast(12)
-        val gh = gridSize.height - view.rulerH
-        val minPpk = with(density) { 9.dp.toPx() }
-        val maxPpk = with(density) { 22.dp.toPx() }
-        view.ppk = (gh / rows).coerceIn(minPpk, maxPpk)
-        val visRows = gh / view.ppk
-        view.top = ((lo + hi) / 2f + visRows / 2f + 0.5f).coerceIn(12f, 135f)
+    val view = remember(clip.loc) { RollView() }
+    val v = view.v
+    v.leftW = with(density) { 44.dp.toPx() }
+    v.braceH = with(density) { 14.dp.toPx() }
+    v.rulerH = with(density) { 17.dp.toPx() }
+    val num = clip.signature.getOrElse(0) { 4 }
+    val den = clip.signature.getOrElse(1) { 4 }
+    val axis = remember(num, den) { AxisSpec(false, num, den) }
+    // fold rows follow the notes in the editor
+    val used = remember(ed.notes) { ed.notes.map { it.p }.distinct().sortedDescending().toIntArray() }
+    view.foldRows = used
+    if (view.fold && used.isEmpty()) view.fold = false
+    val stepNow = gridStepFor(sub, v.ppu, axis.beatLen, axis.barLen)
+    val tm = rememberTextMeasurer()
+    val head = rememberPlayhead(rt, clip, tempo, false, rec) { h ->
+        if (rec && v.width > 0f) {
+            val x = v.xOf(h)
+            if (x > v.width * 0.9f) v.x0 = h - (v.width * 0.4f - v.leftW) / v.ppu.toDouble()
+        }
     }
 
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Btn("Draw", { mode = RollMode.Draw }, on = mode == RollMode.Draw)
-            Btn("Select", { mode = RollMode.Select }, on = mode == RollMode.Select)
-            Btn("Snap", { snap = !snap }, on = snap)
-            ChoiceField("Grid", GRID_OPTS.map { it.label }, gridIdx, { gridIdx = it }, Modifier.width(92.dp).height(DenseH))
-            Btn("Vel", { lane = Lane.Vel }, on = lane == Lane.Vel)
-            Btn("Prob", { lane = Lane.Prob }, on = lane == Lane.Prob)
-            Btn("All", { ed.selectAll() })
-            Btn("Dup", { ed.duplicateSelected() }, enabled = ed.sel.isNotEmpty())
-            Btn("Del", { if (ed.sel.size > BULK_DELETE_CONFIRM) confirmDel = true else ed.deleteSelected() }, enabled = ed.sel.isNotEmpty())
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val twoRows = maxHeight >= 330.dp
+        val toolbarGrid: @Composable () -> Unit = {
+            GridControls(sub, { sub = it }, snap, { snap = it }, "$num/$den", { sigDialog = true }, stepLabel(stepNow))
         }
-        if (confirmDel) {
-            com.livecompanion.ui.components.ConfirmDialog(
-                "Delete notes", "Delete ${ed.sel.size} notes? (Undo restores them.)", "Delete",
-                { ed.deleteSelected() }, { confirmDel = false },
-            )
+        val toolbarTools: @Composable () -> Unit = {
+            ToolBtn("Draw", { mode = RollMode.Draw }, on = mode == RollMode.Draw, minWidth = 42.dp)
+            ToolBtn("Select", { mode = RollMode.Select }, on = mode == RollMode.Select, minWidth = 46.dp)
+            ToolBtn("Fold", { view.fold = !view.fold; view.topRow = 0f }, on = view.fold, enabled = used.isNotEmpty(), minWidth = 36.dp)
+            if (scale != null) ToolBtn(scaleLabel(scale), { showScale = !showScale }, on = showScale, minWidth = 40.dp)
+            ToolBtn("Vel", { lane = Lane.Vel }, on = lane == Lane.Vel)
+            ToolBtn("Prob", { lane = Lane.Prob }, on = lane == Lane.Prob, minWidth = 34.dp)
+            ToolBtn("All", { ed.selectAll() })
+            ToolBtn("Dup", { ed.duplicateSelected() }, enabled = ed.sel.isNotEmpty())
+            ToolBtn("Del", { if (ed.sel.size > BULK_DELETE_CONFIRM) confirmDel = true else ed.deleteSelected() }, enabled = ed.sel.isNotEmpty())
         }
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            // Velocity / probability lane: bottom strip, ~20% of the editor, never below 40dp.
-            val laneH = (maxHeight * 0.2f).coerceIn(40.dp, 96.dp)
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().background(LiveColors.Bg).onSizeChanged { gridSize = it }) {
-                    NotesCanvas(clip, ed, view, tm, bb, grid, snap, mode)
-                    // Playhead: rt is read only inside this draw lambda -> no recomposition on ticks.
-                    Canvas(Modifier.fillMaxSize()) {
-                        val pos = rt.value.clipPos ?: return@Canvas
-                        val x = view.xOf(pos)
-                        if (x >= view.kbW && x <= size.width) drawLine(LiveColors.Play, Offset(x, 0f), Offset(x, size.height), 1.5f)
+        Column(Modifier.fillMaxSize()) {
+            if (twoRows) {
+                ToolRow { toolbarGrid() }
+                ToolRow { toolbarTools() }
+            } else {
+                ToolRow { toolbarGrid(); toolbarTools() }
+            }
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val laneH = (maxHeight * 0.2f).coerceIn(34.dp, 90.dp)
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().background(LiveColors.Bg).onSizeChanged {
+                        v.width = it.width.toFloat(); v.height = it.height.toFloat()
+                    }) {
+                        NotesCanvas(clip, ed, view, tm, axis, sub, snap, mode, ops, scale?.takeIf { showScale }, rec, num, den)
+                        ZoomPad(Modifier.align(androidx.compose.ui.Alignment.BottomEnd), { v.zoomX(it) },
+                            { f -> view.ppk = (view.ppk * f).coerceIn(with(density) { 5.dp.toPx() }, with(density) { 40.dp.toPx() }) }, { v.requestFit() })
+                        // Playhead / recording overlay: only this canvas redraws per frame.
+                        Canvas(Modifier.fillMaxSize()) {
+                            val h = head() ?: if (rec) clip.loopEnd else null
+                            if (rec) drawRecRegion(v, 0.0, h ?: 0.0, v.topH, size.height)
+                            if (h != null) drawPlayhead(v, h, if (rec) LiveColors.Rec else LiveColors.Play, v.braceH, size.height)
+                        }
                     }
+                    LaneCanvas(clip, ed, view, axis, sub, lane, Modifier.height(laneH).fillMaxWidth())
                 }
-                LaneCanvas(clip, ed, view, lane, Modifier.height(laneH).fillMaxWidth())
             }
         }
     }
+    if (sigDialog) SigDialog(num, den, { sigDialog = false }) { n, d ->
+        ops.set("sig_num", n.toDouble()); ops.set("sig_den", d.toDouble())
+    }
+    if (confirmDel) {
+        com.livecompanion.ui.components.ConfirmDialog(
+            "Delete notes", "Delete ${ed.sel.size} notes? (Undo restores them.)", "Delete",
+            { ed.deleteSelected() }, { confirmDel = false },
+        )
+    }
 }
+
+private val NOTE_NAMES = arrayOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+internal fun scaleLabel(s: ScaleInfo): String = "Scale"
+internal fun scaleTitle(s: ScaleInfo): String = NOTE_NAMES[((s.root % 12) + 12) % 12] + " " + s.name
 
 @Composable
 private fun NotesCanvas(
-    clip: ClipState, ed: NoteEditor, view: RollView, tm: TextMeasurer,
-    bb: Double, grid: Double, snap: Boolean, mode: RollMode,
+    clip: ClipState, ed: NoteEditor, view: RollView, tm: TextMeasurer, axis: AxisSpec, sub: Subdiv, snap: Boolean,
+    mode: RollMode, ops: ClipEdits, scale: ScaleInfo?, rec: Boolean, num: Int, den: Int,
 ) {
     val density = LocalDensity.current
+    val v = view.v
     val labelSp = with(density) { 9.dp.toSp() }
     val noteColor = liveColor(clip.color)
-    val gridS = rememberUpdatedState(grid)
+    val subS = rememberUpdatedState(sub)
     val snapS = rememberUpdatedState(snap)
     val modeS = rememberUpdatedState(mode)
+    val clipS = rememberUpdatedState(clip)
+    val opsS = rememberUpdatedState(ops)
+    val axisS = rememberUpdatedState(axis)
     val touchMin = with(density) { 10.dp.toPx() }
+    val edgePx = with(density) { 14.dp.toPx() }
+    val hitPx = with(density) { 18.dp.toPx() }
+    val minPpk = with(density) { 5.dp.toPx() }
+    val maxPpk = with(density) { 40.dp.toPx() }
+
+    // initial fit once the size is known
+    v.fitReq // re-run the fit when requested
+    if (v.width > 0f && v.height > 0f && !v.inited) {
+        v.inited = true
+        val (a, b) = if (clip.looping || clip.endMarker <= clip.startMarker) clip.loopStart to clip.loopEnd else clip.startMarker to clip.endMarker
+        val hi = if (b > a) b else if (clip.len > 0) clip.len else 4.0
+        v.fit(if (b > a) a else 0.0, hi)
+        val ps = ed.notes.map { it.p }
+        val lo = ps.minOrNull() ?: 55
+        val hp = ps.maxOrNull() ?: 72
+        val rows = (hp - lo + 5).coerceAtLeast(12)
+        val gh = v.height - v.topH
+        view.ppk = (gh / rows).coerceIn(with(density) { 9.dp.toPx() }, with(density) { 22.dp.toPx() })
+        val vis = gh / view.ppk
+        view.topRow = (127 - ((lo + hp) / 2f) - vis / 2f).coerceIn(0f, 127f)
+        if (view.fold) view.topRow = 0f
+    }
+
     Canvas(
         Modifier.fillMaxSize().pointerInput(Unit) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 val start = down.position
-                val region = when {
-                    start.y < view.rulerH -> 2
-                    start.x < view.kbW -> 1
-                    else -> 0
+                val c0 = clipS.value
+                val ax = axisS.value
+                val stepNow = snapStepFor(subS.value, snapS.value, v.ppu, ax.beatLen, ax.barLen)
+                if (start.y < v.topH && start.x >= v.leftW) {
+                    clipTopGesture(down, v, c0, opsS.value, stepNow, hitPx)
+                    return@awaitEachGesture
                 }
-                val beat0 = view.beatOf(start.x)
-                val pitch0 = view.pitchOf(start.y)
-                val minBeats = touchMin / view.ppb.toDouble()
-                val hit = if (region == 0) hitNote(ed.notes, beat0, pitch0, minBeats) else -1
+                val region = if (start.x < v.leftW) 1 else 0
+                val beat0 = v.unitOf(start.x)
+                val row0 = view.rowAtY(start.y)
+                val pitch0 = view.pitchAt(row0)
+                val minBeats = touchMin / v.ppu.toDouble()
+                val hit = if (region == 0 && pitch0 != null) hitNote(ed.notes, beat0, pitch0, minBeats) else -1
                 val anchor = if (hit >= 0) ed.notes[hit] else null
                 var moved = false
                 var transforming = false
                 var kind = 0 // 1 move, 2 resize, 3 box, 4 draw
                 var selMinT = 0.0
                 var selMinD = 0.0
-                var selMinP = 0
-                var selMaxP = 0
+                var selMinRow = 0
+                var selMaxRow = 0
                 val mode0 = modeS.value
-                val grid0 = gridS.value
-                val snap0 = snapS.value
-                val minLen = if (snap0) grid0 else 0.0625
+                val step0 = stepNow
+                val snap0 = step0 > 0
+                val minLen = if (snap0) step0 else 0.0625
+                val defLen = if (snap0) min(step0, ax.barLen) else 0.25
 
                 fun beginDrag() {
                     if (region != 0) return
-                    if (mode0 == RollMode.Draw) {
-                        if (anchor == null && pitch0 in 0..127) {
-                            kind = 4
-                            val t0 = max(0.0, snapFloor(beat0, grid0, snap0))
-                            view.ghost = Note(id = -999, p = pitch0, t = t0, d = if (snap0) grid0 else 0.25, v = 100)
-                        }
-                    } else if (anchor != null) {
+                    if (anchor != null) {
                         if (anchor.id !in ed.sel) ed.sel = setOf(anchor.id)
                         val s = ed.selectedNotes()
                         selMinT = s.minOf { it.t }
                         selMinD = s.minOf { it.d }
-                        selMinP = s.minOf { it.p }
-                        selMaxP = s.maxOf { it.p }
-                        kind = if (inResizeZone(anchor, beat0, 12.0 / view.ppb)) 2 else 1
+                        selMinRow = s.minOf { view.rowOf(it.p) }
+                        selMaxRow = s.maxOf { view.rowOf(it.p) }
+                        kind = if (inResizeZone(anchor, beat0, edgePx / v.ppu.toDouble())) 2 else 1
                         ed.busy = true
+                    } else if (mode0 == RollMode.Draw) {
+                        if (pitch0 != null) {
+                            kind = 4
+                            val t0 = max(0.0, snapFloorStep(beat0, step0))
+                            view.ghost = Note(id = -999, p = pitch0, t = t0, d = defLen, v = 100)
+                        }
                     } else {
                         kind = 3
                     }
@@ -225,42 +276,49 @@ private fun NotesCanvas(
                 fun drag(pos: Offset) {
                     when (kind) {
                         1 -> {
-                            val raw = (pos.x - start.x) / view.ppb.toDouble()
-                            view.dt = moveDelta(anchor!!.t, raw, selMinT, grid0, snap0)
-                            view.dp = clampPitchDelta(((start.y - pos.y) / view.ppk).roundToInt(), selMinP, selMaxP)
+                            val raw = (pos.x - start.x) / v.ppu.toDouble()
+                            view.dt = moveDelta(anchor!!.t, raw, selMinT, step0, snap0)
+                            val dr = ((pos.y - start.y) / view.ppk).roundToInt()
+                            view.dr = dr.coerceIn(-selMinRow, view.rowCount - 1 - selMaxRow)
                         }
                         2 -> {
-                            val raw = (pos.x - start.x) / view.ppb.toDouble()
-                            view.dd = resizeDelta(anchor!!.t + anchor.d, raw, selMinD, grid0, snap0, minLen)
+                            val raw = (pos.x - start.x) / v.ppu.toDouble()
+                            view.dd = resizeDelta(anchor!!.t + anchor.d, raw, selMinD, step0, snap0, minLen)
                         }
                         3 -> {
                             view.box = Rect(min(start.x, pos.x), min(start.y, pos.y), max(start.x, pos.x), max(start.y, pos.y))
-                            ed.sel = notesInBox(ed.notes, beat0, view.beatOf(pos.x), pitch0, view.pitchOf(pos.y))
+                            val t0 = min(beat0, v.unitOf(pos.x)); val t1 = max(beat0, v.unitOf(pos.x))
+                            val ra = min(row0, view.rowAtY(pos.y)); val rb = max(row0, view.rowAtY(pos.y))
+                            val out = HashSet<Int>()
+                            for (n in ed.notes) {
+                                if (n.t > t1 || n.t + n.d < t0) continue
+                                val r = view.rowOf(n.p)
+                                if (r in ra..rb) out.add(n.id)
+                            }
+                            ed.sel = out
                         }
                         4 -> {
                             val g = view.ghost ?: return
-                            val end = if (snap0) snapNearest(view.beatOf(pos.x), grid0, true) else view.beatOf(pos.x)
+                            val end = if (snap0) snapValue(v.unitOf(pos.x), step0) else v.unitOf(pos.x)
                             view.ghost = g.copy(d = max(minLen, end - g.t))
                         }
                     }
                 }
 
                 fun clearPreview() {
-                    view.dt = 0.0; view.dp = 0; view.dd = 0.0; view.box = null; view.ghost = null
+                    view.dt = 0.0; view.dr = 0; view.dd = 0.0; view.box = null; view.ghost = null
                 }
 
                 fun finish() {
                     when (kind) {
                         1, 2 -> {
-                            val dt = view.dt
-                            val dp = view.dp
-                            val dd = view.dd
-                            if (dt != 0.0 || dp != 0 || dd != 0.0) {
+                            val dt = view.dt; val dr = view.dr; val dd = view.dd
+                            if (dt != 0.0 || dr != 0 || dd != 0.0) {
                                 ed.modify(
                                     ed.selectedNotes().map {
                                         NoteEdit(
-                                            it.id, p = if (dp != 0) it.p + dp else null, t = if (dt != 0.0) it.t + dt else null,
-                                            d = if (dd != 0.0) it.d + dd else null,
+                                            it.id, p = if (dr != 0) view.pitchAt(view.rowOf(it.p) + dr) else null,
+                                            t = if (dt != 0.0) it.t + dt else null, d = if (dd != 0.0) it.d + dd else null,
                                         )
                                     },
                                 )
@@ -277,8 +335,8 @@ private fun NotesCanvas(
                     if (region != 0) return
                     if (mode0 == RollMode.Draw) {
                         if (anchor != null) ed.remove(setOf(anchor.id))
-                        else if (pitch0 in 0..127 && beat0 >= 0) {
-                            ed.add(listOf(Note(p = pitch0, t = max(0.0, snapFloor(beat0, grid0, snap0)), d = if (snap0) grid0 else 0.25, v = 100)))
+                        else if (pitch0 != null && beat0 >= 0) {
+                            ed.add(listOf(Note(p = pitch0, t = max(0.0, snapFloorStep(beat0, step0)), d = defLen, v = 100)))
                         }
                     } else {
                         ed.sel = if (anchor != null) {
@@ -288,20 +346,16 @@ private fun NotesCanvas(
                 }
 
                 fun transform(a: PointerInputChange, b: PointerInputChange) {
-                    val pc = (a.previousPosition + b.previousPosition) / 2f
-                    val cc = (a.position + b.position) / 2f
-                    val psx = abs(a.previousPosition.x - b.previousPosition.x)
+                    v.transformX(a, b)
+                    val pcy = (a.previousPosition.y + b.previousPosition.y) / 2f
+                    val ccy = (a.position.y + b.position.y) / 2f
                     val psy = abs(a.previousPosition.y - b.previousPosition.y)
-                    val csx = abs(a.position.x - b.position.x)
                     val csy = abs(a.position.y - b.position.y)
-                    val zx = if (psx > 24f) csx / psx else 1f
                     val zy = if (psy > 24f) csy / psy else 1f
-                    val bA = view.beatOf(pc.x)
-                    val pA = view.pitchValOf(pc.y)
-                    view.ppb = (view.ppb * zx).coerceIn(MIN_PPB, MAX_PPB)
-                    view.ppk = (view.ppk * zy).coerceIn(touchMin * 0.5f, touchMin * 4.5f)
-                    view.x0 = max(-4.0, bA - (cc.x - view.kbW) / view.ppb.toDouble())
-                    view.top = (pA + (cc.y - view.rulerH) / view.ppk).coerceIn(10f, 140f)
+                    val rowA = view.topRow + (pcy - v.topH) / view.ppk
+                    view.ppk = (view.ppk * zy).coerceIn(minPpk, maxPpk)
+                    view.topRow = rowA - (ccy - v.topH) / view.ppk
+                    view.clampTop()
                 }
 
                 try {
@@ -321,21 +375,17 @@ private fun NotesCanvas(
                             ev.changes.forEach { it.consume() }
                             continue
                         }
-                        if (transforming) {
-                            ev.changes.forEach { it.consume() }
-                            continue
-                        }
+                        if (transforming) { ev.changes.forEach { it.consume() }; continue }
                         val c = pressed[0]
                         if (!moved) {
                             if ((c.position - start).getDistance() <= viewConfiguration.touchSlop) continue
                             moved = true
                             beginDrag()
                         }
-                        when (region) {
-                            1 -> view.top = (view.top + c.positionChange().y / view.ppk).coerceIn(10f, 140f)
-                            2 -> view.x0 = max(-4.0, view.x0 - c.positionChange().x / view.ppb.toDouble())
-                            else -> if (kind != 0) drag(c.position)
-                        }
+                        if (region == 1) {
+                            view.topRow -= c.positionChange().y / view.ppk
+                            view.clampTop()
+                        } else if (kind != 0) drag(c.position)
                         c.consume()
                     }
                 } finally {
@@ -347,73 +397,74 @@ private fun NotesCanvas(
             }
         },
     ) {
-        drawRoll(clip, ed, view, tm, labelSp, noteColor, bb)
+        val stepDraw = gridStepFor(sub, v.ppu, axis.beatLen, axis.barLen)
+        drawRoll(clip, ed, view, tm, labelSp, noteColor, axis, stepDraw, scale, sub.label(stepDraw.takeIf { sub.adaptive }), num, den, rec)
     }
 }
 
-private fun DrawScope.drawRoll(clip: ClipState, ed: NoteEditor, view: RollView, tm: TextMeasurer, labelSp: TextUnit, noteColor: Color, bb: Double) {
-    val kbW = view.kbW
-    val rulerH = view.rulerH
-    val ppb = view.ppb
+private fun snapFloorStep(t: Double, step: Double): Double = if (step <= 0) t else floor(t / step + 1e-9) * step
+
+private fun DrawScope.drawRoll(
+    clip: ClipState, ed: NoteEditor, view: RollView, tm: TextMeasurer, labelSp: TextUnit, noteColor: Color,
+    axis: AxisSpec, step: Double, scale: ScaleInfo?, gridLabel: String, num: Int, den: Int, rec: Boolean,
+) {
+    val v = view.v
+    val kbW = v.leftW
+    val topH = v.topH
     val ppk = view.ppk
     val w = size.width
     val h = size.height
-    val bgDark = Color(0xFF202020)
-    val bgLight = Color(0xFF282828)
-    val lblStyle = TextStyle(fontSize = labelSp, color = LiveColors.TextDim)
-    val pHi = min(127, ceil(view.top.toDouble()).toInt())
-    val pLo = max(0, floor(view.pitchValOf(h)).toInt())
+    val r0 = max(0, floor(view.topRow).toInt())
+    val r1 = min(view.rowCount - 1, ceil(view.topRow + (h - topH) / ppk).toInt())
+    val keyLbl = TextStyle(fontSize = labelSp, color = Color(0xFF202020))
 
-    clipRect(kbW, rulerH, w, h) {
-        for (p in pLo..pHi) {
-            val y = view.yTop(p)
-            drawRect(if (isBlackKey(p)) bgDark else bgLight, Offset(kbW, y), Size(w - kbW, ppk))
-            if (p % 12 == 0) drawLine(Color(0xFF3A3A3A), Offset(kbW, y + ppk), Offset(w, y + ppk), 1f)
+    clipRect(kbW, topH, w, h) {
+        for (r in r0..r1) {
+            val p = view.pitchAt(r) ?: continue
+            val y = view.yTop(r)
+            val base = when {
+                scale != null -> if (inScale(p, scale.root, scale.intervals)) RowInScale else RowOutScale
+                isBlackKey(p) -> RowDark
+                else -> RowLight
+            }
+            drawRect(base, Offset(kbW, y), Size(w - kbW, ppk))
+            if (scale != null && ((p - scale.root) % 12 + 12) % 12 == 0) drawRect(LiveColors.Accent.copy(alpha = 0.10f), Offset(kbW, y), Size(w - kbW, ppk))
+            if (p % 12 == 0) drawLine(Color(0xFF3F3F3F), Offset(kbW, y + ppk), Offset(w, y + ppk), 1f)
         }
-        // loop / region shading (outside = dim)
-        val (ra, rb) = if (clip.looping) clip.loopStart to clip.loopEnd else clip.startMarker to clip.endMarker
-        if (rb > ra) {
-            val xa = view.xOf(ra)
-            val xb = view.xOf(rb)
-            if (xa > kbW) drawRect(Color(0x66000000), Offset(kbW, rulerH), Size(min(xa, w) - kbW, h - rulerH))
-            if (xb < w) drawRect(Color(0x66000000), Offset(max(xb, kbW), rulerH), Size(w - max(xb, kbW), h - rulerH))
-        }
-        // vertical grid
-        val step = gridStep(ppb)
-        var k = floor(view.beatOf(kbW) / step).toLong()
-        val kEnd = ceil(view.beatOf(w) / step).toLong()
-        while (k <= kEnd) {
-            val t = k * step
-            val x = view.xOf(t)
-            val bar = abs(t / bb - Math.rint(t / bb)) < 1e-6
-            val beat = abs(t - Math.rint(t)) < 1e-6
-            val c = if (bar) Color(0xFF666666) else if (beat) Color(0xFF3F3F3F) else Color(0xFF2F2F2F)
-            drawLine(c, Offset(x, rulerH), Offset(x, h), if (bar) 1.5f else 1f)
-            k++
-        }
-        // notes
+        drawTimeGrid(v, axis, step, topH, h)
+        val (ra, rb) = if (clip.looping) (v.pvLs ?: clip.loopStart) to (v.pvLe ?: clip.loopEnd) else (v.pvSm ?: clip.startMarker) to (v.pvEm ?: clip.endMarker)
+        drawOutsideDim(v, ra, rb, topH, h)
+
+        // notes (single pass, culled)
         val sel = ed.sel
         val dt = view.dt
-        val dpv = view.dp
+        val dr = view.dr
         val dd = view.dd
         val muted = Color(0xFF777777)
+        val ppu = v.ppu
+        val xMin = v.unitOf(kbW) - 64.0
+        val xMax = v.unitOf(w)
         for (n in ed.notes) {
             val isSel = n.id in sel
             val t = if (isSel) n.t + dt else n.t
-            val p = if (isSel) n.p + dpv else n.p
+            if (t > xMax) continue
             val d = if (isSel) n.d + dd else n.d
-            val x = view.xOf(t)
-            val nw = (d * ppb).toFloat()
-            if (x + nw < kbW || x > w) continue
-            val y = view.yTop(p)
-            if (y + ppk < rulerH || y > h) continue
+            if (t + d < xMin) continue
+            var row = view.rowOf(n.p)
+            if (isSel && dr != 0) row += dr
+            if (row < r0 - 1 || row > r1 + 1) continue
+            val x = v.xOf(t)
+            val nw = (d * ppu).toFloat()
+            val y = view.yTop(row)
             val base = if (n.m) muted else noteColor
-            val a = 0.35f + 0.65f * (n.v / 127f)
-            drawRect(base.copy(alpha = a), Offset(x, y + 0.5f), Size(max(nw - 1f, 2f), max(ppk - 1f, 1f)))
-            if (isSel) drawRect(Color.White, Offset(x, y + 0.5f), Size(max(nw - 1f, 2f), max(ppk - 1f, 1f)), style = Stroke(1.5f))
+            val a = 0.40f + 0.60f * (n.v / 127f)
+            val sz = Size(max(nw - 1f, 2f), max(ppk - 1f, 1f))
+            drawRect(base.copy(alpha = a), Offset(x, y + 0.5f), sz)
+            if (isSel) drawRect(Color.White, Offset(x, y + 0.5f), sz, style = Stroke(1.5f))
         }
         view.ghost?.let { g ->
-            drawRect(noteColor.copy(alpha = 0.7f), Offset(view.xOf(g.t), view.yTop(g.p) + 0.5f), Size(max((g.d * ppb).toFloat() - 1f, 2f), ppk - 1f))
+            val row = view.rowOf(g.p)
+            drawRect(noteColor.copy(alpha = 0.7f), Offset(v.xOf(g.t), view.yTop(row) + 0.5f), Size(max((g.d * ppu).toFloat() - 1f, 2f), ppk - 1f))
         }
         view.box?.let { r ->
             drawRect(LiveColors.Accent.copy(alpha = 0.15f), r.topLeft, r.size)
@@ -421,69 +472,46 @@ private fun DrawScope.drawRoll(clip: ClipState, ed: NoteEditor, view: RollView, 
         }
     }
 
-    // ruler
-    drawRect(LiveColors.Panel, Offset(0f, 0f), Size(w, rulerH))
-    val (ra, rb) = if (clip.looping) clip.loopStart to clip.loopEnd else clip.startMarker to clip.endMarker
-    if (rb > ra) {
-        val xa = max(view.xOf(ra), kbW)
-        val xb = min(view.xOf(rb), w)
-        if (xb > xa) drawRect(LiveColors.Accent.copy(alpha = 0.55f), Offset(xa, rulerH - 3f), Size(xb - xa, 3f))
-    }
-    clipRect(kbW, 0f, w, rulerH) {
-        val stride = barLabelStride(ppb, bb)
-        val firstBar = floor(view.beatOf(kbW) / bb).toLong() - 1
-        val lastBar = ceil(view.beatOf(w) / bb).toLong()
-        var bar = floor(firstBar.toDouble() / stride).toLong() * stride
-        while (bar <= lastBar) {
-            if (bar >= 0) {
-                val x = view.xOf(bar * bb)
-                drawLine(Color(0xFF666666), Offset(x, rulerH * 0.35f), Offset(x, rulerH), 1f)
-                drawText(tm, "${bar + 1}", Offset(x + 3f, 0f), lblStyle)
-                if (stride == 1 && ppb * bb >= 150f) {
-                    for (b in 1 until bb.toInt()) {
-                        val xb = view.xOf(bar * bb + b)
-                        drawLine(Color(0xFF555555), Offset(xb, rulerH * 0.6f), Offset(xb, rulerH), 1f)
-                        if (ppb >= 70f) drawText(tm, "${bar + 1}.${b + 1}", Offset(xb + 3f, 0f), lblStyle)
-                    }
-                }
-            }
-            bar += stride
-        }
-    }
+    // top chrome (brace, ruler, flags, corner)
+    drawClipTop(v, clip, axis, step, tm, labelSp, "$num/$den", gridLabel)
 
-    // keyboard column
-    clipRect(0f, rulerH, kbW, h) {
-        drawRect(Color(0xFF1E1E1E), Offset(0f, rulerH), Size(kbW, h - rulerH))
-        for (p in pLo..pHi) {
-            val y = view.yTop(p)
-            val black = isBlackKey(p)
+    // key column
+    clipRect(0f, topH, kbW, h) {
+        drawRect(Color(0xFF1E1E1E), Offset(0f, topH), Size(kbW, h - topH))
+        val labelAll = ppk >= labelSp.toPx() * 1.15f || view.fold
+        for (r in r0..r1) {
+            val p = view.pitchAt(r) ?: continue
+            val y = view.yTop(r)
+            val black = isBlackKey(p) && !view.fold
             drawRect(
-                if (black) Color(0xFF3A3A3A) else Color(0xFFBFBFBF), Offset(0f, y + 0.5f),
-                Size(if (black) kbW * 0.62f else kbW, max(ppk - 1f, 1f)),
+                if (black) Color(0xFF3A3A3A) else Color(0xFFC4C4C4), Offset(0f, y + 0.5f),
+                Size(if (black) kbW * 0.6f else kbW, max(ppk - 1f, 1f)),
             )
-            if (p % 12 == 0) {
-                drawText(tm, pitchName(p), Offset(3f, y + ppk / 2f - 6f), TextStyle(fontSize = labelSp, color = Color(0xFF222222)))
+            if (!black && (p % 12 == 0 || labelAll) && ppk >= labelSp.toPx() * 0.7f) {
+                val inScaleRoot = scale != null && ((p - scale.root) % 12 + 12) % 12 == 0
+                drawText(tm, pitchName(p), Offset(kbW * 0.62f + 1f, y + ppk / 2f - labelSp.value * 0.62f), if (inScaleRoot) keyLbl.copy(color = Color(0xFF0B6D99)) else keyLbl)
             }
+            if (p % 12 == 0) drawLine(Color(0xFF808080), Offset(0f, y + ppk), Offset(kbW, y + ppk), 1f)
         }
     }
-    drawRect(LiveColors.Panel, Offset(0f, 0f), Size(kbW, rulerH))
-    drawLine(LiveColors.Line, Offset(kbW, 0f), Offset(kbW, h), 1f)
+    drawLine(LiveColors.Line, Offset(kbW, topH), Offset(kbW, h), 1f)
 }
 
 @Composable
-private fun LaneCanvas(clip: ClipState, ed: NoteEditor, view: RollView, lane: Lane, modifier: Modifier) {
+private fun LaneCanvas(clip: ClipState, ed: NoteEditor, view: RollView, axis: AxisSpec, sub: Subdiv, lane: Lane, modifier: Modifier) {
     val density = LocalDensity.current
+    val v = view.v
     val tm = rememberTextMeasurer()
     val labelSp = with(density) { 9.dp.toSp() }
     val laneS = rememberUpdatedState(lane)
-    val barW = with(density) { 4.dp.toPx() }
+    val barW = with(density) { 3.dp.toPx() }
     val reach = with(density) { 16.dp.toPx() }
     val noteColor = liveColor(clip.color)
     Canvas(
         modifier.background(LiveColors.Bg).clipToBounds().pointerInput(Unit) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
-                if (down.position.x < view.kbW) return@awaitEachGesture
+                if (down.position.x < v.leftW) return@awaitEachGesture
                 val lane0 = laneS.value
                 val hh = size.height.toFloat()
                 val fracAt = { y: Float -> (1f - (y - 2f) / (hh - 4f)).coerceIn(0f, 1f) }
@@ -491,7 +519,7 @@ private fun LaneCanvas(clip: ClipState, ed: NoteEditor, view: RollView, lane: La
                 var best: Note? = null
                 var bestDx = Float.MAX_VALUE
                 for (n in ed.notes) {
-                    val dx = abs(view.xOf(n.t) + barW / 2 - down.position.x)
+                    val dx = abs(v.xOf(n.t) + barW / 2 - down.position.x)
                     if (dx > reach) continue
                     val b = best
                     if (b == null || dx < bestDx - 3f) {
@@ -532,19 +560,24 @@ private fun LaneCanvas(clip: ClipState, ed: NoteEditor, view: RollView, lane: La
     ) {
         val w = size.width
         val h = size.height
-        drawRect(LiveColors.Panel, Offset(0f, 0f), Size(view.kbW, h))
-        drawText(tm, if (lane == Lane.Vel) "VEL" else "PROB", Offset(3f, 3f), TextStyle(fontSize = labelSp, color = LiveColors.TextDim))
-        drawLine(LiveColors.Line, Offset(view.kbW, 0f), Offset(view.kbW, h), 1f)
-        clipRect(view.kbW, 0f, w, h) {
-            for (f in listOf(0.25f, 0.5f, 0.75f)) drawLine(Color(0xFF2A2A2A), Offset(view.kbW, h * (1 - f)), Offset(w, h * (1 - f)), 1f)
+        drawRect(LiveColors.Panel, Offset(0f, 0f), Size(v.leftW, h))
+        drawText(tm, if (lane == Lane.Vel) "VELOCITY" else "PROBABILITY", Offset(3f, 3f), TextStyle(fontSize = labelSp, color = LiveColors.TextDim))
+        drawText(tm, if (lane == Lane.Vel) "127" else "100%", Offset(3f, h - labelSp.value * 1.6f), TextStyle(fontSize = labelSp, color = LiveColors.TextDim))
+        drawLine(LiveColors.Line, Offset(v.leftW, 0f), Offset(v.leftW, h), 1f)
+        clipRect(v.leftW, 0f, w, h) {
+            drawTimeGrid(v, axis, gridStepFor(sub, v.ppu, axis.beatLen, axis.barLen), 0f, h)
+            for (f in listOf(0.25f, 0.5f, 0.75f)) drawLine(Color(0xFF2A2A2A), Offset(v.leftW, h * (1 - f)), Offset(w, h * (1 - f)), 1f)
             val sel = ed.sel
+            val xMax = v.unitOf(w)
+            val xMin = v.unitOf(v.leftW) - 2.0
             for (n in ed.notes) {
-                val x = view.xOf(n.t + (if (n.id in sel) view.dt else 0.0))
-                if (x < view.kbW - barW || x > w) continue
+                if (n.t > xMax || n.t < xMin) continue
+                val x = v.xOf(n.t + (if (n.id in sel) view.dt else 0.0))
                 val f = if (lane == Lane.Vel) n.v / 127f else n.prob
                 val bh = f * (h - 4f)
                 val c = if (n.id in sel) LiveColors.Accent else noteColor
                 drawRect(c.copy(alpha = 0.85f), Offset(x, h - bh - 1f), Size(barW, bh))
+                drawCircle(c, barW * 0.9f, Offset(x + barW / 2, h - bh - 1f))
             }
         }
     }

@@ -4,16 +4,17 @@ Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (wh
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
 ## RESUME HERE — Milestone 2 "UI lock-in" (owner feedback recorded in PREFERENCES 2026-10-15; owner asleep)
+Status: agents A–D launched (sonnet, parallel). Clip editor hard minimums added to PREFERENCES.
 Plan: 4 parallel sonnet agents, then QA pass + fix pass:
-- [ ] A Shell/visual: light-blue accent, 3–4dp radii, immersive fullscreen, keep-screen-on, cutout info strip,
+- [x] A Shell/visual (DONE, uncommitted; reorder note shown in Tracks tab): light-blue accent, 3–4dp radii, immersive fullscreen, keep-screen-on, cutout info strip,
       TRACK VIEW (Arrange) as default/front, Session as tab (not permanent half pane), Takes demoted,
       obvious collapse affordances, track list (add/remove/rename/color inline; reorder impossible → explain),
       app icon matching C:\Sampler App + C:\LivePatch branding.
-- [ ] B Track view/playhead: smooth interpolated playhead + continuous scrub (scrub_by/song.seek throttled),
+- [x] B (done, uncommitted; see ui/track/*, ArrangeScreen.kt; arr.trim/song.scrub ops; real-Live verification of trim pending) Track view/playhead: smooth interpolated playhead + continuous scrub (scrub_by/song.seek throttled),
       snap off/1/16/beat/bar, nudge, typed locate; drag clips to move (dup_to_arr+delete), drag edges to trim.
-- [ ] C Clip editor rewrite: full-width L→R, Live-level detail (ruler, loop brace, markers drag, note names,
+- [x] C (DONE, uncommitted; screenshots clip_*.png, ClipGridTests) Clip editor rewrite: full-width L→R, Live-level detail (ruler, loop brace, markers drag, note names,
       fold, scale highlight, velocity lane, drag everything; props in a thin collapsible strip).
-- [ ] D Devices: horizontal signal chain with params inline, drag reorder (song.move_device), insert_device,
+- [x] D Devices (done: signal chain UI ui/devices/*, device.move/insert/duplicate, pp inline params, devices burst re-mark, pending placeholder): horizontal signal chain with params inline, drag reorder (song.move_device), insert_device,
       server devices listener so browser loads appear within one tick (owner saw ~10 s lag).
 - Then: re-run tools/dump_fixtures.py, QA pass 2 on new build + real Live, fix, tag v0.1.0-test3.
 Port note: stop any mock on 9010 before using real Live (it blocked the script once).

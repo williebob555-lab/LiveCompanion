@@ -43,6 +43,10 @@ Single user (the owner). Read this before every change. Newest entries at the bo
     (snap choices incl. off/1/16/beat/bar, nudge, typed bar.beat.sixteenth).
   - Clip editor: full width, left-to-right, as much detail as Live's own clip view (ruler, loop brace, markers,
     note names, grid, velocity, etc.). Not "simple and tiny".
+  - Clip editor HARD MINIMUMS (owner, "ultra specific"): visible + adjustable grid SUBDIVISION (adaptive and
+    fixed 1/1…1/32, triplets), TIME SIGNATURE changes (clip signature editable; ruler follows it), real WAVEFORM
+    graphics for audio clips (helper peaks; also drawn inside clip blocks in the track view), and RECORDING
+    PROGRESSION drawn in RED (growing red region while a clip records, in clip editor and track view).
   - Devices: horizontal SIGNAL CHAIN like Live (devices left→right with their parameters), drag to reorder.
   - Track list: drag to reorder (LOM has NO move_track — see LOM_NOTES; explain/offer alternative), add,
     remove, rename, color inline.

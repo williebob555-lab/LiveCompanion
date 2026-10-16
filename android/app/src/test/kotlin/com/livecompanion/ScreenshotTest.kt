@@ -19,6 +19,7 @@ import com.livecompanion.ui.theme.LiveTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import androidx.compose.ui.unit.dp
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
@@ -90,6 +91,24 @@ class ScreenshotTest(private val wDp: Int, private val hDp: Int, private val lan
         val client = LiveClient(store, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
         launch { MainShell(store, client, Modifier.fillMaxSize(), initialTab = Tab.Session, statusOverride = ConnStatus.CONNECTED) }
         rule.onRoot().captureRoboImage(name("shell_session"))
+    }
+
+    @Test fun shellTracks() {
+        // Tracks tab; landscape variants simulate a left display cutout so the read-only info strip renders.
+        val store = fakeStore()
+        val client = LiveClient(store, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
+        launch {
+            MainShell(store, client, Modifier.fillMaxSize(), initialTab = Tab.Tracks, statusOverride = ConnStatus.CONNECTED,
+                cutoutOverride = 44.dp to 0.dp)
+        }
+        rule.onRoot().captureRoboImage(name("shell_tracks"))
+    }
+
+    @Test fun shellArrangeDefault() {
+        val store = fakeStore()
+        val client = LiveClient(store, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
+        launch { MainShell(store, client, Modifier.fillMaxSize(), statusOverride = ConnStatus.CONNECTED, cutoutOverride = 0.dp to 44.dp) }
+        rule.onRoot().captureRoboImage(name("shell_arrange"))
     }
 
     @Test fun shellDisconnected() {

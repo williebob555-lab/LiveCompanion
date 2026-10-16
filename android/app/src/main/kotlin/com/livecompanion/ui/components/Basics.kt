@@ -79,7 +79,7 @@ fun LiveLabel(text: String, modifier: Modifier = Modifier) =
     LiveText(text.uppercase(), modifier, LiveType.Label)
 
 /**
- * Live-style toggle/push button: flat 2dp rectangle, lit with [onColor] when [on].
+ * Live-style toggle/push button: flat 3dp rounded rectangle, lit with [onColor] when [on].
  * Min touch target 32dp (dense). [content] receives the right foreground color.
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -266,8 +266,8 @@ fun LiveDialog(
                 .fillMaxWidth()
                 .heightIn(max = maxH)
                 .wrapContentHeight()
-                .background(LiveColors.Panel, LiveShapes.Small)
-                .border(1.dp, LiveColors.Line, LiveShapes.Small)
+                .background(LiveColors.Panel, LiveShapes.Medium)
+                .border(1.dp, LiveColors.Line, LiveShapes.Medium)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {

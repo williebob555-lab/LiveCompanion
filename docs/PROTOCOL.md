@@ -33,7 +33,8 @@ Client must treat sections as authoritative; optimistic UI updates are allowed b
 **session** (global)
 `{tempo, sig:[num,den], playing, pos, rec, session_rec, overdub, punch_in, punch_out, loop, loop_start, loop_len,
 metronome, count_in, quant, rec_quant, can_undo, can_redo, back_to_arr, auto_arm, view:"session"|"arranger",
-sel_track:<ref>, sel_scene:int, song_len, follow:<bool, this client follows Live's selected track>}`
+sel_track:<ref>, sel_scene:int, song_len, cues:[{t,n}] (locators), follow:<bool, this client follows Live's selected track>, cpu:<0..1 Live CPU load, application.average_process_usage>,
+scale:{root:0-11,name,intervals:[0-11]}|null (song.root_note/scale_name/scale_intervals)}`
 
 **tracks** (global) `{tracks:[T], returns:[T], master:T, scenes:[{i,name,color}]}` with
 `T = {ref, name, color, kind:"audio"|"midi"|"group"|"return"|"master", armable, arm, mute, solo, monitor:0|1|2 (In/Auto/Off),
@@ -46,27 +47,29 @@ where `P = {v, min, max, str}`.
 **slots** `{tr, slots:[{i, has_clip, has_stop, status:"empty"|"stopped"|"playing"|"triggered"|"recording",
 clip:{name,color,len,looping,audio,muted}|null}]}`
 
-**arr** `{tr, clips:[{i,name,color,start,end,audio,muted,looping}]}`
+**arr** `{tr, clips:[{i,name,color,start,end,audio,muted,looping,start_marker,end_marker,loop_start,loop_end,
+audio: file_path,warping,warp_first,warp_last; midi: pn:[[t,dur,pitch]..] (preview, thinned ~160/clip)}]}`
 
 **takes** `{tr, supported:bool, lanes:[{i,name,clips:[{i,name,color,start,end}]}]}`
 
 **devices** `{tr, devices:[D]}` with `D = {path,name,cls,on,type:"instrument"|"audio_fx"|"midi_fx"|"rack"|"other",
-chains:[{i,name,devices:[D]}], macros:[{i,name,v,min,max,str}]|null, var:{count,sel}|null}`
+chains:[{i,name,devices:[D]}], macros:[{i,name,v,min,max,str}]|null, var:{count,sel}|null,
+pp:[PP]}` where `PP = {i,name,v,min,max,str,quant,items,def}` are the first 8 parameters after Device On (empty for racks), shown inline in the phone's signal chain; `def` = Live default_value or null
 
-**params** (the device opened with `device.open`) `{tr, path, name, params:[{i,name,v,min,max,str,quant:bool,items:[str]|null}]}`
+**params** (the device opened with `device.open`) `{tr, path, name, params:[{i,name,v,min,max,str,quant:bool,items:[str]|null,def:number|null}]}`
 
 **clip** (the clip opened with `clip.open`) `{loc, name,color,audio,len,looping,loop_start,loop_end,start_marker,end_marker,
-start,end(arr only),signature:[n,d], launch_mode,launch_quant,legato,muted,
+start,end(arr only),signature:[n,d],rec:bool (clip.is_recording; loop_end/clip_pos grow while true), launch_mode,launch_quant,legato,muted,
 audio-only: gain,gain_str,pitch_coarse,pitch_fine,warping,warp_mode,warp_modes:[str],file_path,sample_rate,sample_len,warp_markers:[{beat,sample_time}],
 midi-only: notes:[N]}` where `N = {id,p,t,d,v,m(mute bool),prob,vd(velocity_deviation),rv(release_velocity)}`
 
-**rt** frame `{pos, playing, beat_in_bar, meters:{focus:[l,r], master:[l,r]}, clip_pos:<float|null for opened clip>,
+**rt** frame `{pos, playing, beat_in_bar, cpu (0..1, same as session.cpu but refreshed every tick), meters:{focus:[l,r], master:[l,r]}, clip_pos:<float|null for opened clip>,
 slot_pos:{<slot i>:<pos>} (playing slots on focused track)}`
 
 ## Ops (`a` = args). Unsupported → `ok:false, err:"unsupported: ..."`.
 Song/transport: `song.play`, `song.stop`, `song.continue`, `song.tap_tempo`, `song.undo`, `song.redo`,
 `song.capture_midi`, `song.stop_all_clips`, `song.re_enable_automation`, `song.jump {beats}` (relative),
-`song.seek {beats}` (absolute), `song.cue {dir:1|-1}`,
+`song.seek {beats}` (absolute), `song.scrub {beats}` (relative, LOM scrub_by),  (relative, LOM scrub_by), `song.cue {dir:1|-1}`,
 `song.set {k,v}` k ∈ tempo, sig, metronome, loop, loop_start, loop_len, punch_in, punch_out, rec, session_rec,
 overdub, count_in, quant, rec_quant, auto_arm, back_to_arr, view.
 Scenes/tracks: `scene.fire {i}`, `scene.create {i}`, `track.create {kind:"audio"|"midi"|"return", i}`, `track.delete {tr}`,
@@ -79,16 +82,20 @@ Slots: `slot.fire {tr,i}`, `slot.create {tr,i,len}`, `slot.delete {tr,i}`, `slot
 `take.next {tr}` — take loop: arms track, fires first empty slot at/after last recorded one (creates scene if none).
 Names the new clip "Take N" (N = highest existing "Take n" on the track + 1; a newly created scene gets the same name). Returns `{i, name}`.
 Clips: `clip.fire {loc}`, `clip.stop {loc}`, `clip.open {loc}`, `clip.close`, `clip.set {loc,k,v}`
-k ∈ name,color,looping,loop_start,loop_end,start_marker,end_marker,gain,gain_db (dB in displayed units; server converts and refines against gain_display_string),pitch_coarse,pitch_fine,warping,warp_mode,
+k ∈ name,color,sig_num (1-99),sig_den (1,2,4,8,16),looping,loop_start,loop_end,start_marker,end_marker,gain,gain_db (dB in displayed units; server converts and refines against gain_display_string),pitch_coarse,pitch_fine,warping,warp_mode,
 launch_mode,launch_quant,legato,muted; `clip.delete {loc}`, `clip.duplicate_loop {loc}`, `clip.crop {loc}`,
 `clip.quantize {loc,grid,amount}`, `clip.to_arr {loc,time}`, `arr.create_midi {tr,start,len}`,
-`arr.move {loc,start}` (re-create based; may be unsupported).
+`arr.move {loc,start}` (duplicate_clip_to_arrangement + delete original; returns `{i}` = new index),
+`arr.trim {loc, start?, end?}` (absolute beats; edits clip markers, verifies start_time/end_time, reverts + unsupported err if Live ignores it; unverified on real Live).
 Notes (opened MIDI clip): `notes.add {notes:[N without id]}`, `notes.modify {notes:[N]}`, `notes.remove {ids}`,
 `notes.clear`, `notes.transpose {ids,semis}`, `notes.duplicate {ids,offset}`.
 Warp (opened audio clip): `warp.add {beat,sample_time?}`, `warp.move {beat,to_beat}`, `warp.remove {beat}`.
 Takes: `takes.create_lane {tr}`, `takes.rename {tr,lane,name}`, `takes.promote {loc}` (copy take clip to main lane).
 Devices: `device.open {tr,path}` / `device.close`, `device.toggle {tr,path}`, `device.param {tr,path,i,v}`,
-`device.delete {tr,path}`, `device.select {tr,path}`, `device.var {tr,path,act:"store"|"recall"|"select"|"delete",i?}`,
+`device.delete {tr,path}`, `device.select {tr,path}`,
+`device.move {tr,path,to,into?}` (to = FINAL index in destination; `into` = rack chain path like `"2.c1"` to move into a chain, absent = same list; server converts to Live's pre-removal insertion index for `song.move_device`),
+`device.insert {tr,name,i?,into?}` (`track.insert_device(name,i)`, native device by display name, i default = end, `into` = chain path),
+`device.duplicate {tr,path}` (`duplicate_device`, copy lands right after the original). All three (and `device.delete`, `browser.load`) mark `devices` dirty immediately and keep re-checking it for ~4 s (Live applies loads late), so the phone sees the new tree within one tick of Live changing it. `device.var {tr,path,act:"store"|"recall"|"select"|"delete",i?}`,
 `chain.select {tr,path,i}`.
 Browser: `browser.list {path:[str]}` → `[{name,folder,loadable,uri?}]` (path `[]` = roots), `browser.load {tr,path}`,
 `browser.preview {path}`, `browser.preview_stop`.

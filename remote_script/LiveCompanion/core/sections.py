@@ -53,6 +53,31 @@ def view_name(app):
     return "session"
 
 
+def scale_info(song):
+    """Song scale {root:0-11, name, intervals:[0-11...]} or None when Live does not expose it."""
+    try:
+        ivs = g(song, "scale_intervals", None)
+        if ivs is None:
+            return None
+        return {"root": intv(g(song, "root_note", 0)) % 12, "name": _s(g(song, "scale_name", "")),
+                "intervals": [intv(i) % 12 for i in seq(ivs)]}
+    except Exception:
+        return None
+
+
+def cpu_load(app):
+    """Live's CPU load 0..1 (application.average_process_usage); 0 when unavailable."""
+    v = num(g(app, "average_process_usage", 0.0))
+    return round(min(max(v, 0.0), 1.0), 3)
+
+
+def _cues(song):
+    out = []
+    for c in seq(g(song, "cue_points", ()))[:128]:
+        out.append({"t": num(g(c, "time", 0.0)), "n": _s(g(c, "name", ""))})
+    return out
+
+
 def session(song, app, follow=False):
     view = g(song, "view", None)
     sel_t = g(view, "selected_track", None) if view is not None else None
@@ -90,6 +115,8 @@ def session(song, app, follow=False):
         "sel_scene": sel_scene,
         "song_len": num(g(song, "song_length", 0.0)),
         "follow": bool(follow),
+        "cues": _cues(song),
+        "scale": scale_info(song),
     }
 
 
@@ -223,14 +250,53 @@ def slots(song, app, ref):
     return {"tr": ref, "slots": out}
 
 
+MAX_PREVIEW_NOTES = 160      # per clip, arr section mini note bars
+MAX_PREVIEW_TOTAL = 900
+
+
+def _preview_notes(c, budget):
+    """Compact [t, d, p] triples (rounded) for the track-view MIDI preview; thinned evenly when over budget."""
+    try:
+        notes = get_notes(c)
+    except Exception:
+        return []
+    n = len(notes)
+    if n == 0 or budget <= 0:
+        return []
+    cap = min(MAX_PREVIEW_NOTES, budget)
+    step = max(1, -(-n // cap))
+    out = []
+    for k in range(0, n, step):
+        x = notes[k]
+        out.append([round(num(g(x, "start_time", 0.0)), 3), round(num(g(x, "duration", 0.0)), 3),
+                    intv(g(x, "pitch", 60))])
+    return out
+
+
 def arr(song, app, ref):
     t = resolve_track(song, ref)
     out = []
+    budget = MAX_PREVIEW_TOTAL
     for i, c in enumerate(seq(g(t, "arrangement_clips", ()))):
-        out.append({"i": i, "name": _s(g(c, "name", "")), "color": intv(g(c, "color", 0)),
-                    "start": num(g(c, "start_time", 0.0)), "end": num(g(c, "end_time", 0.0)),
-                    "audio": _bool(g(c, "is_audio_clip", False)), "muted": _bool(g(c, "muted", False)),
-                    "looping": _bool(g(c, "looping", False))})
+        audio = _bool(g(c, "is_audio_clip", False))
+        d = {"i": i, "name": _s(g(c, "name", "")), "color": intv(g(c, "color", 0)),
+             "start": num(g(c, "start_time", 0.0)), "end": num(g(c, "end_time", 0.0)),
+             "audio": audio, "muted": _bool(g(c, "muted", False)),
+             "looping": _bool(g(c, "looping", False)),
+             "start_marker": num(g(c, "start_marker", 0.0)), "end_marker": num(g(c, "end_marker", 0.0)),
+             "loop_start": num(g(c, "loop_start", 0.0)), "loop_end": num(g(c, "loop_end", 0.0))}
+        if audio:
+            d["file_path"] = _s(g(c, "file_path", ""))
+            d["warping"] = _bool(g(c, "warping", False))
+            wms = seq(g(c, "warp_markers", ()))
+            if wms:
+                d["warp_first"] = num(g(wms[0], "beat_time", 0.0))
+                d["warp_last"] = num(g(wms[-1], "beat_time", 0.0))
+        else:
+            pn = _preview_notes(c, budget)
+            budget -= len(pn)
+            d["pn"] = pn
+        out.append(d)
     return {"tr": ref, "clips": out}
 
 
@@ -294,6 +360,30 @@ def macros(d):
     return out
 
 
+PREVIEW_PARAMS = 8
+
+
+def ser_param(i, p):
+    quant = _bool(g(p, "is_quantized", False))
+    items = None
+    if quant:
+        vi = g(p, "value_items", None)
+        items = [_s(x) for x in seq(vi)] if vi is not None else None
+    e = P(p)
+    dv = g(p, "default_value", None)
+    e.update({"i": i, "name": _s(g(p, "name", "")), "quant": quant, "items": items,
+              "def": num(dv) if dv is not None else None})
+    return e
+
+
+def preview_params(d):
+    """First few non-macro parameters (after Device On), shown inline in the signal chain."""
+    if g(d, "can_have_chains", False):
+        return []
+    ps = seq(g(d, "parameters", ()))
+    return [ser_param(i, p) for i, p in enumerate(ps[:PREVIEW_PARAMS + 1]) if i > 0]
+
+
 def ser_device(d, path, depth=0):
     typ = device_type(d)
     chains = []
@@ -305,7 +395,7 @@ def ser_device(d, path, depth=0):
     vc = g(d, "variation_count", None)
     return {"path": path, "name": _s(g(d, "name", "")), "cls": _s(g(d, "class_name", "")),
             "on": device_on(d), "type": typ, "chains": chains,
-            "macros": macros(d),
+            "macros": macros(d), "pp": preview_params(d),
             "var": ({"count": intv(vc), "sel": intv(g(d, "selected_variation_index", -1), -1)}
                     if vc is not None else None)}
 
@@ -319,14 +409,7 @@ def params(song, app, ref, path):
     dev, _, _ = resolve_device(song, ref, path)
     out = []
     for i, p in enumerate(seq(g(dev, "parameters", ()))):
-        quant = _bool(g(p, "is_quantized", False))
-        items = None
-        if quant:
-            vi = g(p, "value_items", None)
-            items = [_s(x) for x in seq(vi)] if vi is not None else None
-        e = P(p)
-        e.update({"i": i, "name": _s(g(p, "name", "")), "quant": quant, "items": items})
-        out.append(e)
+        out.append(ser_param(i, p))
     return {"tr": ref, "path": path, "name": _s(g(dev, "name", "")), "params": out}
 
 
@@ -365,6 +448,7 @@ def clip(song, app, loc):
         "signature": [intv(g(c, "signature_numerator", 4), 4), intv(g(c, "signature_denominator", 4), 4)],
         "launch_mode": intv(g(c, "launch_mode", 0)), "launch_quant": intv(g(c, "launch_quantization", 0)),
         "legato": _bool(g(c, "legato", False)), "muted": _bool(g(c, "muted", False)),
+        "rec": _bool(g(c, "is_recording", False)),
     }
     if cr.kind != "slot":
         d["end"] = num(g(c, "end_time", 0.0))
@@ -401,7 +485,8 @@ def rt(song, app, focus_ref, clip_loc, beat_in_bar_origin=0.0):
     den = intv(g(song, "signature_denominator", 4), 4) or 4
     bar = num_ * 4.0 / den
     d = {"pos": pos, "playing": _bool(g(song, "is_playing", False)), "beat_in_bar": pos % bar if bar else 0.0,
-         "meters": {"focus": [0.0, 0.0], "master": [0.0, 0.0]}, "clip_pos": None, "slot_pos": {}}
+         "meters": {"focus": [0.0, 0.0], "master": [0.0, 0.0]}, "clip_pos": None, "slot_pos": {},
+         "cpu": cpu_load(app)}
     m = g(song, "master_track", None)
     if m is not None:
         d["meters"]["master"] = [num(g(m, "output_meter_left", 0.0)), num(g(m, "output_meter_right", 0.0))]

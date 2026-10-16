@@ -94,6 +94,7 @@ fun ClipProps(
     modifier: Modifier = Modifier,
 ) {
     var palette by remember { mutableStateOf(false) }
+    var sigOpen by remember { mutableStateOf(false) }
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val cols = (maxWidth / 110.dp).toInt().coerceIn(1, 4)
         val bb = barBeats(clip.signature.getOrElse(0) { 4 }, clip.signature.getOrElse(1) { 4 })
@@ -146,7 +147,7 @@ fun ClipProps(
                 pos("End", clip.endMarker, "end_marker") { c, v -> c.copy(endMarker = v) }()
                 pos("Loop st", clip.loopStart, "loop_start") { c, v -> c.copy(loopStart = v) }()
                 pos("Loop en", clip.loopEnd, "loop_end") { c, v -> c.copy(loopEnd = v) }()
-                FieldBox("Sig", "${clip.signature.getOrElse(0) { 4 }}/${clip.signature.getOrElse(1) { 4 }}", Modifier.weight(1f), enabled = false)
+                FieldBox("Sig", "${clip.signature.getOrElse(0) { 4 }}/${clip.signature.getOrElse(1) { 4 }}", Modifier.weight(1f).clickable { sigOpen = true })
                 ChoiceField("Mode", LAUNCH_MODES, clip.launchMode, { i -> ops.set("launch_mode", i) { it.copy(launchMode = i) } }, Modifier.weight(1f))
                 ChoiceField("Quant", LAUNCH_QUANTS, clip.launchQuant, { i -> ops.set("launch_quant", i) { it.copy(launchQuant = i) } }, Modifier.weight(1f))
             }
@@ -212,6 +213,10 @@ fun ClipProps(
                 }
             }
         }
+    }
+    if (sigOpen) SigDialog(clip.signature.getOrElse(0) { 4 }, clip.signature.getOrElse(1) { 4 }, { sigOpen = false }) { n, d ->
+        ops.set("sig_num", n) { it.copy(signature = listOf(n, it.signature.getOrElse(1) { 4 })) }
+        ops.set("sig_den", d) { it.copy(signature = listOf(n, d)) }
     }
     if (palette) ColorPaletteDialog(clip.color, { c -> ops.set("color", c) { it.copy(color = c) } }, { palette = false })
 }
