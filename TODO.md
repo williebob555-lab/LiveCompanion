@@ -4,6 +4,8 @@ Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (wh
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
 ## RESUME HERE — Milestone 2 "UI lock-in" (owner feedback recorded in PREFERENCES 2026-10-15; owner asleep)
+2026-10-16 latest: QA pass 2 fixes committed 241e85f, RELEASED v0.1.0-test4, remote script reinstalled.
+Next: owner QA of test4 on real Live; open nits P2-1-12/13/14/17/18, P2-2-4/7; verify arr.trim/arr.move/swap on real Live.
 2026-10-16: laptop restarted mid-QA (RAM) → resource rules in PREFERENCES. P2-R1 fixes committed fb66daa,
 RELEASED v0.1.0-test3; remote script reinstalled to owner's User Library (Live restart needed to load it).
 QA pass 2 continuation agent running (R1b/R2/R3/R4 + read-only P2-LIVE). Then: fix pass → test4.
