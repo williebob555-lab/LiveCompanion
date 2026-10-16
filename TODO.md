@@ -3,6 +3,13 @@
 Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (why)
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
+## STATUS 2026-10-16 late: v0.1.1-test3 released after conformance review + re-checks (blocking clip-follow race
+fixed & verified on emulator vs mock). Open nits (non-blocking, from qa/CONFORMANCE.md Re-check 2): rename-dialog
+error text half-cut; tablet Session/Browser/Devices still partly empty; Takes opens too zoomed; demo "Add device"
+inserts at chain start; demo lacks per-track clips for some tracks (Bass shows Drums clip in demo).
+Unverified on real Live: arr.move/trim, takes promote/demote/move, cue.move, clip.peaks, device.insert names,
+slot swap → run tools/live_verify.py --mutate with the owner.
+
 ## NOW (2026-10-16, owner testing on phone)
 - [x] Conformance review #1 fixes (see qa/CONFORMANCE.md fix pass) - uncommitted, gate green; needs reviewer re-check on emulator. New: clip.scrub/clip.stop_scrub ops (real-Live unverified), compact top bar + CompactSecondaryBar.
 - [x] Agent 1: Connect settings/updates, demo mode (DemoClient), editable track picker, zoom-out limits, 40dp top bar, rounded-corner insets (committed 2a7c643).
