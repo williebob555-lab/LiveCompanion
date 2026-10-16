@@ -165,3 +165,16 @@ Previous FAILs: 8 PASS / 0 FAIL (2 borderline/weak). Not-verified items: 6 PASS,
 - Demo notice: fixed (pending re-check) - unsupported demo ops are silent (logcat only).
 - Tablet (>= 840dp): fixed (pending re-check) - Session slot list | controls | selected-clip detail; Mix vertical send faders + routing, returns/master vertical strips; Devices scale up to 2.2x and 6 columns; Browser folders | items; Clip tab auto-opens playing/first slot clip, else first arrangement clip (phones too). Screens: build/outputs/roborazzi/tablet_*.png.
 - Borderline: fixed (pending re-check) - small-phone ruler 11dp + brace 3dp (threshold <= 380dp tall); Devices scroll chevron 24dp accent.
+
+
+## Re-check 2 — v0.1.1-test3 candidate (commit c92fa0f)
+Reviewer: owner-preference agent; lc_phone (land, font 1.0/1.3), lc_phone_small (1280x720), lc_tablet (2560x1600); DEMO + mock :9021. Screens: qa/screens/conf3_*.png.
+- PASS  Locators: hold-drag of the Verse flag moves it (drop snapped to a beat), persisted on the server (relaunch showed the new position); tap on a flag jumps the playhead (conf3_01, 02).
+- PASS (nit) Rename with IME up in landscape: small NameDialog, 48dp+ field, OK/Cancel visible (conf3_12). NIT: the inline error "Name can't be empty" is cut in half vertically (conf3_13).
+- PASS  Piano-roll ruler zoomed out: no label collisions (conf3_21/22). NIT: label "2.4" touches the loop-end flag at max zoom-out.
+- PASS  Demo: no "not simulated" notice while visiting every tab and using device Del/Params/Add, Browser Load, Mix, Takes.
+- FAIL  Clip tab does NOT auto-open when the track changes while on the Clip tab: switching Drums->Bass->Keys leaves "Open a clip on Keys" with 4 slot clips + 1 arrangement clip (conf3_44), and on the first Bass visit from Arrange it also showed the picker (a second entry worked). Likely race in ClipScreen: after "stale -> clip.close", `if (clip.loc != null) { followFor = null; return }` cancels the follow before the close arrives. Fix: ignore clip.loc whose tr != followFor (treat as closed) and open the new clip anyway.
+- PASS  Small phone chrome: top bar + ruler/brace = 15.5% (lane 65%) (conf3_61). Devices chevron: 24dp accent chevron + fade at overflow (conf3_66). NIT: demo "Add device" inserts at the chain start.
+- PARTIAL Tablet: Mix (vertical faders), Clip, Devices (scaled knobs) use the space; Session still ~65% empty below 8 short tiles and a mostly empty detail pane; Browser 75% empty (little content); Devices ~60% empty (conf3_70_*).
+- PASS  Regression sweep lc_phone land: Arrange/Session/Devices/Mix/Takes/Browser/More render, font 1.3 top bar and Arrange intact. NIT: Takes tab opens zoomed to bars 1-3 (Beat B cut).
+Totals: 1 blocking FAIL (Clip auto-open on track switch), rest PASS/nits.

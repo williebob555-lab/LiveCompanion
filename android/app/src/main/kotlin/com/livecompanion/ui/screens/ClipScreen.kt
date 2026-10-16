@@ -78,7 +78,10 @@ fun ClipScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifi
     LaunchedEffect(followFor, slots.tr, slots.slots, arrS.tr, arrS.clips) {
         val f = followFor ?: return@LaunchedEffect
         if (slots.tr != f) return@LaunchedEffect
-        if (clip.loc != null) { followFor = null; return@LaunchedEffect }
+        // Read the CURRENT clip (not the value captured at composition): a clip still open on another track is the
+        // stale one we just closed — treat it as closed and open this track's clip anyway (re-check 2 race).
+        val openTr = store.clip.value.loc?.get("tr")?.jsonPrimitive?.content
+        if (openTr == f) { followFor = null; return@LaunchedEffect }
         // Auto-open: the playing / recording slot clip, else the first slot clip, else the first arrangement clip;
         // with no clip at all the picker list shows. (Arrangement may arrive a tick after the slots: wait for it.)
         val live = slots.slots.firstOrNull { it.hasClip && (it.status == "recording" || it.status == "playing") }
