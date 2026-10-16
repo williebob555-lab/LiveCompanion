@@ -4,8 +4,9 @@ Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (wh
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
 ## In progress
-- [~] QA agent (sonnet) rounds R1–R4 on emulators vs mock → qa/REVIEW_LOG.md (started after 06145ff/df1f485).
-  Orchestrator: check REVIEW_LOG after each round; push if shallow, rein in if wasteful.
+- [x] QA pass 1 (R1–R4) done; R1/R2 fixed in 493f60d.
+- [~] Fix agent: QA R3/R4 + collapsible session pane + tempo ellipsis.
+- Next: QA pass 2 (regression of all Q* on new build + real Live once probe runs), then milestone report + test release v0.1.0-test1.
 - [!] Real-Live probe blocked on owner selecting LiveCompanion control surface in Live.
 - [~] M1.1 python-core agent (sonnet) — remote script, core, fake LOM, mock, tests
 - [~] screens agent A (sonnet): Arrange + Takes (+ ui/components/Timeline.kt)
@@ -56,6 +57,8 @@ Rule: update this file when starting/finishing anything. If interrupted, resume 
 - Take ratings sync to Live clip names? (decide after owner QA)
 
 ## QA follow-ups
+- [ ] (orch) Two-pane on phone landscape: allow collapsing the left Session pane (fixed toggle on the rail, no slide) so editors get full width.
+- [ ] (orch) Tempo readout ellipsized at 568x320 f1.3.
 - [x] R1 Q1-1..Q1-10 fixed (not committed): landscape/wide shell = left tab rail + one compact top bar (CompactTopBar.kt), props side column/toggle in Clip, symmetric safe insets, vel/prob lane >=40dp, note dedupe on move/draw, clip.set gain_db (server+PROTOCOL), take.next names "Take N" + TAKE state/count/elapsed bars, Takes tab explains workflows + "To arr", Mix horizontal faders + aligned returns/master + Delete separated, device Delete moved + confirm.
 - [x] R2 Q2-1 (null clip/params sections + fixtures + ContractTest), Q2-2 TAKE disabled when not armable, Q2-3 scene column scales with font, Q2-4 waveform snap + gesture exclusion, Q2-5 auto-reconnect (Cancel on banner) + Back confirm, Q2-6 mock exclusive arm.
 - [ ] S1 auto-focus a track on connect (qa/REVIEW_LOG R0)
