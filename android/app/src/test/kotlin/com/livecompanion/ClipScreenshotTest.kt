@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ActivityScenario
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.livecompanion.net.LiveClient
@@ -62,14 +63,14 @@ class ClipScreenshotTest(private val wDp: Int, private val hDp: Int, private val
         return "build/outputs/roborazzi/${screen}_${w}x${h}_${orient}_f${(fontScale * 10).toInt()}.png"
     }
 
-    private fun shell(store: LiveStore, shot: String) {
+    private fun shell(store: LiveStore, shot: String, corners: com.livecompanion.ui.screens.Corners? = null) {
         val client = LiveClient(store, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
         val w = if (land) hDp else wDp
         val h = if (land) wDp else hDp
         RuntimeEnvironment.setQualifiers("w${w}dp-h${h}dp-${if (land) "land" else "port"}-xhdpi")
         RuntimeEnvironment.setFontScale(fontScale)
         scenario = ActivityScenario.launch(ComponentActivity::class.java)
-        scenario!!.onActivity { it.setContent { androidx.compose.runtime.CompositionLocalProvider(com.livecompanion.ui.clip.LocalClipAnimate provides false) { LiveTheme { MainShell(store, client, Modifier.fillMaxSize(), initialTab = Tab.Clip, statusOverride = com.livecompanion.net.ConnStatus.CONNECTED) } } } }
+        scenario!!.onActivity { it.setContent { androidx.compose.runtime.CompositionLocalProvider(com.livecompanion.ui.clip.LocalClipAnimate provides false) { LiveTheme { MainShell(store, client, Modifier.fillMaxSize(), initialTab = Tab.Clip, statusOverride = com.livecompanion.net.ConnStatus.CONNECTED, cornersOverride = corners) } } } }
         rule.waitForIdle()
         rule.onRoot().captureRoboImage(name(shot))
     }
@@ -117,4 +118,7 @@ class ClipScreenshotTest(private val wDp: Int, private val hDp: Int, private val
     @Test fun audioRecording() = shell(audioStore(rec = true), "clip_audio_rec")
     @Test fun midiDense68() = shell(midiStore(sig = "[6,8]", dense = true), "clip_midi_dense_68")
     @Test fun picker() = shell(fakeStore(), "clip_picker")
+    // Rounded display corners (48dp): the bottom handle row and the velocity lane keep clear of the arcs.
+    @Test fun midiCorners() = shell(midiStore(), "clip_midi_corners", com.livecompanion.ui.screens.Corners(48.dp, 48.dp, 48.dp, 48.dp))
+    @Test fun audioCorners() = shell(audioStore(), "clip_audio_corners", com.livecompanion.ui.screens.Corners(48.dp, 48.dp, 48.dp, 48.dp))
 }

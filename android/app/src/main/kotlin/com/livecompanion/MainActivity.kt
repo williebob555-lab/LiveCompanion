@@ -55,6 +55,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         applyOrientation(this, vm.prefs.orientation)
+        com.livecompanion.net.SimDelay.ms =
+            if (vm.prefs.simulateDelay && com.livecompanion.net.SimDelay.available(this)) com.livecompanion.net.SimDelay.DEFAULT_MS else 0L
         enableEdgeToEdge()
         // Immersive fullscreen (swipe from an edge reveals the bars transiently), screen stays on, content may extend
         // into the display cutout on the short edges (landscape: the cutout side shows the read-only info strip).

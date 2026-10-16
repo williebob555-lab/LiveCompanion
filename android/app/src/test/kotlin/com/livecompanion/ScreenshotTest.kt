@@ -148,6 +148,18 @@ class ScreenshotTest(private val wDp: Int, private val hDp: Int, private val lan
         rule.onRoot().captureRoboImage(name("shell_corners"))
     }
 
+    @Test fun shellArrangeRoundedCorners() {
+        // Track view with 48dp display corners: the bottom control strips are inset so no button sits under an arc.
+        val store = fakeStore()
+        val client = LiveClient(store, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
+        val c = 48.dp
+        launch {
+            MainShell(store, client, Modifier.fillMaxSize(), statusOverride = ConnStatus.CONNECTED,
+                cornersOverride = com.livecompanion.ui.screens.Corners(c, c, c, c))
+        }
+        rule.onRoot().captureRoboImage(name("shell_arrange_corners"))
+    }
+
     @Test fun settingsOffline() {
         launch { com.livecompanion.ui.screens.SettingsScreen(onBack = {}) }
         rule.onRoot().captureRoboImage(name("settings_offline"))

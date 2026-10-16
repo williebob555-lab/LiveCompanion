@@ -112,6 +112,7 @@ fun ArrangeScreen(
     val clipSec by store.clip.collectAsState()
     val conn by client.state.collectAsState()
     val goTab = LocalTabNavigator.current
+    val bodyCorners = LocalBodyCorners.current
     val scope = rememberCoroutineScope()
     val tr = arr.tr.ifEmpty { focus.ref }
     val view = remember { TimelineView() }
@@ -203,18 +204,22 @@ fun ArrangeScreen(
         val b = max(0.0, roundBeat(beat))
         clock.jumpTo(b, System.nanoTime())
         client.op("song.seek", "beats" to b)
-        store.updateSession { it.copy(pos = b) }
+        store.editSession({ it.copy(pos = b) }, { it.playing || kotlin.math.abs(it.pos - b) < 0.05 })
     }
 
+    val takeOps = remember(store, client, scope) { com.livecompanion.ui.track.TakeOps(store, client, scope) }
     val actions = remember(client, store, tr, session.playing) {
         LaneActions(
+            onPromote = { lane, i -> takeOps.promote(tr, lane, i) },
+            onDemote = { i, lane -> takeOps.demote(tr, i, lane) },
+            onTakeMove = { lane, i, to -> takeOps.move(tr, lane, i, to) },
             onScrub = { beat, done ->
                 val now = System.nanoTime()
                 clock.scrubTo(beat, now)
                 if (done) {
                     clock.endScrub(now)
                     client.op("song.seek", "beats" to beat)
-                    store.updateSession { it.copy(pos = beat) }
+                    store.editSession({ it.copy(pos = beat) }, { it.playing || kotlin.math.abs(it.pos - beat) < 0.05 })
                 } else {
                     client.sendThrottled("seek", "song.seek", jsonArgs("beats" to beat), 33)
                 }
@@ -222,11 +227,12 @@ fun ArrangeScreen(
             onLoop = { s, l, done ->
                 client.sendThrottled("loop", "song.set", jsonArgs("k" to "loop_start", "v" to s), 40)
                 client.sendThrottled("looplen", "song.set", jsonArgs("k" to "loop_len", "v" to l), 40)
-                if (done) store.updateSession { it.copy(loopStart = s, loopLen = l) }
+                if (done) store.editSession({ it.copy(loopStart = s, loopLen = l) })
             },
             onLoopToggle = {
-                client.op("song.set", "k" to "loop", "v" to !store.session.value.loop)
-                store.updateSession { it.copy(loop = !it.loop) }
+                val on = !store.session.value.loop
+                client.op("song.set", "k" to "loop", "v" to on)
+                store.editSession({ it.copy(loop = on) })
             },
             onSelectArr = { i -> sel = i; selTake = null },
             onOpenArr = { i ->
@@ -276,7 +282,8 @@ fun ArrangeScreen(
 
         // ---- ONE slim control row: locate, step, snap (tap cycles), follow, punch, fit, takes
         FlowRow(
-            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(horizontal = 2.dp, vertical = 1.dp),
+            Modifier.fillMaxWidth().padding(start = bodyCorners.bottomStart, end = bodyCorners.bottomEnd)
+                .background(LiveColors.Panel).padding(horizontal = 2.dp, vertical = 1.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
             itemVerticalAlignment = Alignment.CenterVertically,
@@ -292,8 +299,8 @@ fun ArrangeScreen(
             })
             SBtn("Snap ${snap.label}", { snap = Snap.entries[(snap.ordinal + 1) % Snap.entries.size] }, minWidth = 62.dp)
             SBtn("Follow", { follow = !follow }, on = follow)
-            SBtn("In", { client.op("song.set", "k" to "punch_in", "v" to !session.punchIn); store.updateSession { it.copy(punchIn = !it.punchIn) } }, on = session.punchIn, onColor = LiveColors.Rec)
-            SBtn("Out", { client.op("song.set", "k" to "punch_out", "v" to !session.punchOut); store.updateSession { it.copy(punchOut = !it.punchOut) } }, on = session.punchOut, onColor = LiveColors.Rec)
+            SBtn("In", { val on = !session.punchIn; client.op("song.set", "k" to "punch_in", "v" to on); store.editSession({ it.copy(punchIn = on) }) }, on = session.punchIn, onColor = LiveColors.Rec)
+            SBtn("Out", { val on = !session.punchOut; client.op("song.set", "k" to "punch_out", "v" to on); store.editSession({ it.copy(punchOut = on) }) }, on = session.punchOut, onColor = LiveColors.Rec)
             SBtn("Fit", { fitArrange(view, clips.map { it.start to it.end }, session.loopStart, session.loopLen, bpb) })
             if (takes.supported && takes.lanes.isNotEmpty()) SBtn("Takes", { showTakes = !showTakes }, on = showTakes)
         }
@@ -304,7 +311,8 @@ fun ArrangeScreen(
         val showTip = tipFirstTime && !tipGone && selClip == null && selTake == null
         LaunchedEffect(tipFirstTime) { if (tipFirstTime) prefs.arrangeTipSeen = true }
         if (showTip) Row(
-            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(horizontal = 4.dp, vertical = 1.dp),
+            Modifier.fillMaxWidth().padding(start = bodyCorners.bottomStart, end = bodyCorners.bottomEnd)
+                .background(LiveColors.Panel).padding(horizontal = 4.dp, vertical = 1.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             LiveText(ARRANGE_HELP, Modifier.weight(1f), LiveType.Small, color = LiveColors.TextDim, maxLines = 2)
@@ -313,7 +321,8 @@ fun ArrangeScreen(
 
         // ---- selection strip (visible buttons, no menus); absent when nothing is selected
         if (selClip != null || selTake != null) Column(
-            Modifier.fillMaxWidth().background(LiveColors.Panel).padding(horizontal = 2.dp, vertical = 1.dp),
+            Modifier.fillMaxWidth().padding(start = bodyCorners.bottomStart, end = bodyCorners.bottomEnd)
+                .background(LiveColors.Panel).padding(horizontal = 2.dp, vertical = 1.dp),
             verticalArrangement = Arrangement.Center,
         ) {
             val st = selTake
@@ -360,7 +369,7 @@ fun ArrangeScreen(
                 ) {
                     LiveText(tc?.name?.ifEmpty { tl.name } ?: "Take", Modifier.widthIn(max = 160.dp), LiveType.Small)
                     if (tc != null) LiveText("${posString(tc.start, bpb, unit)} - ${posString(tc.end, bpb, unit)}", style = LiveType.Small, color = LiveColors.TextDim, modifier = Modifier.padding(horizontal = 4.dp))
-                    SBtn("To main lane", { client.op("takes.promote", "loc" to Loc.take(tr, st.first, st.second)) })
+                    SBtn("To main lane", { takeOps.promote(tr, st.first, st.second) })
                     SBtn("Edit", { client.op("clip.open", "loc" to Loc.take(tr, st.first, st.second)); goTab(Tab.Clip) })
                 }
             }
@@ -384,7 +393,7 @@ fun ArrangeScreen(
 
 private const val PEAK_N = 1024
 
-internal const val ARRANGE_HELP = "Tap clip = select, hold + drag = move, drag selected edges = trim, drag ruler = scrub, double-tap empty lane = new MIDI clip"
+internal const val ARRANGE_HELP = "Tap clip = select, hold + drag = move, drag selected edges = trim, drag ruler = scrub, double-tap empty lane = new MIDI clip. With Takes shown: hold + drag a take up into the main lane = promote, a clip down into a take lane = demote."
 
 
 private enum class ArrDialog { Rename, Color, Locate }

@@ -13,7 +13,7 @@ track.create track.delete track.duplicate focus.set focus.follow view.select tra
 slot.create slot.delete slot.duplicate slot.copy slot.move take.next clip.fire clip.stop clip.open clip.close clip.set
 clip.delete clip.duplicate_loop clip.crop clip.quantize clip.to_arr arr.create_midi arr.move arr.trim notes.add notes.modify
 notes.remove notes.clear notes.transpose notes.duplicate warp.add warp.move warp.remove takes.create_lane
-takes.rename takes.promote device.open device.close device.toggle device.param device.delete device.select
+takes.rename takes.promote takes.demote takes.move device.open device.close device.toggle device.param device.delete device.select
 device.var device.move device.insert device.duplicate chain.select browser.list browser.load browser.preview browser.preview_stop sys.info sys.probe""".split()
 
 
@@ -408,6 +408,63 @@ def test_arrangement_and_takes(c, h):
     c.ok("clip.open", loc={"w": "take", "tr": "t3", "lane": 0, "i": 1})
     c.until("clip", lambda d: d and d["loc"]["w"] == "take" and d["name"] == "Vox take 1b")
     assert c.req("takes.create_lane", tr="t5")["err"].startswith("unsupported")
+
+
+def test_takes_demote_and_move(c, h):
+    c.ok("focus.set", tr="t3")
+    c.until("takes", lambda d: d["tr"] == "t3")
+    arr0 = c.until("arr", lambda d: d["tr"] == "t3")
+    na = len(arr0["clips"])
+    src = next(x for x in arr0["clips"] if x["audio"])
+    lanes0 = c.sections["takes"]["lanes"]
+    n_l2 = len(lanes0[2]["clips"])
+    # demote: main-lane clip -> take lane 2 at the same time, original removed
+    r = c.ok("takes.demote", loc={"w": "arr", "tr": "t3", "i": src["i"]}, lane=2)
+    assert r["lane"] == 2 and r["i"] is not None
+    c.until("arr", lambda d: len(d["clips"]) == na - 1)
+    tk = c.until("takes", lambda d: len(d["lanes"][2]["clips"]) == n_l2 + 1)
+    assert any(abs(x["start"] - src["start"]) < 1e-6 and x["name"] == src["name"] for x in tk["lanes"][2]["clips"])
+    # move between take lanes: lane 0 clip 0 -> lane 1
+    first = tk["lanes"][0]["clips"][0]
+    n0, n1 = len(tk["lanes"][0]["clips"]), len(tk["lanes"][1]["clips"])
+    c.ok("takes.move", loc={"w": "take", "tr": "t3", "lane": 0, "i": 0}, lane=1)
+    tk = c.until("takes", lambda d: len(d["lanes"][0]["clips"]) == n0 - 1 and len(d["lanes"][1]["clips"]) == n1 + 1)
+    assert any(abs(x["start"] - first["start"]) < 1e-6 and x["name"] == first["name"] for x in tk["lanes"][1]["clips"])
+    # same lane is a no-op, bad args are refused
+    assert c.ok("takes.move", loc={"w": "take", "tr": "t3", "lane": 1, "i": 0}, lane=1)["lane"] == 1
+    assert c.req("takes.demote", loc={"w": "take", "tr": "t3", "lane": 1, "i": 0}, lane=0)["ok"] is False
+    assert c.req("takes.move", loc={"w": "arr", "tr": "t3", "i": 0}, lane=0)["ok"] is False
+    assert c.req("takes.demote", loc={"w": "arr", "tr": "t3", "i": 0}, lane=9)["ok"] is False
+
+
+def test_takes_demote_midi_copies_notes(c, h):
+    c.ok("focus.set", tr="t0")
+    arr = c.until("arr", lambda d: d["tr"] == "t0")
+    c.ok("takes.create_lane", tr="t0")
+    c.until("takes", lambda d: d["tr"] == "t0" and len(d["lanes"]) == 1)
+    clip = h.song.tracks[0].arrangement_clips[0]
+    n_notes = len(clip.get_notes_extended())
+    assert n_notes > 0
+    c.ok("takes.demote", loc={"w": "arr", "tr": "t0", "i": 0}, lane=0)
+    tk = c.until("takes", lambda d: len(d["lanes"][0]["clips"]) == 1)
+    lane_clip = h.song.tracks[0].take_lanes[0].arrangement_clips[0]
+    assert len(lane_clip.get_notes_extended()) == n_notes
+    c.until("arr", lambda d: len(d["clips"]) == len(arr["clips"]) - 1)
+
+
+def test_takes_demote_unsupported_when_lane_api_missing(c, h):
+    c.ok("focus.set", tr="t3")
+    c.until("takes", lambda d: d["tr"] == "t3")
+    import fake_lom
+    saved = fake_lom.FakeLane.create_audio_clip
+    del fake_lom.FakeLane.create_audio_clip
+    try:
+        r = c.req("takes.demote", loc={"w": "arr", "tr": "t3", "i": 0}, lane=0)
+        assert r["ok"] is False and r["err"].startswith("unsupported")
+        n = len(h.song.tracks[3].arrangement_clips)
+        assert n > 0                       # nothing was deleted
+    finally:
+        fake_lom.FakeLane.create_audio_clip = saved
 
 
 def test_device_move_insert_duplicate(c, h):

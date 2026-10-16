@@ -91,6 +91,9 @@ private sealed interface Pick {
 @Composable
 fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modifier) {
     val takes by store.takes.collectAsState()
+    val arr by store.arr.collectAsState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val takeOps = remember(store, client, scope) { com.livecompanion.ui.track.TakeOps(store, client, scope) }
     val slotsState by store.slots.collectAsState()
     val session by store.session.collectAsState()
     val focus by store.focus.collectAsState()
@@ -152,7 +155,11 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
                     LiveText("No take lanes yet. Use + Lane to create one.", style = LiveType.Small, color = LiveColors.TextDim, maxLines = 3)
                 }
             } else {
-                val tlLanes = shown.map { l ->
+                // Lane 0 = the track's MAIN lane (drop target of PROMOTE, source of DEMOTE); lanes 1.. = take lanes.
+                val mainLane = TLane(arr.clips.filter { arr.tr == tr }.map { c ->
+                    TClip("m:${c.i}", c.name.ifEmpty { if (c.audio) "Audio" else "MIDI" }, c.color, c.start, c.end, muted = c.muted)
+                })
+                val tlLanes = listOf(mainLane) + shown.map { l ->
                     TLane(l.clips.map { c ->
                         TClip("t${l.i}:${c.i}", c.name.ifEmpty { "Take" }, c.color, c.start, c.end,
                             selected = pick?.lane == l.i && pick?.i == c.i,
@@ -160,7 +167,7 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
                     })
                 }
                 val vs = remember { TimelineVScroll() }
-                val LaneH = adaptiveLaneHeight(takes.lanes.size, 36.dp, 120.dp, 0.5f)
+                val LaneH = adaptiveLaneHeight(takes.lanes.size + 1, 36.dp, 120.dp, 0.5f)
                 Row(Modifier.fillMaxWidth().weight(1f, fill = false).height(IntrinsicSize.Min)) {
                     Column(Modifier.width(GutterW).fillMaxHeight()) {
                         Spacer(Modifier.height(timelineRulerHeight()))
@@ -170,6 +177,10 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
                                 Modifier.fillMaxWidth().wrapContentHeight(align = Alignment.Top, unbounded = true)
                                     .offset { IntOffset(0, -vs.clamped.roundToInt()) },
                             ) {
+                                Box(
+                                    Modifier.fillMaxWidth().height(LaneH).background(LiveColors.Panel).padding(horizontal = 4.dp),
+                                    contentAlignment = Alignment.CenterStart,
+                                ) { LiveText("Main lane", style = LiveType.Small, color = LiveColors.Accent) }
                                 for (l in takes.lanes) {
                                     Box(
                                         Modifier.fillMaxWidth().height(LaneH).background(LiveColors.PanelHi)
@@ -185,11 +196,31 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
                         modifier = Modifier.weight(1f), laneHeight = LaneH, vScroll = vs,
                         onRulerTap = { client.op("song.seek", "beats" to it) },
                         onClipTap = { li, c ->
-                            val lane = shown.getOrNull(li) ?: return@Timeline
-                            val ci = c.key.substringAfter(':').toIntOrNull() ?: return@Timeline
-                            pick = Pick.Take(lane.i, ci)
+                            val lane = shown.getOrNull(li - 1)
+                            val ci = c.key.substringAfter(':').toIntOrNull()
+                            if (li == 0 || lane == null || ci == null) pick = null else pick = Pick.Take(lane.i, ci)
                         },
                         onEmptyTap = { _, _ -> pick = null },
+                        // Hold a clip and drag it onto another lane: take -> Main = promote, Main -> take = demote, take -> take = move.
+                        dropLabel = { from, to ->
+                            when {
+                                from == to -> null
+                                from == 0 -> "Demote to this take lane"
+                                to == 0 -> "Promote to main lane"
+                                else -> "Move to this lane"
+                            }
+                        },
+                        onClipDrop = { from, clip, to ->
+                            val ci = clip.key.substringAfter(':').toIntOrNull()
+                            if (ci != null) when {
+                                from == 0 -> shown.getOrNull(to - 1)?.let { takeOps.demote(tr, ci, it.i) }
+                                to == 0 -> shown.getOrNull(from - 1)?.let { takeOps.promote(tr, it.i, ci); pick = null }
+                                else -> {
+                                    val fl = shown.getOrNull(from - 1); val tl = shown.getOrNull(to - 1)
+                                    if (fl != null && tl != null) { takeOps.move(tr, fl.i, ci, tl.i); pick = null }
+                                }
+                            }
+                        },
                     )
                 }
                 val p = pick
@@ -200,7 +231,7 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     if (lane == null || clip == null) {
-                        LiveText("Tap a take to select it. Tap the ruler to seek; pinch to zoom.", style = LiveType.Small, color = LiveColors.TextDim, maxLines = 3)
+                        LiveText("Tap a take to select it. Hold + drag a take up into the Main lane to promote it, a Main-lane clip down into a take lane to demote it, or a take onto another lane to move it. Tap the ruler to seek; pinch to zoom.", style = LiveType.Small, color = LiveColors.TextDim, maxLines = 4)
                     } else {
                         val rk = ratings.key(trackName, lane.i, clip.start)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -218,7 +249,7 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
                                 client.op("clip.open", "loc" to Loc.take(tr, lane.i, clip.i))
                                 goTab(Tab.Clip)
                             })
-                            DBtn("Promote", { client.op("takes.promote", "loc" to Loc.take(tr, lane.i, clip.i)) })
+                            DBtn("Promote", { takeOps.promote(tr, lane.i, clip.i) })
                             DBtn("Rename lane", { renameLane = lane.i })
                             StarRow(ratings.get(rk)) { ratings.set(rk, it) }
                         }

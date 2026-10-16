@@ -26,3 +26,9 @@ Re-run: reload the control surface in Live; the file is rewritten. Unverified it
 ## Not yet probed (no clip existed in the probed set)
 - Clip members (notes API, warp markers, start_time settability for moving arrangement clips) `(?)`.
   Moving an arrangement clip = duplicate_clip_to_arrangement at new time + delete_clip (works per API presence).
+
+## Take-lane clip creation (UNVERIFIED on real Live 12.4.1)
+`takes.demote` / `takes.move` assume `TakeLane.create_audio_clip(file_path, start_time)` and `TakeLane.create_midi_clip(start_time, length)`
+exist (mirrors Track.create_audio_clip/create_midi_clip) and that `Track.delete_clip(clip)` also deletes a take-lane clip. The ops check
+`hasattr` first and answer `unsupported: take-lane clip creation (TakeLane.create_*_clip missing in this Live)` without touching anything; a
+delete failure after a successful copy is reported as `copied, but could not remove the original`. Verify with the next probe (tools/live_verify.py --mutate).

@@ -91,6 +91,12 @@ class LaneActions(
     val onMove: (i: Int, start: Double) -> Unit = { _, _ -> },
     val onTrim: (i: Int, start: Double?, end: Double?) -> Unit = { _, _, _ -> },
     val onCreate: (beat: Double) -> Unit = {},
+    /** Take hold-drag: take -> main lane. */
+    val onPromote: (lane: Int, i: Int) -> Unit = { _, _ -> },
+    /** Take hold-drag: main-lane clip -> take lane. */
+    val onDemote: (i: Int, lane: Int) -> Unit = { _, _ -> },
+    /** Take hold-drag: take -> other take lane. */
+    val onTakeMove: (lane: Int, i: Int, toLane: Int) -> Unit = { _, _, _ -> },
 )
 
 /** Recording progression: while active a red region grows from [start] to the playhead. */
@@ -111,7 +117,7 @@ private class LoopPrev(val loop: TLoop, val done: Boolean)
 private class DragEdit(val i: Int, val start: Double, val end: Double, val committed: Boolean, val serial: Int)
 
 private enum class Zone { Scrub, Brace, Main, Take, None }
-private enum class Mode { Pending, Hold, Pan, Move, TrimL, TrimR, Scrub, LoopL, LoopR, LoopBody, Multi }
+private enum class Mode { Pending, Hold, Pan, Move, TrimL, TrimR, Scrub, LoopL, LoopR, LoopBody, Multi, TakeDrag }
 
 private const val HOLD_MS = com.livecompanion.ui.components.HOLD_DRAG_MS
 private const val TAKE_H_DP = 24f
@@ -161,6 +167,7 @@ fun TrackLane(
     var drag by remember { mutableStateOf<DragEdit?>(null) }
     var dragSerial by remember { mutableStateOf(0) }
     var loopPrev by remember { mutableStateOf<LoopPrev?>(null) }
+    var takeDrop by remember { mutableStateOf<TakeDrop?>(null) }
     LaunchedEffect(model.loop, loopPrev) {
         val lp = loopPrev
         if (lp != null && lp.done) {
@@ -170,12 +177,16 @@ fun TrackLane(
     val lastTap = remember { longArrayOf(0L, 0L) } // time ns, key (clip index or -1)
     val lastTapX = remember { floatArrayOf(0f) }
 
-    // The server section replaces our optimistic edit.
-    LaunchedEffect(model.clips) { drag = null }
-    LaunchedEffect(model.trackRef) { drag = null }
+    // Settle (OptimisticDrag rule): a released clip edit stays drawn until the server shows it or 600 ms passed. A server
+    // section that does not show it yet (or arrives mid-drag) never resets it.
+    LaunchedEffect(model.clips) {
+        val d = drag
+        if (d != null && d.committed && model.clips.any { abs(it.start - d.start) < 1e-3 && abs(it.end - d.end) < 1e-3 }) drag = null
+    }
+    LaunchedEffect(model.trackRef) { drag = null; takeDrop = null }
     LaunchedEffect(Unit) {
         snapshotFlow { drag }.collectLatest { d ->
-            if (d != null && d.committed) { delay(1500); if (drag?.serial == d.serial) drag = null }
+            if (d != null && d.committed) { delay(com.livecompanion.ui.components.Optimistic.SETTLE_MS); if (drag?.serial == d.serial) drag = null }
         }
     }
 
@@ -251,6 +262,12 @@ fun TrackLane(
         return null
     }
 
+    fun dropAt(y: Float, srcLane: Int): Int {
+        val m = curM
+        if (!m.showTakes) return DROP_NONE
+        return dropTargetAt(y, rulerPx, mainH(), takeH(), m.takes.take(4), srcLane)
+    }
+
     Box(
         modifier
             .background(LiveColors.Bg)
@@ -309,7 +326,7 @@ fun TrackLane(
                                 } else holdable = true
                             }
                         }
-                        Zone.Take -> takeHit = hitTake(p0.x, p0.y)
+                        Zone.Take -> { takeHit = hitTake(p0.x, p0.y); holdable = takeHit != null }
                         Zone.None -> Unit
                     }
 
@@ -323,6 +340,7 @@ fun TrackLane(
                         if (mode == Mode.Scrub) a.onScrub(max(0.0, snapTo(view.beatAt(lastPos.x), grid)), true)
                         if (mode == Mode.LoopL || mode == Mode.LoopR || mode == Mode.LoopBody) { loopPrev = null; a.onLoop(loopOrig.start, loopOrig.len, true) }
                         if (mode == Mode.Move || mode == Mode.TrimL || mode == Mode.TrimR) drag = null
+                        takeDrop = null
                     }
 
                     gesture@ while (true) {
@@ -371,7 +389,18 @@ fun TrackLane(
                             when (mode) {
                                 Mode.Scrub -> scrubAt(c.position.x, true)
                                 Mode.LoopL, Mode.LoopR, Mode.LoopBody -> { loopPrev = LoopPrev(loopNow, true); a.onLoop(loopNow.start, loopNow.len, true) }
-                                Mode.Move -> drag?.let { d -> drag = DragEdit(d.i, d.start, d.end, true, d.serial); a.onMove(d.i, d.start) }
+                                Mode.Move -> {
+                                    val td = takeDrop
+                                    takeDrop = null
+                                    if (td != null && td.target >= 0) { drag = null; a.onDemote(td.srcIdx, td.target) }
+                                    else drag?.let { d -> drag = DragEdit(d.i, d.start, d.end, true, d.serial); a.onMove(d.i, d.start) }
+                                }
+                                Mode.TakeDrag -> {
+                                    val td = takeDrop
+                                    takeDrop = null
+                                    if (td != null && td.target == DROP_MAIN) a.onPromote(td.srcLane, td.srcIdx)
+                                    else if (td != null && td.target >= 0) a.onTakeMove(td.srcLane, td.srcIdx, td.target)
+                                }
                                 Mode.TrimL -> drag?.let { d -> drag = DragEdit(d.i, d.start, d.end, true, d.serial); a.onTrim(d.i, d.start, null) }
                                 Mode.TrimR -> drag?.let { d -> drag = DragEdit(d.i, d.start, d.end, true, d.serial); a.onTrim(d.i, null, d.end) }
                                 Mode.Pan -> Unit
@@ -422,7 +451,7 @@ fun TrackLane(
                                     val hc = hitClip
                                     // Hold-drag on an UNSELECTED clip always MOVES; only the selected clip's handles trim
                                     // (and those arm immediately on press, see above).
-                                    mode = if (hc != null) Mode.Move else Mode.Pan
+                                    mode = if (hc != null) Mode.Move else if (takeHit != null) Mode.TakeDrag else Mode.Pan
                                 }
                                 else -> Unit
                             }
@@ -439,8 +468,24 @@ fun TrackLane(
                                 Mode.Move -> {
                                     val hc = hitClip!!
                                     val len = origEnd - origStart
-                                    val ns = max(0.0, snapTo(origStart + (x - p0.x) / view.ppb, grid))
-                                    drag = DragEdit(hc.i, ns, ns + len, false, ++dragSerial)
+                                    val tgt = dropAt(c.position.y, DROP_MAIN)
+                                    if (tgt >= 0) {
+                                        // dragged down into a take lane: the clip keeps its time, the lane highlights (DEMOTE)
+                                        drag = null
+                                        takeDrop = TakeDrop(DROP_MAIN, hc.i, hc.name, hc.color, origStart, origEnd, c.position.y, tgt)
+                                    } else {
+                                        takeDrop = null
+                                        val ns = max(0.0, snapTo(origStart + (x - p0.x) / view.ppb, grid))
+                                        drag = DragEdit(hc.i, ns, ns + len, false, ++dragSerial)
+                                    }
+                                }
+                                Mode.TakeDrag -> {
+                                    val th = takeHit!!
+                                    val tc = curM.takes.firstOrNull { it.i == th.first }?.clips?.firstOrNull { it.i == th.second }
+                                    if (tc != null) takeDrop = TakeDrop(
+                                        th.first, th.second, tc.name.ifEmpty { "Take" }, tc.color, tc.start, tc.end, c.position.y,
+                                        dropAt(c.position.y, th.first),
+                                    )
                                 }
                                 Mode.TrimL -> {
                                     val hc = hitClip!!
@@ -482,7 +527,7 @@ fun TrackLane(
             val takesN = if (model.showTakes) min(model.takes.size, 4) else 0
             val takeH = takeHFor(size.height, rulerPx, takesN, takeH0)
             val mh = max(size.height - rulerPx - takesN * takeH, 40f * dens)
-            drawBase(view, model, loopPrev?.loop, drag, peaks, scrubPx, rulerPx, mh, takeH, tm, dens)
+            drawBase(view, model, loopPrev?.loop, drag, takeDrop, peaks, scrubPx, rulerPx, mh, takeH, tm, dens)
         }
         // Overlay: recording region + playhead (reads clock.shown per frame; nothing recomposes).
         Canvas(Modifier.fillMaxSize()) {
@@ -525,7 +570,7 @@ private fun lighten(c: Color, t: Float): Color =
 private fun barPxOf(ppb: Float, bpb: Double): Float = (ppb * bpb).toFloat()
 
 private fun DrawScope.drawBase(
-    view: TimelineView, m: LaneModel, loopOverride: TLoop?, drag: DragEdit?, peaks: Map<String, Peaks>,
+    view: TimelineView, m: LaneModel, loopOverride: TLoop?, drag: DragEdit?, drop: TakeDrop?, peaks: Map<String, Peaks>,
     scrubPx: Float, rulerPx: Float, mainH: Float, takeH: Float, tm: TextMeasurer, dens: Float,
 ) {
     val w = size.width
@@ -742,6 +787,46 @@ private fun DrawScope.drawBase(
     if (m.showTakes && m.takes.size > 4) {
         val l = tm.measure("+${m.takes.size - 4} more lanes", BeatText, maxLines = 1)
         drawText(l, topLeft = Offset(w - l.size.width - 4f * dens, totalH - l.size.height - 1f))
+    }
+    if (drop != null) drawTakeDrop(view, m, drop, rulerPx, mainH, takeH, tm, dens)
+}
+
+/** Live-style drop target: the target lane is lit with a label, the carried clip follows the finger vertically (its time never changes). */
+private fun DrawScope.drawTakeDrop(
+    view: TimelineView, m: LaneModel, d: TakeDrop, rulerPx: Float, mainH: Float, takeH: Float, tm: TextMeasurer, dens: Float,
+) {
+    val w = size.width
+    if (d.target != DROP_NONE) {
+        val ty: Float; val th: Float
+        if (d.target == DROP_MAIN) { ty = rulerPx; th = mainH }
+        else {
+            val k = m.takes.indexOfFirst { it.i == d.target }
+            if (k < 0) return
+            ty = rulerPx + mainH + k * takeH; th = takeH
+        }
+        drawRect(LiveColors.Accent.copy(alpha = 0.22f), Offset(0f, ty), Size(w, th))
+        drawRect(LiveColors.Accent, Offset(1f, ty + 1f), Size(w - 2f, th - 2f), style = Stroke(2f * dens))
+        d.label?.let { txt ->
+            val l = tm.measure(txt, BeatText.copy(color = Color.White), maxLines = 1)
+            val bx = (w - l.size.width) / 2f
+            val by = ty + (th - l.size.height) / 2f
+            drawRoundRect(Color.Black.copy(alpha = 0.7f), Offset(bx - 6f * dens, by - 2f * dens), Size(l.size.width + 12f * dens, l.size.height + 4f * dens),
+                androidx.compose.ui.geometry.CornerRadius(3f * dens))
+            drawText(l, topLeft = Offset(bx, by))
+        }
+    }
+    // the carried clip
+    val sx = view.xOf(d.start); val ex = view.xOf(d.end)
+    val x0 = max(sx, 0f); val x1 = min(ex, w); if (x1 <= x0) return
+    val ch = if (d.srcLane == DROP_MAIN) takeH.coerceAtLeast(14f * dens) else min(takeH, 28f * dens)
+    val top = (d.y - ch / 2f).coerceIn(0f, size.height - ch)
+    val bg = liveColor(d.color)
+    drawRect(bg.copy(alpha = 0.85f), Offset(x0, top), Size(x1 - x0, ch))
+    drawRect(Color.White, Offset(x0, top), Size(x1 - x0, ch), style = Stroke(1.5f * dens))
+    if (x1 - x0 > 24f * dens) clipRect(x0, top, x1, top + ch) {
+        val l = tm.measure(d.name, ClipText.copy(fontSize = 10.sp, color = onColor(bg)), overflow = TextOverflow.Ellipsis, maxLines = 1,
+            constraints = Constraints(maxWidth = max(1, (x1 - x0 - 6f * dens).toInt())))
+        drawText(l, topLeft = Offset(x0 + 3f * dens, top + (ch - l.size.height) / 2f))
     }
 }
 

@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -133,7 +134,8 @@ fun MainShell(
     val cutL = cutoutOverride?.first ?: with(d) { cut.getLeft(d, LayoutDirection.Ltr).toDp() }
     val cutR = cutoutOverride?.second ?: with(d) { cut.getRight(d, LayoutDirection.Ltr).toDp() }
 
-    CompositionLocalProvider(LocalTabNavigator provides { t: Tab -> selected = t }) {
+    var bodyCorners by remember { mutableStateOf(BodyCorners()) }
+    CompositionLocalProvider(LocalTabNavigator provides { t: Tab -> selected = t }, LocalBodyCorners provides bodyCorners) {
     BoxWithConstraints(
         modifier.fillMaxSize().background(LiveColors.Bg).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical)),
     ) {
@@ -153,6 +155,7 @@ fun MainShell(
         val insEnd = (corners.tr - rightOcc).coerceAtLeast(0.dp)
         val botStart = (corners.bl - leftOcc).coerceAtLeast(0.dp)
         val botEnd = (corners.br - rightOcc).coerceAtLeast(0.dp)
+        SideEffect { if (bodyCorners.bottomStart != botStart || bodyCorners.bottomEnd != botEnd) bodyCorners = BodyCorners(botStart, botEnd) }
         Row(Modifier.fillMaxSize()) {
             if (stripL > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripL).fillMaxHeight().padding(top = corners.tl, bottom = corners.bl))
             Box(Modifier.width(padL))
@@ -191,6 +194,15 @@ fun MainShell(
     }
     }
 }
+
+/**
+ * Horizontal room the tab BODY must leave at its bottom-left / bottom-right so interactive edges there stay out of the
+ * rounded display corners (the part of the arc not already covered by the rail / info strips). Editors read this to inset
+ * their bottom bars and corner controls; plain list tabs get half of it as side padding.
+ */
+data class BodyCorners(val bottomStart: Dp = 0.dp, val bottomEnd: Dp = 0.dp)
+
+val LocalBodyCorners = androidx.compose.runtime.compositionLocalOf { BodyCorners() }
 
 /** Rounded display-corner radii (dp). */
 data class Corners(val tl: Dp = 0.dp, val tr: Dp = 0.dp, val bl: Dp = 0.dp, val br: Dp = 0.dp)
@@ -308,6 +320,14 @@ fun TabRail(tabs: List<Tab>, selected: Tab, modifier: Modifier = Modifier, onSel
 
 @Composable
 private fun TabBody(tab: Tab, store: LiveStore, client: LiveClient, modifier: Modifier) {
+    val bc = LocalBodyCorners.current
+    // Editors (Arrange, Clip) inset their own bottom bars precisely; list-like tabs give up half the corner room on each side.
+    val m = if (tab == Tab.Arrange || tab == Tab.Clip) modifier else modifier.padding(start = bc.bottomStart * 0.5f, end = bc.bottomEnd * 0.5f)
+    TabBodyInner(tab, store, client, m)
+}
+
+@Composable
+private fun TabBodyInner(tab: Tab, store: LiveStore, client: LiveClient, modifier: Modifier) {
     when (tab) {
         Tab.Arrange -> ArrangeScreen(store, client, modifier)
         Tab.Session -> SessionScreen(store, client, modifier)

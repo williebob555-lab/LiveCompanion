@@ -50,7 +50,13 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(K_ARR_TIP, false)
         set(v) { sp.edit().putBoolean(K_ARR_TIP, v).apply() }
 
+    /** Developer toggle: simulate a slow server (SimDelay). Only offered in dev builds. */
+    var simulateDelay: Boolean
+        get() = sp.getBoolean(K_SIM_DELAY, false)
+        set(v) { sp.edit().putBoolean(K_SIM_DELAY, v).apply() }
+
     private companion object {
+        const val K_SIM_DELAY = "sim_delay"
         const val K_ARR_TIP = "arrange_tip_seen"
         const val K_PANE_HIDDEN = "session_pane_hidden"
         const val K_ORIENTATION = "orientation"

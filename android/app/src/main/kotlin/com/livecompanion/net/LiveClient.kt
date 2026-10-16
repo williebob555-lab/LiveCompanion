@@ -292,6 +292,7 @@ open class LiveClient(
     // ---------------------------------------------------------------- requests
     /** Sends a request and suspends for the reply. Throws [LiveException] on `ok:false`, timeout or no connection. */
     open suspend fun request(op: String, args: JsonObject = JsonObject(emptyMap()), timeoutMs: Long = 8000): JsonElement {
+        if (SimDelay.ms > 0) delay(SimDelay.ms)
         val ws = socket ?: throw LiveException("Not connected")
         val id = nextId.getAndIncrement()
         val def = CompletableDeferred<JsonObject>()

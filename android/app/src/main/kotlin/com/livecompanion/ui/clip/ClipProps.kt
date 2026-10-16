@@ -53,7 +53,7 @@ class ClipOps(private val store: LiveStore, private val client: LiveClient) {
     private fun loc() = store.clip.value.loc
 
     fun set(k: String, v: Any, optimistic: (ClipState) -> ClipState) {
-        store.updateClip(optimistic)
+        store.editClip(optimistic)
         client.opThrottled("clipset.$k", "clip.set", "loc" to loc(), "k" to k, "v" to v)
     }
 

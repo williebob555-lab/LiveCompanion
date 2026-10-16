@@ -242,6 +242,20 @@ fun SettingsContent(modifier: Modifier = Modifier, connected: (@Composable Colum
             LiveLabel("Arrange")
             LiveText(ARRANGE_HELP, style = LiveType.Small, color = LiveColors.TextDim, maxLines = 4)
         }
+
+        if (remember { com.livecompanion.net.SimDelay.available(context) }) Section("Developer") {
+            var sim by remember { mutableStateOf(actions.prefs?.simulateDelay ?: false) }
+            LiveText(
+                "Simulate a slow server: every request reaches Live ${com.livecompanion.net.SimDelay.DEFAULT_MS} ms late. " +
+                    "Drags, faders and edits must still follow the finger and never snap back.",
+                style = LiveType.Small, color = LiveColors.TextDim, maxLines = 4,
+            )
+            LiveTextButton(if (sim) "Simulate ${com.livecompanion.net.SimDelay.DEFAULT_MS} ms server delay: ON" else "Simulate ${com.livecompanion.net.SimDelay.DEFAULT_MS} ms server delay: off", {
+                sim = !sim
+                actions.prefs?.simulateDelay = sim
+                com.livecompanion.net.SimDelay.ms = if (sim) com.livecompanion.net.SimDelay.DEFAULT_MS else 0L
+            }, Modifier.fillMaxWidth(), on = sim)
+        }
     }
 }
 

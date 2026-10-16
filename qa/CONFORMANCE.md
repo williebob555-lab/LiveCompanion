@@ -16,10 +16,11 @@ owner gives new feedback.
 - [ ] Every drag (loop brace, markers, clips, trim, notes, velocity, faders, knobs, params, scrub) tracks the finger
       at frame rate and never snaps back after release (test with an artificial 300 ms server delay).
 - [ ] Device added from browser / insert appears within one tick.
+- [ ] With More -> Help -> Developer "Simulate 300 ms server delay" ON: loop brace, markers, clip move/trim, notes, velocity, warp markers, session tile drop, take drops, faders, knobs, macros, punch, scrub all follow the finger and never jump back.
 
 ## Direct manipulation (principle 2)
-- [ ] Hold-drag works for: clips (session + arrangement), notes, devices, takes (promote/demote/move), loop brace,
-      markers, warp markers. Same hold delay everywhere.
+- [ ] Hold-drag works for: clips (session + arrangement), notes, devices, takes (promote / demote / move, in the track view AND the Takes tab
+      Main lane row; target lane lights up), loop brace, markers, warp markers. Same hold delay everywhere.
 - [ ] No action is reachable only via long-press menu; no submenus anywhere.
 - [ ] Every gesture also has a visible button alternative.
 

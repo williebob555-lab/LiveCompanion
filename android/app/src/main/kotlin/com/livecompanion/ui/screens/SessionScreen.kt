@@ -93,10 +93,12 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
     fun transfer(fromTr: String, fromI: Int, toTr: String, toI: Int, move: Boolean) {
         val known = if (toTr == slotsState.tr) slotsState.slots.firstOrNull { it.i == toI } else null
         if (known?.hasClip == true) { pending = PendingMove(fromTr, fromI, toTr, toI, move, known.clip?.name ?: ""); return }
+        optimisticSlots(store, fromTr, fromI, toTr, toI, move, swap = false)      // instant: the tile lands where it was dropped
         scope.launch {
             try {
                 client.request(if (move) "slot.move" else "slot.copy", jsonArgs("tr" to fromTr, "i" to fromI, "to_tr" to toTr, "to_i" to toI))
             } catch (e: com.livecompanion.net.LiveException) {
+                store.dropEdits(); client.op("focus.set", "tr" to slotsState.tr)          // refused: back to Live's truth
                 if (e.message?.contains("occupied") == true) pending = PendingMove(fromTr, fromI, toTr, toI, move, "")
                 else store.notice(e.message ?: "Move failed")
             }
@@ -269,14 +271,41 @@ fun SessionScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
         ReplaceMoveDialog(
             p, onCancel = { pending = null },
             onSwap = {
+                optimisticSlots(store, p.fromTr, p.fromI, p.toTr, p.toI, true, swap = true)
                 client.op("slot.move", "tr" to p.fromTr, "i" to p.fromI, "to_tr" to p.toTr, "to_i" to p.toI, "swap" to true); pending = null
             },
             onReplace = {
+                optimisticSlots(store, p.fromTr, p.fromI, p.toTr, p.toI, p.move, swap = false)
                 client.op(if (p.move) "slot.move" else "slot.copy", "tr" to p.fromTr, "i" to p.fromI, "to_tr" to p.toTr, "to_i" to p.toI, "replace" to true)
                 pending = null
             },
         )
     }
+}
+
+/**
+ * Optimistic slot move / copy / swap within one track (same-track only): the section changes at once and stays for ~600 ms
+ * against stale server echoes (SectionGuard) so a dropped tile never jumps back.
+ */
+internal fun optimisticSlots(store: LiveStore, fromTr: String, fromI: Int, toTr: String, toI: Int, move: Boolean, swap: Boolean) {
+    if (fromTr != toTr || fromI == toI) return
+    val a = store.slots.value.takeIf { it.tr == fromTr }?.slots?.firstOrNull { it.i == fromI }?.takeIf { it.hasClip } ?: return
+    val b = store.slots.value.slots.firstOrNull { it.i == toI } ?: return
+    val an = a.clip?.name; val bn = b.clip?.name
+    store.editSlots({ s ->
+        if (s.tr != fromTr) s else s.copy(slots = s.slots.map {
+            when (it.i) {
+                toI -> a.copy(i = toI, status = SlotStatus.STOPPED)
+                fromI -> if (swap) b.copy(i = fromI, status = if (b.hasClip) SlotStatus.STOPPED else SlotStatus.EMPTY) else if (move) SlotInfo(fromI, false, true, SlotStatus.EMPTY, null) else it
+                else -> it
+            }
+        })
+    }, { s ->
+        s.tr != fromTr || run {
+            val t = s.slots.firstOrNull { it.i == toI }; val f = s.slots.firstOrNull { it.i == fromI }
+            t?.hasClip == true && t.clip?.name == an && (swap && f?.clip?.name == bn || !swap && (!move || f?.hasClip != true))
+        }
+    })
 }
 
 /** Asked once when a move/copy lands on an occupied slot (never overwrite silently). */

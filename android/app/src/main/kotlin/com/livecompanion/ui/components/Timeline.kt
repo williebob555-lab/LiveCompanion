@@ -44,6 +44,7 @@ import com.livecompanion.state.RtFrame
 import com.livecompanion.ui.theme.LiveColors
 import com.livecompanion.ui.theme.LiveType
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -138,6 +139,9 @@ data class TClip(
 
 data class TLane(val clips: List<TClip>)
 
+/** A clip carried by a hold-drag between lanes (Takes tab: promote / demote / move). [target] = lane index or -1; [yContent] = finger y in lane-content coordinates. */
+data class TCarry(val fromLane: Int, val clip: TClip, val yContent: Float, val target: Int, val label: String?)
+
 data class TLoop(val enabled: Boolean, val start: Double, val len: Double)
 
 /** Height of the bar ruler: grows with font scale so ruler text never clips. */
@@ -181,6 +185,9 @@ fun Timeline(
     onRulerTap: (Double) -> Unit = {},
     onClipTap: (lane: Int, clip: TClip) -> Unit = { _, _ -> },
     onEmptyTap: (lane: Int, beat: Double) -> Unit = { _, _ -> },
+    /** Hold a clip and drag it onto another lane. [dropLabel] says what a drop on [to] would do (null = not allowed). */
+    onClipDrop: ((from: Int, clip: TClip, to: Int) -> Unit)? = null,
+    dropLabel: (from: Int, to: Int) -> String? = { _, _ -> null },
 ) {
     val density = LocalDensity.current
     val rulerH = timelineRulerHeight()
@@ -199,9 +206,20 @@ fun Timeline(
     val curClipTap by rememberUpdatedState(onClipTap)
     val curEmptyTap by rememberUpdatedState(onEmptyTap)
     val curV by rememberUpdatedState(vScroll)
+    val curDrop by rememberUpdatedState(onClipDrop)
+    val curDropLabel by rememberUpdatedState(dropLabel)
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     vScroll?.let { v -> androidx.compose.runtime.SideEffect { v.content = laneHPx * lanes.size } }
-    // While dragging a loop edge we render the local value; cleared when the finger lifts.
+    // Loop edge drag (OptimisticDrag rule): the local value is drawn while dragging and after release until the server shows
+    // it or 600 ms passed - never snaps back.
     var dragLoop by remember { mutableStateOf<TLoop?>(null) }
+    var loopReleased by remember { mutableStateOf(false) }
+    LaunchedEffect(loop, loopReleased) {
+        if (!loopReleased) return@LaunchedEffect
+        if (loop == dragLoop) { dragLoop = null; loopReleased = false }
+        else { kotlinx.coroutines.delay(Optimistic.SETTLE_MS); dragLoop = null; loopReleased = false }
+    }
+    var carry by remember { mutableStateOf<TCarry?>(null) }
 
     LaunchedEffect(follow) {
         if (!follow) return@LaunchedEffect
@@ -239,10 +257,42 @@ fun Timeline(
                     var prevCx = p0.x
                     var prevSpan = 0f
                     var loopNow = lp
-                    do {
-                        val ev = awaitPointerEvent()
+                    // hold-drag candidate: a clip under the finger (lane, clip) when drops are enabled
+                    var cand: Pair<Int, TClip>? = null
+                    if (curDrop != null && p0.y > rulerPx && view.fitted) {
+                        val li0 = ((p0.y - rulerPx + (curV?.clamped ?: 0f)) / laneHPx).toInt()
+                        curLanes.getOrNull(li0)?.clips?.firstOrNull { p0.x >= view.xOf(it.start) && p0.x <= view.xOf(it.end) }?.let { cand = li0 to it }
+                    }
+                    val tDown = System.nanoTime()
+                    var held = false
+                    var carrying = false
+                    while (true) {
+                        val ev = if (cand != null && !held && !moved && !multi) {
+                            val left = HOLD_DRAG_MS - (System.nanoTime() - tDown) / 1_000_000L
+                            if (left <= 0L) null else withTimeoutOrNull(left) { awaitPointerEvent() }
+                        } else awaitPointerEvent()
+                        if (ev == null) {
+                            held = true
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                            continue
+                        }
+                        if (!ev.changes.any { it.pressed }) break
                         val pressed = ev.changes.filter { it.pressed }
                         if (!view.fitted) continue
+                        if (held && cand != null && pressed.size == 1 && !multi) {
+                            val c = pressed[0]
+                            if (carrying || (c.position - p0).getDistance() > slop) {
+                                carrying = true; moved = true
+                                val (fromLane, clip) = cand!!
+                                val yc = c.position.y + (curV?.clamped ?: 0f)
+                                val to = ((c.position.y - rulerPx + (curV?.clamped ?: 0f)) / laneHPx).toInt()
+                                val inRange = c.position.y > rulerPx && to in curLanes.indices
+                                val lbl = if (inRange) curDropLabel(fromLane, to) else null
+                                carry = TCarry(fromLane, clip, yc, if (lbl != null) to else -1, lbl)
+                                c.consume()
+                            }
+                            continue
+                        }
                         if (pressed.size >= 2) {
                             multi = true
                             val a = pressed[0].position
@@ -279,6 +329,7 @@ fun Timeline(
                                     if (nl != loopNow) {
                                         loopNow = nl
                                         dragLoop = nl
+                                        loopReleased = false
                                         curOnLoop?.invoke(nl.start, nl.len, false)
                                     }
                                 } else {
@@ -293,10 +344,15 @@ fun Timeline(
                             prevSpan = 0f
                         }
                         if (pressed.size < 2) prevSpan = 0f
-                    } while (ev.changes.any { it.pressed })
-                    if (edge != 0 && moved) {
+                    }
+                    val cr = carry
+                    carry = null
+                    if (carrying && cr != null) {
+                        val cl = cand
+                        if (cr.target >= 0 && cl != null) curDrop?.invoke(cl.first, cl.second, cr.target)
+                    } else if (edge != 0 && moved) {
                         loopNow?.let { curOnLoop?.invoke(it.start, it.len, true) }
-                        dragLoop = null
+                        loopReleased = true
                     } else if (!moved && !multi && view.fitted) {
                         if (p0.y <= rulerPx) {
                             curRuler(max(0.0, view.beatAt(p0.x)))
@@ -326,14 +382,14 @@ fun Timeline(
             if (!view.fitted) return@Canvas
             val vs = vScroll
             if (vs == null) {
-                drawTimeline(view, lanes, curBpb, dragLoop ?: loop, rulerPx, laneHPx, measurer, density.density)
+                drawTimeline(view, lanes, curBpb, dragLoop ?: loop, rulerPx, laneHPx, measurer, density.density, carry)
             } else {
                 // Lanes scroll vertically under a fixed ruler: draw everything shifted, then the ruler on top.
                 translate(top = -vs.clamped) {
-                    drawTimeline(view, lanes, curBpb, dragLoop ?: loop, rulerPx, laneHPx, measurer, density.density)
+                    drawTimeline(view, lanes, curBpb, dragLoop ?: loop, rulerPx, laneHPx, measurer, density.density, carry)
                 }
                 clipRect(0f, 0f, size.width, rulerPx) {
-                    drawTimeline(view, emptyList(), curBpb, dragLoop ?: loop, rulerPx, laneHPx, measurer, density.density)
+                    drawTimeline(view, emptyList(), curBpb, dragLoop ?: loop, rulerPx, laneHPx, measurer, density.density, null)
                 }
             }
         }
@@ -366,6 +422,7 @@ private fun DrawScope.drawTimeline(
     laneH: Float,
     tm: TextMeasurer,
     dens: Float,
+    carry: TCarry?,
 ) {
     val w = size.width
     val ppb = view.ppb
@@ -478,6 +535,38 @@ private fun DrawScope.drawTimeline(
                 drawRect(Color.Black.copy(alpha = 0.5f), Offset(x0, top), Size(cw, h), style = Stroke(1f))
             }
         }
+    }
+    if (carry != null) drawCarry(view, carry, rulerPx, laneH, tm, dens)
+}
+
+private fun DrawScope.drawCarry(
+    view: TimelineView, c: TCarry, rulerPx: Float, laneH: Float, tm: TextMeasurer, dens: Float,
+) {
+    val w = size.width
+    if (c.target >= 0) {
+        val ty = rulerPx + c.target * laneH
+        drawRect(LiveColors.Accent.copy(alpha = 0.22f), Offset(0f, ty), Size(w, laneH))
+        drawRect(LiveColors.Accent, Offset(1f, ty + 1f), Size(w - 2f, laneH - 2f), style = Stroke(2f * dens))
+        c.label?.let { txt ->
+            val l = tm.measure(txt, ClipText.copy(color = Color.White), maxLines = 1)
+            val bx = (w - l.size.width) / 2f
+            val by = ty + (laneH - l.size.height) / 2f
+            drawRoundRect(Color.Black.copy(alpha = 0.7f), Offset(bx - 6f * dens, by - 2f * dens), Size(l.size.width + 12f * dens, l.size.height + 4f * dens),
+                androidx.compose.ui.geometry.CornerRadius(3f * dens))
+            drawText(l, topLeft = Offset(bx, by))
+        }
+    }
+    val x0 = max(view.xOf(c.clip.start), 0f); val x1 = min(view.xOf(c.clip.end), w)
+    if (x1 <= x0) return
+    val ch = (laneH - 4f * dens).coerceAtLeast(12f * dens)
+    val top = c.yContent - ch / 2f
+    val bg = liveColor(c.clip.color)
+    drawRect(bg.copy(alpha = 0.85f), Offset(x0, top), Size(x1 - x0, ch))
+    drawRect(Color.White, Offset(x0, top), Size(x1 - x0, ch), style = Stroke(1.5f * dens))
+    if (x1 - x0 > 24f * dens) clipRect(x0, top, x1, top + ch) {
+        val l = tm.measure(c.clip.name.ifEmpty { "-" }, ClipText.copy(color = onColor(bg)), overflow = TextOverflow.Ellipsis, maxLines = 1,
+            constraints = androidx.compose.ui.unit.Constraints(maxWidth = max(1, (x1 - x0 - 6f * dens).toInt())))
+        drawText(l, topLeft = Offset(x0 + 3f * dens, top + 1f * dens))
     }
 }
 

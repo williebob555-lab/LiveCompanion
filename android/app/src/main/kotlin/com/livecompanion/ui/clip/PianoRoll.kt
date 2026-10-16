@@ -122,7 +122,7 @@ fun PianoRoll(
     }
 
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val twoRows = maxWidth < 400.dp
+        val twoRows = maxWidth < 520.dp
         val compact = maxWidth < 640.dp
         val toolbarGrid: @Composable () -> Unit = {
             GridControls(sub, { sub = it }, snap, { snap = it }, "$num/$den", { sigDialog = true }, stepLabel(stepNow))
@@ -598,8 +598,9 @@ private fun LaneCanvas(clip: ClipState, ed: NoteEditor, view: RollView, axis: Ax
         val h = size.height
         drawRect(LiveColors.Panel, Offset(0f, 0f), Size(v.leftW, h))
         drawText(tm, if (lane == Lane.Vel) "VELOCITY" else "PROBABILITY", Offset(3f, 3f), TextStyle(fontSize = labelSp, color = LiveColors.TextDim))
+        // max label sits right under the title (never in the bottom-left corner: rounded display corners)
         val maxLbl = tm.measure(if (lane == Lane.Vel) "127" else "100%", TextStyle(fontSize = labelSp, color = LiveColors.TextDim))
-        drawText(maxLbl, topLeft = Offset(3f, h - maxLbl.size.height - 2f))
+        drawText(maxLbl, topLeft = Offset(3f, 3f + labelSp.toPx() * 1.5f))
         drawLine(LiveColors.Line, Offset(v.leftW, 0f), Offset(v.leftW, h), 1f)
         clipRect(v.leftW, 0f, w, h) {
             drawTimeGrid(v, axis, gridStepFor(sub, v.ppu, axis.beatLen, axis.barLen), 0f, h)

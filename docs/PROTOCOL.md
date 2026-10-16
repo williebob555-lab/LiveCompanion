@@ -90,7 +90,9 @@ launch_mode,launch_quant,legato,muted; `clip.delete {loc}`, `clip.duplicate_loop
 Notes (opened MIDI clip): `notes.add {notes:[N without id]}`, `notes.modify {notes:[N]}`, `notes.remove {ids}`,
 `notes.clear`, `notes.transpose {ids,semis}`, `notes.duplicate {ids,offset}`.
 Warp (opened audio clip): `warp.add {beat,sample_time?}`, `warp.move {beat,to_beat}`, `warp.remove {beat}`.
-Takes: `takes.create_lane {tr}`, `takes.rename {tr,lane,name}`, `takes.promote {loc}` (copy take clip to main lane).
+Takes: `takes.create_lane {tr}`, `takes.rename {tr,lane,name}`, `takes.promote {loc}` (copy take clip to main lane, same time),
+`takes.demote {loc, lane}` (loc = `arr` clip; main-lane clip -> take lane `lane` at the same time: `TakeLane.create_audio_clip(file_path, start)` / `create_midi_clip(start, len)` + notes copied, name/colour/gain best effort, THEN the original is deleted; returns `{lane, i}` = where the copy is. If the lane API is missing: `ok:false, err:"unsupported: take-lane clip creation (...)"` and nothing was changed),
+`takes.move {loc, lane}` (loc = `take` clip; copy into another take lane at the same time + delete original; same lane = no-op ok; same errors/return as demote). The phone drives all three from hold-drag (track view take lanes + Takes tab Main lane row).
 Devices: `device.open {tr,path}` / `device.close`, `device.toggle {tr,path}`, `device.param {tr,path,i,v}`,
 `device.delete {tr,path}`, `device.select {tr,path}`,
 `device.move {tr,path,to,into?}` (to = FINAL index in destination; `into` = rack chain path like `"2.c1"` to move into a chain, absent = same list; server converts to Live's pre-removal insertion index for `song.move_device`),

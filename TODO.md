@@ -4,12 +4,15 @@ Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (wh
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
 ## NOW (2026-10-16, owner testing on phone)
-- [x] Agent 1 (code done, gate run pending review): Connect settings/updates, demo mode (DemoClient), editable track picker (TracksScreen reused), zoom-out limits, 40dp top bar, OptimisticDrag helper (faders/knobs/loop brace only so far; note/clip/marker/device-param drags still server-echo driven), rounded-corner insets (Corners).
-- [~] Agent 2: waveforms without helper (clip.peaks in remote script, background thread).
-- [ ] AFTER agent 1: take lanes hold-drag promote/demote/move (track view + Takes tab), server ops for demote.
-- [ ] Then: build gate → CONFORMANCE REVIEW (reviewer agent fills qa/CONFORMANCE.md on emulator; FAILs fixed)
-      → release v0.1.1-test3 → reinstall remote script.
-- Process rule (owner, 2026-10-16): "do more reviewing with my obvious preferences" — every release gated on
+- [x] Agent 1: Connect settings/updates, demo mode (DemoClient), editable track picker, zoom-out limits, 40dp top bar, rounded-corner insets (committed 2a7c643).
+- [x] Agent 2: waveforms without helper (clip.peaks in remote script, background thread) (committed 2a7c643; real-Live check of Wine paths / large AIFF still pending).
+- [x] Pass 3 (uncommitted, gate green): INSTANT FEEL everywhere - SectionGuard (state/SectionGuard.kt) + LiveStore.edit* for clip markers/loop/warp/props, slot move, arr/takes, session (punch, loop, seek); NoteEditor settle; TrackLane drag settles on match (no reset on any clips section); Timeline loop edge settle; playhead hold 600 ms; debug "Simulate 300 ms server delay" (More -> Help -> Developer; SimDelay honoured by LiveClient + DemoClient).
+- [x] Pass 3: BodyCorners/LocalBodyCorners (Arrange bottom strips, Clip handle row, list tabs half), velocity "127" label out of the corner, LiveTextButton softWrap=false ("Fit" never wraps).
+- [x] Pass 3: TAKES hold-drag (promote / demote / move) in track view + Takes tab (new Main lane row), server `takes.demote` + `takes.move` (ops.py, fake LOM TakeLane.create_*_clip, 3 new pytest tests), PROTOCOL.md/LOM_NOTES.md, DemoClient simulates takes.*, arr.move/trim/create_midi, clip.delete/to_arr, slot.move/copy/duplicate.
+- [x] Pass 3: demo waveforms (assets/demo/peaks_sine_a.json, peaks_pad_chord.json; DemoClient clip.peaks resamples to the requested n).
+- [ ] Open / known gaps: (a) TakeLane.create_audio_clip/create_midi_clip + delete_clip-on-lane are UNVERIFIED on real Live (ops answer `unsupported` cleanly; verify with tools/live_verify.py --mutate); (b) the clip editor has no playhead scrub (Live's clip view has none either); (c) take hold-drag in the track view needs the Takes strip shown (a mid-drag layout change would be worse); (d) promote/demote keep the clip's time (vertical drag only); (e) device param value STRINGS (not the knob) still follow the server echo; (f) not yet run on a phone/emulator with the delay toggle on.
+- [ ] Then: CONFORMANCE REVIEW (reviewer agent fills qa/CONFORMANCE.md on emulator; FAILs fixed) -> release v0.1.1-test3 -> reinstall remote script.
+- Process rule (owner, 2026-10-16): "do more reviewing with my obvious preferences" - every release gated on
   qa/CONFORMANCE.md; derive and apply Core principles proactively.
 
 2026-10-16 waveforms without helper: `clip.peaks` op (remote_script core/peaks.py, background thread, deferred res) + Android PeaksClient WS-first/helper-fallback DONE, uncommitted. Pytest green; real-Live check pending (Wine path, large AIFF).

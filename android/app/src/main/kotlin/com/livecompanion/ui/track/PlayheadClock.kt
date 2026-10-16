@@ -76,6 +76,6 @@ class PlayheadClock {
     }
 
     companion object {
-        const val HOLD_NS = 450_000_000L
+        const val HOLD_NS = 600_000_000L
     }
 }

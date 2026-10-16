@@ -131,6 +131,8 @@ private fun ClipEditor(clip: ClipState, store: LiveStore, client: LiveClient, mo
     val ops = remember(store, client) { ClipOps(store, client) }
     val ed = remember(clip.loc) { NoteEditor(clip.notes, client) }
     LaunchedEffect(clip.notes) { if (!clip.audio) ed.reconcile(clip.notes) }
+    // A stale server list is held back for ~600 ms after a local edit; accept it then if it still differs.
+    LaunchedEffect(ed.holdSerial) { if (ed.holdSerial > 0) { kotlinx.coroutines.delay(NoteEditor.SETTLE_MS + 30); ed.flushHeld() } }
     val rt = store.rt.collectAsState() // State object only; read in draw lambdas
     val session by store.session.collectAsState()
     val slots by store.slots.collectAsState()
@@ -170,9 +172,10 @@ private fun ClipEditor(clip: ClipState, store: LiveStore, client: LiveClient, mo
                         .verticalScroll(rememberScrollState()).padding(4.dp),
                 ) { ClipProps(clip, ed.takeIf { !clip.audio }, ops, client, null) }
             }
-            // Thin always-visible handle: tap to expand/collapse the properties.
+            // Thin always-visible handle: tap to expand/collapse the properties. Inset so its ends clear the rounded corners.
+            val bc = LocalBodyCorners.current
             Row(
-                Modifier.fillMaxWidth().height(26.dp).background(LiveColors.PanelHi),
+                Modifier.fillMaxWidth().height(26.dp).padding(start = bc.bottomStart, end = bc.bottomEnd).background(LiveColors.PanelHi),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Row(
@@ -200,7 +203,7 @@ private fun storeClipEdits(store: LiveStore, client: LiveClient) = object : Clip
     private fun send(key: String, value: Any) = client.op("clip.set", "loc" to loc(), "k" to key, "v" to value)
 
     override fun set(key: String, value: Double) {
-        store.updateClip {
+        store.editClip({
             when (key) {
                 "loop_start" -> it.copy(loopStart = value)
                 "loop_end" -> it.copy(loopEnd = value)
@@ -210,30 +213,30 @@ private fun storeClipEdits(store: LiveStore, client: LiveClient) = object : Clip
                 "sig_den" -> it.copy(signature = listOf(it.signature.getOrElse(0) { 4 }, value.toInt()))
                 else -> it
             }
-        }
+        })
         send(key, if (key.startsWith("sig_")) value.toInt() else value)
     }
 
     override fun setLoop(start: Double, end: Double) {
         val old = store.clip.value
-        store.updateClip { it.copy(loopStart = start, loopEnd = end) }
+        store.editClip({ it.copy(loopStart = start, loopEnd = end) })
         // Keep start<end valid at every step on the server.
         if (start < old.loopEnd) { send("loop_start", start); send("loop_end", end) }
         else { send("loop_end", end); send("loop_start", start) }
     }
 
     override fun setLooping(on: Boolean) {
-        store.updateClip { it.copy(looping = on) }
+        store.editClip({ it.copy(looping = on) })
         send("looping", on)
     }
 
     override fun warpAdd(beat: Double) = client.op("warp.add", "loc" to loc(), "beat" to beat)
     override fun warpMove(beat: Double, to: Double) {
-        store.updateClip { c -> c.copy(warpMarkers = c.warpMarkers.map { if (kotlin.math.abs(it.beat - beat) < 1e-9) WarpMarker(to, it.sampleTime) else it }) }
+        store.editClip({ c -> c.copy(warpMarkers = c.warpMarkers.map { if (kotlin.math.abs(it.beat - beat) < 1e-9) WarpMarker(to, it.sampleTime) else it }) })
         client.op("warp.move", "loc" to loc(), "beat" to beat, "to_beat" to to)
     }
     override fun warpRemove(beat: Double) {
-        store.updateClip { c -> c.copy(warpMarkers = c.warpMarkers.filter { kotlin.math.abs(it.beat - beat) > 1e-9 }) }
+        store.editClip({ c -> c.copy(warpMarkers = c.warpMarkers.filter { kotlin.math.abs(it.beat - beat) > 1e-9 }) })
         client.op("warp.remove", "loc" to loc(), "beat" to beat)
     }
 }

@@ -157,6 +157,8 @@ class Ops(object):
         t["takes.create_lane"] = self.takes_create_lane
         t["takes.rename"] = self.takes_rename
         t["takes.promote"] = self.takes_promote
+        t["takes.demote"] = self.takes_demote
+        t["takes.move"] = self.takes_move
         t["device.open"] = self.device_open
         t["device.close"] = self.device_close
         t["device.toggle"] = self.device_toggle
@@ -869,6 +871,84 @@ class Ops(object):
             raise BadArgs("loc must be a take")
         cr = resolve_clip(self.song, loc)
         _call(cr.track, "duplicate_clip_to_arrangement", cr.clip, num(g(cr.clip, "start_time", 0.0)))
+
+    def _take_lane(self, track, a):
+        lanes = seq(g(track, "take_lanes", None))
+        i = need_int(a, "lane")
+        if not 0 <= i < len(lanes):
+            raise BadArgs("no such lane")
+        return i, lanes[i]
+
+    def _copy_to_lane(self, clip, lane, start):
+        """Create a copy of `clip` in take lane `lane` at beat `start` (TakeLane.create_audio_clip /
+        create_midi_clip). Returns the new clip. Missing API -> Unsupported (nothing has been changed)."""
+        audio = g(clip, "is_audio_clip", False)
+        what = "take-lane clip creation (TakeLane.%s missing in this Live)" % ("create_audio_clip" if audio else "create_midi_clip")
+        if audio:
+            path = g(clip, "file_path", "")
+            if not isinstance(path, str) or not path:
+                raise OpError("no audio file")
+            if not hasattr(lane, "create_audio_clip"):
+                raise Unsupported(what)
+            new = lane.create_audio_clip(path, float(start))
+        else:
+            if not hasattr(lane, "create_midi_clip"):
+                raise Unsupported(what)
+            length = num(g(clip, "end_time", 0.0)) - num(g(clip, "start_time", 0.0))
+            new = lane.create_midi_clip(float(start), float(max(length, MIN_ARR_LEN)))
+            specs = []
+            for n in S.get_notes(clip):
+                specs.append({"pitch": intv(g(n, "pitch", 60)), "start_time": num(g(n, "start_time", 0.0)),
+                              "duration": max(num(g(n, "duration", 0.25)), 0.0001),
+                              "velocity": num(g(n, "velocity", 100.0)), "mute": bool(g(n, "mute", False)),
+                              "probability": num(g(n, "probability", 1.0), 1.0),
+                              "velocity_deviation": num(g(n, "velocity_deviation", 0.0)),
+                              "release_velocity": num(g(n, "release_velocity", 64.0), 64.0)})
+            if specs and new is not None:
+                self._add(new, specs)
+        if new is None:
+            raise OpError("Live did not return the new take clip")
+        for k in ("name", "color", "muted", "gain", "pitch_coarse", "pitch_fine", "warping"):     # best effort
+            try:
+                if hasattr(clip, k) and hasattr(new, k):
+                    setattr(new, k, getattr(clip, k))
+            except Exception:
+                pass
+        return new
+
+    def _after_copy(self, track, clip, lane, new, lane_i):
+        """Delete the original once its copy exists; returns where the copy is."""
+        try:
+            _call(track, "delete_clip", clip)
+        except OpError:
+            raise
+        except Exception as e:
+            raise OpError("copied, but could not remove the original: %r" % (e,))
+        idx = None
+        for k, x in enumerate(lane_clips(lane)):
+            if x is new:
+                idx = k
+        return {"lane": lane_i, "i": idx}
+
+    def takes_demote(self, c, a):
+        """Main-lane (arrangement) clip -> take lane `lane`, same time: copy into the lane, then delete the original."""
+        cr = self._clip(a)
+        if cr.kind != "arr":
+            raise BadArgs("loc must be an arrangement clip")
+        lane_i, lane = self._take_lane(cr.track, a)
+        new = self._copy_to_lane(cr.clip, lane, num(g(cr.clip, "start_time", 0.0)))
+        return self._after_copy(cr.track, cr.clip, lane, new, lane_i)
+
+    def takes_move(self, c, a):
+        """Take clip -> another take lane, same time (copy + delete)."""
+        cr = self._clip(a)
+        if cr.kind != "take":
+            raise BadArgs("loc must be a take")
+        lane_i, lane = self._take_lane(cr.track, a)
+        if lane is cr.lane:
+            return {"lane": lane_i, "i": cr.index}
+        new = self._copy_to_lane(cr.clip, lane, num(g(cr.clip, "start_time", 0.0)))
+        return self._after_copy(cr.track, cr.clip, lane, new, lane_i)
 
     # ------------------------------------------------------------ devices
     def _dev(self, a):

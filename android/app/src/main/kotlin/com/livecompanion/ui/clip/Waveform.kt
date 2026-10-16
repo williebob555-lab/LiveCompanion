@@ -164,7 +164,7 @@ fun AudioEditor(
     }
 
     BoxWithConstraints(modifier.fillMaxSize().background(LiveColors.Bg)) {
-        val twoRows = maxWidth < 400.dp
+        val twoRows = maxWidth < 520.dp
         val gridTools: @Composable () -> Unit = {
             GridControls(sub, { sub = it }, snap, { snap = it }, "$num/$den", { sigDialog = true }, stepLabel(stepNow), showSub = !seconds)
         }

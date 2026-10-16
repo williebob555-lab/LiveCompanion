@@ -63,12 +63,14 @@ fun LiveText(
     color: Color = Color.Unspecified,
     maxLines: Int = 1,
     textAlign: TextAlign? = null,
+    softWrap: Boolean = true,
 ) {
     Text(
         text = text,
         modifier = modifier,
         style = style,
         color = color.takeIf { it != Color.Unspecified } ?: style.color,
+        softWrap = softWrap,
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
         textAlign = textAlign,
@@ -125,7 +127,8 @@ fun LiveTextButton(
     minHeight: Dp = 32.dp,
     minWidth: Dp = 32.dp,
 ) = LiveButton(onClick, modifier, on, onColor, enabled, onLongClick, minHeight, minWidth) { c ->
-    LiveText(label, style = LiveType.Small, color = c, textAlign = TextAlign.Center)
+    // Button labels never wrap or lose letters ("Fit" must not become "Fi/t"): the button grows instead.
+    LiveText(label, style = LiveType.Small, color = c, textAlign = TextAlign.Center, softWrap = false)
 }
 
 @Composable

@@ -152,6 +152,7 @@ class DemoClient(
     private fun pushFocus() { focusBy[focusRef]?.let { push("focus", FocusState.serializer(), it) } }
     private fun pushSlots(ref: String) { if (ref == focusRef) push("slots", SlotsState.serializer(), slotsFor(ref)) }
     private fun pushArr(ref: String) { if (ref == focusRef) push("arr", ArrState.serializer(), arrFor(ref)) }
+    private fun pushTakes(ref: String) { if (ref == focusRef) push("takes", TakesState.serializer(), takesFor(ref)) }
     private fun pushDevices(ref: String) { if (ref == focusRef) push("devices", DevicesState.serializer(), devicesFor(ref)) }
 
     private fun focus(ref: String) {
@@ -171,6 +172,7 @@ class DemoClient(
 
     // ------------------------------------------------------------ requests
     override suspend fun request(op: String, args: JsonObject, timeoutMs: Long): JsonElement {
+        if (SimDelay.ms > 0) delay(SimDelay.ms)
         try {
             return handle(op, args)
         } catch (e: LiveException) {
@@ -237,6 +239,19 @@ class DemoClient(
                 val i = I(a, "i"); val v = D(a, "v")?.toFloat()
                 if (i != null && v != null) deviceEdit(a) { d -> d.copy(pp = d.pp.map { p -> if (p.i == i) p.copy(v = v, str = fmt(v, p.min, p.max)) else p }) }
             }
+            "clip.peaks" -> return demoPeaks(a)
+            "arr.move" -> return arrMove(a)
+            "arr.trim" -> arrTrim(a)
+            "arr.create_midi" -> arrCreate(a)
+            "clip.delete" -> clipDelete(a)
+            "clip.to_arr" -> toArr(a)
+            "slot.move", "slot.copy" -> slotTransfer(a, op == "slot.move")
+            "slot.duplicate" -> slotDuplicate(a)
+            "takes.promote" -> takesPromote(a)
+            "takes.demote" -> return takesDemote(a)
+            "takes.move" -> return takesMove(a)
+            "takes.create_lane" -> takesCreateLane(a)
+            "takes.rename" -> takesRename(a)
             "browser.list" -> {
                 val path = (a["path"] as? JsonArray)?.size ?: 0
                 return fixture(when (path) { 0 -> "res_browser_roots"; 1 -> "res_browser_sub"; else -> "res_browser_deep" }) ?: JsonArray(emptyList())
@@ -500,6 +515,181 @@ class DemoClient(
             }
             pushArr(tr)
         }
+    }
+
+    // ------------------------------------------------------------ waveforms
+    /** Bundled peaks (assets/demo/peaks_*.json, recorded from the mock media) resampled to the requested bucket count. */
+    private fun demoPeaks(a: JsonObject): JsonElement {
+        val loc = locOf(a)
+        val n = (I(a, "n") ?: 1024).coerceIn(16, 8192)
+        val path = when {
+            store.clip.value.loc == loc && store.clip.value.filePath.isNotBlank() -> store.clip.value.filePath
+            S(loc, "w") == "arr" -> arrFor(S(loc, "tr") ?: "").clips.firstOrNull { it.i == I(loc, "i") }?.filePath.orEmpty()
+            else -> ""
+        }
+        val key = if (path.contains("pad_chord", true)) "peaks_pad_chord" else "peaks_sine_a"
+        val src = fixture(key) as? JsonObject ?: throw LiveException("no audio file")
+        val sn = src["n"]?.jsonPrimitive?.intOrNull ?: return src
+        fun resample(k: String): JsonArray = JsonArray((src[k] as JsonArray).map { chan ->
+            val v = (chan as JsonArray).map { it.jsonPrimitive.doubleOrNull ?: 0.0 }
+            JsonArray(List(n) { b ->
+                val lo = (b.toLong() * sn / n).toInt().coerceIn(0, sn - 1)
+                val hi = ((b + 1).toLong() * sn / n).toInt().coerceIn(lo + 1, sn)
+                var m = v[lo]
+                for (j in lo until hi) m = if (k == "min") minOf(m, v[j]) else maxOf(m, v[j])
+                JsonPrimitive(m)
+            })
+        })
+        return buildJsonObject {
+            put("sr", src["sr"] ?: JsonPrimitive(44100)); put("ch", src["ch"] ?: JsonPrimitive(1))
+            put("frames", src["frames"] ?: JsonPrimitive(0)); put("n", n)
+            put("min", resample("min")); put("max", resample("max"))
+        }
+    }
+
+    // ------------------------------------------------------------ arrangement / takes / slots (demo "server")
+    private fun reindex(clips: List<ArrClip>): List<ArrClip> = clips.sortedBy { it.start }.mapIndexed { k, c -> c.copy(i = k) }
+    private fun locOf(a: JsonObject, key: String = "loc") = a[key] as? JsonObject ?: throw LiveException("bad loc")
+
+    private fun arrMove(a: JsonObject): JsonElement {
+        val loc = locOf(a); val tr = S(loc, "tr") ?: ""; val i = I(loc, "i") ?: -1
+        val start = D(a, "start") ?: throw LiveException("start required")
+        val c = arrFor(tr).clips.firstOrNull { it.i == i } ?: throw LiveException("no such arrangement clip")
+        val len = c.end - c.start
+        val moved = c.copy(start = start.coerceAtLeast(0.0), end = start.coerceAtLeast(0.0) + len)
+        // Live overwrites what the moved clip lands on
+        val rest = arrFor(tr).clips.filter { it.i != i && (it.end <= moved.start || it.start >= moved.end) }
+        val all = reindex(rest + moved)
+        arrBy[tr] = arrFor(tr).copy(clips = all)
+        pushArr(tr)
+        return buildJsonObject { put("i", all.indexOfFirst { it.start == moved.start && it.name == moved.name }) }
+    }
+
+    private fun arrTrim(a: JsonObject) {
+        val loc = locOf(a); val tr = S(loc, "tr") ?: ""; val i = I(loc, "i") ?: -1
+        val c = arrFor(tr).clips.firstOrNull { it.i == i } ?: throw LiveException("no such arrangement clip")
+        val ns = D(a, "start") ?: c.start; val ne = D(a, "end") ?: c.end
+        if (ne - ns < 0.0625) throw LiveException("clip would be shorter than 1/16 beat")
+        arrBy[tr] = arrFor(tr).copy(clips = reindex(arrFor(tr).clips.map { if (it.i == i) it.copy(start = ns, end = ne) else it }))
+        pushArr(tr)
+    }
+
+    private fun arrCreate(a: JsonObject) {
+        val tr = S(a, "tr") ?: return
+        val start = D(a, "start") ?: 0.0; val len = D(a, "len") ?: 4.0
+        val color = store.tracks.value.find(tr)?.color ?: 0x3FC0FF
+        arrBy[tr] = arrFor(tr).copy(clips = reindex(arrFor(tr).clips + ArrClip(name = "", color = color, start = start, end = start + len)))
+        pushArr(tr)
+    }
+
+    private fun clipDelete(a: JsonObject) {
+        val loc = locOf(a); val tr = S(loc, "tr") ?: ""; val i = I(loc, "i") ?: -1
+        when (S(loc, "w")) {
+            "slot" -> { slotsBy[tr] = slotsFor(tr).let { s -> s.copy(slots = s.slots.map { if (it.i == i) SlotInfo(i, false, true, SlotStatus.EMPTY, null) else it }) }; pushSlots(tr) }
+            "arr" -> { arrBy[tr] = arrFor(tr).let { s -> s.copy(clips = reindex(s.clips.filter { it.i != i })) }; pushArr(tr) }
+            "take" -> {
+                val lane = I(loc, "lane") ?: -1
+                takesBy[tr] = takesFor(tr).let { s -> s.copy(lanes = s.lanes.map { l -> if (l.i != lane) l else l.copy(clips = l.clips.filter { it.i != i }.mapIndexed { k, c -> c.copy(i = k) }) }) }
+                pushTakes(tr)
+            }
+        }
+    }
+
+    private fun toArr(a: JsonObject) {
+        val loc = locOf(a); val tr = S(loc, "tr") ?: ""
+        val time = D(a, "time") ?: 0.0
+        val c = when (S(loc, "w")) {
+            "slot" -> slotsFor(tr).slots.firstOrNull { it.i == I(loc, "i") }?.clip?.let { ArrClip(name = it.name, color = it.color, start = time, end = time + (it.len.takeIf { l -> l > 0 } ?: 4.0), audio = it.audio) }
+            "arr" -> arrFor(tr).clips.firstOrNull { it.i == I(loc, "i") }?.let { it.copy(start = time, end = time + (it.end - it.start)) }
+            else -> null
+        } ?: return
+        arrBy[tr] = arrFor(tr).copy(clips = reindex(arrFor(tr).clips + c))
+        pushArr(tr)
+    }
+
+    private fun slotTransfer(a: JsonObject, move: Boolean) {
+        val fromTr = S(a, "tr") ?: return; val toTr = S(a, "to_tr") ?: fromTr
+        val fromI = I(a, "i") ?: return; val toI = I(a, "to_i") ?: return
+        val src = slotsFor(fromTr).slots.firstOrNull { it.i == fromI }?.takeIf { it.hasClip } ?: throw LiveException("no clip in slot")
+        val dst = slotsFor(toTr).slots.firstOrNull { it.i == toI } ?: throw LiveException("no such slot")
+        val replace = B(a, "replace") == true; val swap = B(a, "swap") == true
+        if (dst.hasClip && !replace && !(move && swap)) throw LiveException("target slot is occupied")
+        if (fromTr == toTr && fromI == toI) return
+        val landed = src.copy(i = toI, status = SlotStatus.STOPPED)
+        val back = if (swap && dst.hasClip) dst.copy(i = fromI, status = SlotStatus.STOPPED) else SlotInfo(fromI, false, true, SlotStatus.EMPTY, null)
+        slotsBy[toTr] = slotsFor(toTr).let { s -> s.copy(slots = s.slots.map { if (it.i == toI) landed else it }) }
+        if (move) slotsBy[fromTr] = slotsFor(fromTr).let { s -> s.copy(slots = s.slots.map { if (it.i == fromI) back else it }) }
+        pushSlots(toTr); if (fromTr != toTr) pushSlots(fromTr)
+    }
+
+    private fun slotDuplicate(a: JsonObject) {
+        val tr = S(a, "tr") ?: return; val i = I(a, "i") ?: return
+        val s = slotsFor(tr)
+        val src = s.slots.firstOrNull { it.i == i }?.takeIf { it.hasClip } ?: throw LiveException("no clip in slot")
+        val free = s.slots.firstOrNull { it.i > i && !it.hasClip } ?: throw LiveException("no free slot below")
+        slotsBy[tr] = s.copy(slots = s.slots.map { if (it.i == free.i) src.copy(i = free.i, status = SlotStatus.STOPPED) else it })
+        pushSlots(tr)
+    }
+
+    private fun takesPromote(a: JsonObject) {
+        val loc = locOf(a); val tr = S(loc, "tr") ?: ""
+        val lane = takesFor(tr).lanes.firstOrNull { it.i == I(loc, "lane") } ?: throw LiveException("no such take lane")
+        val tc = lane.clips.firstOrNull { it.i == I(loc, "i") } ?: throw LiveException("no such take")
+        val audio = store.tracks.value.find(tr)?.kind != "midi"
+        arrBy[tr] = arrFor(tr).copy(clips = reindex(arrFor(tr).clips + ArrClip(name = tc.name, color = tc.color, start = tc.start, end = tc.end, audio = audio)))
+        pushArr(tr)
+    }
+
+    private fun takesAdd(tr: String, laneI: Int, c: com.livecompanion.state.TakeClip): Int {
+        var idx = -1
+        takesBy[tr] = takesFor(tr).let { s ->
+            s.copy(lanes = s.lanes.map { l ->
+                if (l.i != laneI) l else {
+                    val all = (l.clips + c).sortedBy { it.start }.mapIndexed { k, x -> x.copy(i = k) }
+                    idx = all.indexOfFirst { it.start == c.start && it.name == c.name }
+                    l.copy(clips = all)
+                }
+            })
+        }
+        return idx
+    }
+
+    private fun takesDemote(a: JsonObject): JsonElement {
+        val loc = locOf(a); val tr = S(loc, "tr") ?: ""; val i = I(loc, "i") ?: -1
+        val laneI = I(a, "lane") ?: throw LiveException("lane required")
+        if (S(loc, "w") != "arr") throw LiveException("loc must be an arrangement clip")
+        if (takesFor(tr).lanes.none { it.i == laneI }) throw LiveException("no such lane")
+        val c = arrFor(tr).clips.firstOrNull { it.i == i } ?: throw LiveException("no such arrangement clip")
+        val idx = takesAdd(tr, laneI, com.livecompanion.state.TakeClip(0, c.name, c.color, c.start, c.end))
+        arrBy[tr] = arrFor(tr).copy(clips = reindex(arrFor(tr).clips.filter { it.i != i }))
+        pushArr(tr); pushTakes(tr)
+        return buildJsonObject { put("lane", laneI); put("i", idx) }
+    }
+
+    private fun takesMove(a: JsonObject): JsonElement {
+        val loc = locOf(a); val tr = S(loc, "tr") ?: ""; val i = I(loc, "i") ?: -1
+        val from = I(loc, "lane") ?: -1; val to = I(a, "lane") ?: throw LiveException("lane required")
+        if (S(loc, "w") != "take") throw LiveException("loc must be a take")
+        if (takesFor(tr).lanes.none { it.i == to }) throw LiveException("no such lane")
+        val c = takesFor(tr).lanes.firstOrNull { it.i == from }?.clips?.firstOrNull { it.i == i } ?: throw LiveException("no such take")
+        if (from == to) return buildJsonObject { put("lane", to); put("i", i) }
+        val idx = takesAdd(tr, to, c)
+        takesBy[tr] = takesFor(tr).let { s -> s.copy(lanes = s.lanes.map { l -> if (l.i != from) l else l.copy(clips = l.clips.filter { it.i != i }.mapIndexed { k, x -> x.copy(i = k) }) }) }
+        pushTakes(tr)
+        return buildJsonObject { put("lane", to); put("i", idx) }
+    }
+
+    private fun takesCreateLane(a: JsonObject) {
+        val tr = S(a, "tr") ?: return
+        val s = takesFor(tr)
+        takesBy[tr] = s.copy(lanes = s.lanes + com.livecompanion.state.TakeLane(s.lanes.size, "Take Lane ${s.lanes.size + 1}", emptyList()))
+        pushTakes(tr)
+    }
+
+    private fun takesRename(a: JsonObject) {
+        val tr = S(a, "tr") ?: return; val lane = I(a, "lane") ?: return; val name = S(a, "name") ?: return
+        takesBy[tr] = takesFor(tr).let { s -> s.copy(lanes = s.lanes.map { if (it.i == lane) it.copy(name = name) else it }) }
+        pushTakes(tr)
     }
 
     private fun notes(op: String, a: JsonObject) {

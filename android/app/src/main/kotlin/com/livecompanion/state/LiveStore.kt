@@ -29,6 +29,13 @@ class LiveStore {
     private val _params = MutableStateFlow(ParamsState())
     private val _clip = MutableStateFlow(ClipState())
     private val _rt = MutableStateFlow(RtFrame())
+
+    // Optimistic edits that must survive a stale server echo for ~600 ms (see SectionGuard).
+    private val sessionGuard = SectionGuard<SessionState>()
+    private val clipGuard = SectionGuard<ClipState>()
+    private val slotsGuard = SectionGuard<SlotsState>()
+    private val arrGuard = SectionGuard<ArrState>()
+    private val takesGuard = SectionGuard<TakesState>()
     private val _notices = MutableSharedFlow<String>(extraBufferCapacity = 32, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     val hello: StateFlow<HelloInfo?> = _hello.asStateFlow()
@@ -63,21 +70,38 @@ class LiveStore {
             if (d is kotlinx.serialization.json.JsonNull) {
                 // d:null = "closed / gone" (clip.close, deleted clip, focus change, device.close): clear the editor state.
                 when (name) {
-                    "clip" -> _clip.value = ClipState()
+                    "clip" -> { clipGuard.clear(); _clip.value = ClipState() }
                     "params" -> _params.value = ParamsState()
                 }
                 return
             }
             when (name) {
-                "session" -> _session.value = LiveJson.decodeFromJsonElement(SessionState.serializer(), d)
+                "session" -> _session.value = sessionGuard.reconcile(LiveJson.decodeFromJsonElement(SessionState.serializer(), d))
                 "tracks" -> _tracks.value = LiveJson.decodeFromJsonElement(TracksState.serializer(), d)
                 "focus" -> _focus.value = LiveJson.decodeFromJsonElement(FocusState.serializer(), d)
-                "slots" -> _slots.value = LiveJson.decodeFromJsonElement(SlotsState.serializer(), d)
-                "arr" -> _arr.value = LiveJson.decodeFromJsonElement(ArrState.serializer(), d)
-                "takes" -> _takes.value = LiveJson.decodeFromJsonElement(TakesState.serializer(), d)
+                "slots" -> {
+                    val n = LiveJson.decodeFromJsonElement(SlotsState.serializer(), d)
+                    if (n.tr != _slots.value.tr) slotsGuard.clear()      // other track: pending edits belong to the old one
+                    _slots.value = slotsGuard.reconcile(n)
+                }
+                "arr" -> {
+                    val n = LiveJson.decodeFromJsonElement(ArrState.serializer(), d)
+                    if (n.tr != _arr.value.tr) arrGuard.clear()      // other track: pending edits belong to the old one
+                    _arr.value = arrGuard.reconcile(n)
+                }
+                "takes" -> {
+                    val n = LiveJson.decodeFromJsonElement(TakesState.serializer(), d)
+                    if (n.tr != _takes.value.tr) takesGuard.clear()      // other track: pending edits belong to the old one
+                    _takes.value = takesGuard.reconcile(n)
+                }
                 "devices" -> _devices.value = LiveJson.decodeFromJsonElement(DevicesState.serializer(), d)
                 "params" -> _params.value = LiveJson.decodeFromJsonElement(ParamsState.serializer(), d)
-                "clip" -> _clip.value = LiveJson.decodeFromJsonElement(ClipState.serializer(), d)
+                "clip" -> {
+                    val c = LiveJson.decodeFromJsonElement(ClipState.serializer(), d)
+                    // A different clip (loc changed) drops pending edits of the previous one.
+                    if (c.loc != _clip.value.loc) clipGuard.clear()
+                    _clip.value = clipGuard.reconcile(c)
+                }
             }
         } catch (e: Exception) {
             notice("Bad '$name' section: ${e.message?.take(120)}")
@@ -104,6 +128,7 @@ class LiveStore {
         _params.value = ParamsState()
         _clip.value = ClipState()
         _rt.value = RtFrame()
+        sessionGuard.clear(); clipGuard.clear(); slotsGuard.clear(); arrGuard.clear(); takesGuard.clear()
     }
 
     // ---------------------------------------------------------------- optimistic helpers
@@ -111,6 +136,30 @@ class LiveStore {
     fun updateFocus(f: (FocusState) -> FocusState) = _focus.update(f)
     fun updateSlots(f: (SlotsState) -> SlotsState) = _slots.update(f)
     fun updateClip(f: (ClipState) -> ClipState) = _clip.update(f)
+
+    /**
+     * Optimistic edits that survive a stale server section for ~600 ms (never snap back). The patch is applied now and
+     * re-applied to incoming sections until [done] says the server shows it (default: the patch changes nothing).
+     */
+    fun editSession(patch: (SessionState) -> SessionState, done: (SessionState) -> Boolean = { it == patch(it) }) {
+        sessionGuard.add(patch, done); _session.update(patch)
+    }
+    fun editClip(patch: (ClipState) -> ClipState, done: (ClipState) -> Boolean = { it == patch(it) }) {
+        clipGuard.add(patch, done); _clip.update(patch)
+    }
+    fun editSlots(patch: (SlotsState) -> SlotsState, done: (SlotsState) -> Boolean = { it == patch(it) }) {
+        slotsGuard.add(patch, done); _slots.update(patch)
+    }
+    fun editArr(patch: (ArrState) -> ArrState, done: (ArrState) -> Boolean = { it == patch(it) }) {
+        arrGuard.add(patch, done); _arr.update(patch)
+    }
+    fun editTakes(patch: (TakesState) -> TakesState, done: (TakesState) -> Boolean = { it == patch(it) }) {
+        takesGuard.add(patch, done); _takes.update(patch)
+    }
+
+    /** Forget pending optimistic section edits (after a refused op, before re-requesting the truth). */
+    fun dropEdits() { sessionGuard.clear(); clipGuard.clear(); slotsGuard.clear(); arrGuard.clear(); takesGuard.clear() }
+
     fun updateDevices(f: (DevicesState) -> DevicesState) = _devices.update(f)
     fun updateParams(f: (ParamsState) -> ParamsState) = _params.update(f)
 

@@ -575,10 +575,26 @@ class FakeRouting(object):
 class FakeLane(Observable):
     _observed = ("name", "arrangement_clips")
 
-    def __init__(self, name):
+    def __init__(self, name, track=None):
         Observable.__init__(self)
         self.name = name
         self.arrangement_clips = []
+        self._track = track
+
+    # Live 12.x TakeLane API (assumed; see docs/LOM_NOTES.md)
+    def create_audio_clip(self, file_path, position):
+        song = self._track._song
+        c = audio_clip_from_wav(song, os.path.splitext(os.path.basename(str(file_path)))[0], self._track.color,
+                                file_path, arr_start=float(position))
+        self.arrangement_clips = sorted(self.arrangement_clips + [c], key=lambda x: x.start_time)
+        song._edit()
+        return c
+
+    def create_midi_clip(self, start_time, length):
+        c = FakeClip("", self._track.color, length, arr_start=float(start_time))
+        self.arrangement_clips = sorted(self.arrangement_clips + [c], key=lambda x: x.start_time)
+        self._track._song._edit()
+        return c
 
 
 class FakeTrack(_DeviceListMixin, Observable):
@@ -673,7 +689,7 @@ class FakeTrack(_DeviceListMixin, Observable):
         self._song._edit()
 
     def create_take_lane(self):
-        lane = FakeLane("Take Lane %d" % (len(self.take_lanes) + 1))
+        lane = FakeLane("Take Lane %d" % (len(self.take_lanes) + 1), self)
         self.take_lanes = list(self.take_lanes) + [lane]
         return lane
 
@@ -1317,7 +1333,7 @@ def build_demo(media_dir=None):
 
     # take lanes
     def lane(track, name, clips, color, wavname):
-        ln = FakeLane(name)
+        ln = FakeLane(name, track)
         ln.arrangement_clips = [audio_clip_from_wav(song, cn, color, wav(wavname), arr_start=float(s)) for cn, s in clips]
         track.take_lanes = list(track.take_lanes) + [ln]
 
