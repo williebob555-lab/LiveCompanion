@@ -34,6 +34,25 @@ Single user (the owner). Read this before every change. Newest entries at the bo
 - 2026-10-15: Default orientation is LANDSCAPE (more natural clip editor). App locks to sensorLandscape by
   default; Settings offers Landscape / Portrait / Auto. Phone-landscape (~360dp tall) is the PRIMARY layout to
   optimize — keep vertical chrome minimal there so editors get height. Portrait must still work.
+- 2026-10-15 (owner QA of v0.1.0-test2, real Live) — BINDING UI DIRECTION:
+  - DIRECT MANIPULATION over menus: hold-and-drag to move things everywhere (clips, notes, markers, devices,
+    track order). Owner HATES submenus/long-press menus as the main way to act. Menus only for rare actions.
+  - TRACK VIEW front and center (the focused track's arrangement lane / clips). Takes are rarely used — owner
+    records over the spots to redo. Takes must not take prominent space; demote to a secondary mode.
+  - Playhead: dragging must be SMOOTH (interpolated, continuous scrub) and offer precise placement inside a bar
+    (snap choices incl. off/1/16/beat/bar, nudge, typed bar.beat.sixteenth).
+  - Clip editor: full width, left-to-right, as much detail as Live's own clip view (ruler, loop brace, markers,
+    note names, grid, velocity, etc.). Not "simple and tiny".
+  - Devices: horizontal SIGNAL CHAIN like Live (devices left→right with their parameters), drag to reorder.
+  - Track list: drag to reorder (LOM has NO move_track — see LOM_NOTES; explain/offer alternative), add,
+    remove, rename, color inline.
+  - Keep screen on while app is open. Fullscreen/immersive (no status bar clock/battery).
+  - Use the camera-cutout side strip in landscape for read-only info (position, tempo, meters, connection).
+  - Accent color: Ableton LIGHT BLUE, not yellow-orange. Subtle roundness (Live-like small radii).
+  - Collapsible UI must be obvious/intuitive (the rail collapse wasn't discoverable).
+  - App icon/branding consistent with the owner's LiveSample (C:\Sampler App) and LivePatch (C:\LivePatch) apps.
+  - Responsiveness: device added from browser took ~10 s to appear — changes must reflect within one tick.
+  - Overall: "make it look good and make sense".
 - 2026-10-15: Ableton-side setup must be EASY and QUICK. Keep SETUP.md ≤ a handful of steps; aim for a
   one-click Windows installer (script + optional helper autostart) and zero config beyond picking the
   control surface once.

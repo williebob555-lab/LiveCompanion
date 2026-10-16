@@ -8,12 +8,15 @@
 | panel_hi | #363636 | raised controls, headers |
 | line | #444444 | 1dp dividers |
 | text | #C8C8C8 | primary text; text_dim #8A8A8A |
-| accent | #FFA22B | selection, focus track, active toggles (Live orange) |
+| accent | #5FBEEB | selection, focus track, active toggles (Ableton light blue — owner, replaces orange) |
+| warn | #FFA22B | only for warnings / Live's own orange-coded states (e.g. clip launch armed), sparingly |
 | play | #5FD35F | playing / play button |
 | rec | #FF3B30 | record, arm |
 | solo | #3D9FE0 | solo; mute-on uses accent-yellow #E8C547 |
 Clip/track colors come from Live as RGB. Text on a clip color: black if luminance > 0.5 else white.
-Type: system sans, 11–13sp (labels 10sp caps). Flat, square-ish corners (2dp), no shadows, no gradients.
+Type: system sans, 11–13sp (labels 10sp caps). Flat, subtle roundness (3–4dp radii like Live 12), no shadows, no gradients.
+Fullscreen immersive + keep-screen-on. Landscape cutout side strip = read-only info (position, tempo, CPU, meters, link).
+Interaction: drag-first (hold+drag moves/reorders/trims); menus only for rare actions; no nested submenus.
 Toggles look like Live buttons: small rectangles, lit when on.
 
 ## Orientation

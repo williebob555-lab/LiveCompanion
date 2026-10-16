@@ -3,7 +3,22 @@
 Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (why)
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
-## RESUME HERE (paused 2026-10-15 at owner's usage limit)
+## RESUME HERE — Milestone 2 "UI lock-in" (owner feedback recorded in PREFERENCES 2026-10-15; owner asleep)
+Plan: 4 parallel sonnet agents, then QA pass + fix pass:
+- [ ] A Shell/visual: light-blue accent, 3–4dp radii, immersive fullscreen, keep-screen-on, cutout info strip,
+      TRACK VIEW (Arrange) as default/front, Session as tab (not permanent half pane), Takes demoted,
+      obvious collapse affordances, track list (add/remove/rename/color inline; reorder impossible → explain),
+      app icon matching C:\Sampler App + C:\LivePatch branding.
+- [ ] B Track view/playhead: smooth interpolated playhead + continuous scrub (scrub_by/song.seek throttled),
+      snap off/1/16/beat/bar, nudge, typed locate; drag clips to move (dup_to_arr+delete), drag edges to trim.
+- [ ] C Clip editor rewrite: full-width L→R, Live-level detail (ruler, loop brace, markers drag, note names,
+      fold, scale highlight, velocity lane, drag everything; props in a thin collapsible strip).
+- [ ] D Devices: horizontal signal chain with params inline, drag reorder (song.move_device), insert_device,
+      server devices listener so browser loads appear within one tick (owner saw ~10 s lag).
+- Then: re-run tools/dump_fixtures.py, QA pass 2 on new build + real Live, fix, tag v0.1.0-test3.
+Port note: stop any mock on 9010 before using real Live (it blocked the script once).
+
+## Earlier resume notes
 - Released v0.1.0-test1 then v0.1.0-test2 (prerelease, tag on 8ca7296) with APK + remote-script zip + helper zip. SETUP.md written.
 - QA R3/R4 + session-pane toggle fixed and released as v0.1.0-test2 (CI-built; not yet re-QA'd on emulator).
 - Next: (1) easy setup: one-click Windows installer (tools/setup_windows.ps1: install script + helper

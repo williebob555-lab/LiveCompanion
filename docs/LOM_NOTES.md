@@ -1,28 +1,24 @@
 # Live Object Model notes (Live 12.4.1)
 
-Facts here must be VERIFIED (by the probe script `remote_script/LiveCompanion/probe.py` output against the
-real Live, or by observed behavior). Mark unverified assumptions with `(?)`.
+VERIFIED from the real probe (`~/LiveCompanion_probe.json`, written by `probe.py` on script load, 2026-10-15).
+Re-run: reload the control surface in Live; the file is rewritten. Unverified items marked `(?)`.
 
-## Status
-- Probe not yet run. Everything below is from prior knowledge — treat as `(?)` until verified.
+## Verified present
+- Song: `move_device`, `scrub_by`, `jump_by`, `jump_to_next_cue/prev_cue`, `nudge_up/down`, `capture_and_insert_scene`,
+  cue_points, scale info (root_note, scale_name, scale_intervals, scale_mode), groove/swing, tempo_follower,
+  listeners for tracks/scenes/current_song_time/is_playing/etc.
+- Track (audio/midi/return/master share the class): `arrangement_clips`, `clip_slots`, `take_lanes`,
+  `create_take_lane`, `create_audio_clip`, `create_midi_clip`, `delete_clip`, `duplicate_clip_slot`,
+  `duplicate_clip_to_arrangement`, `insert_device` (native devices by name), `delete_device`, `duplicate_device`,
+  `jump_in_running_session_clip`, `is_frozen`, input/output meters (`input_meter_level`, `output_meter_left/right`),
+  `devices` listener (add_devices_listener) — use it so browser loads appear immediately.
+- ClipSlot: `create_audio_clip`, `delete_clip`, `duplicate_clip_to`, playing_status, controls_other_clips.
+- Device: parameters listener, `latency_in_ms`, view.is_collapsed. Application: average/peak process usage (CPU).
+- song.view: selected_chain, selected_parameter, draw_mode, follow_song, detail_clip.
 
-## Expected API used (?)
-- Song: tracks, return_tracks, master_track, scenes, view.selected_track/selected_scene/detail_clip, is_playing,
-  start_playing/stop_playing/continue_playing, tempo, tap_tempo, signature_numerator/denominator, current_song_time,
-  record_mode, session_record, arrangement_overdub, punch_in/out, loop, loop_start, loop_length, metronome,
-  count_in_duration, clip_trigger_quantization, midi_recording_quantization, can_undo/undo, can_redo/redo,
-  capture_midi, stop_all_clips, re_enable_automation, back_to_arranger, session_automation_record,
-  jump_by, jump_to_next_cue/prev_cue, create_audio_track/midi_track/return_track, delete_track, duplicate_track,
-  create_scene, song_length, move_device(?).
-- Track: name, color, arm, can_be_armed, mute, solo, current_monitoring_state, clip_slots, arrangement_clips,
-  take_lanes(?), create_take_lane(?), devices, mixer_device(volume,panning,sends), output_meter_left/right,
-  input_routing_type/available_input_routing_types, input_routing_channel, output_routing_type,
-  is_foldable, fold_state, group_track, playing_slot_index, fired_slot_index, stop_all_clips, delete_device,
-  delete_clip(?), duplicate_clip_to_arrangement(?), create_midi_clip(start,len)(?), create_audio_clip(path,pos)(?).
-- ClipSlot: has_clip, clip, fire, stop, create_clip(len), delete_clip, duplicate_clip_to(slot), has_stop_button,
-  is_triggered, is_playing, is_recording.
-- Clip: get_notes_extended, add_new_notes, apply_note_modifications, remove_notes_by_id(?), remove_notes_extended,
-  quantize, duplicate_loop, crop, warp_markers, add_warp_marker/move_warp_marker/remove_warp_marker(?),
-  file_path, sample_rate(?), sample_length.
-- Browser (Application.browser): instruments, audio_effects, midi_effects, drums, sounds, samples, packs,
-  user_library, plugins, clips, load_item, preview_item, stop_preview.
+## Verified ABSENT
+- No `move_track` / track reordering anywhere in the API. Track order cannot be changed remotely.
+
+## Not yet probed (no clip existed in the probed set)
+- Clip members (notes API, warp markers, start_time settability for moving arrangement clips) `(?)`.
+  Moving an arrangement clip = duplicate_clip_to_arrangement at new time + delete_clip (works per API presence).
