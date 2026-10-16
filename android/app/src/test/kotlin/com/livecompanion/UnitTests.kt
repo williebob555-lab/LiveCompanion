@@ -104,6 +104,8 @@ class MiscTest {
     @Test fun versions() {
         assertTrue(Version.parse("1.2.0")!! > Version.parse("1.1.9")!!)
         assertTrue(Version.parse("1.0.0")!! > Version.parse("1.0.0-test.4")!!)
+        assertTrue(Version.parse("0.1.0-test10")!! > Version.parse("0.1.0-test9")!!)
+        assertTrue(Version.parse("0.1.1-test1")!! > Version.parse("0.1.0-test10")!!)
         assertEquals(Version.parse("1.2"), Version.parse("v1.2.0").let { Version(listOf(1, 2), null) })
         assertEquals("1.0.0-test.7", Version.findIn("LiveCompanion test build 1.0.0-test.7")!!.toString())
     }

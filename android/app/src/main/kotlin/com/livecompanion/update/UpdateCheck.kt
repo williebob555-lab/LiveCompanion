@@ -294,11 +294,27 @@ data class Version(val parts: List<Int>, val preRelease: String? = null) : Compa
                 ln != null && rn != null -> ln.compareTo(rn)
                 ln != null -> -1
                 rn != null -> 1
-                else -> l.compareTo(r)
+                else -> naturalCompare(l, r)
             }
             if (diff != 0) return diff
         }
         return 0
+    }
+
+    /** "test9" < "test10": compares runs of digits as numbers, everything else as text. */
+    private fun naturalCompare(a: String, b: String): Int {
+        val chunk = Regex("\\d+|\\D+")
+        val ca = chunk.findAll(a).map { it.value }.toList()
+        val cb = chunk.findAll(b).map { it.value }.toList()
+        for (i in 0 until minOf(ca.size, cb.size)) {
+            val x = ca[i]
+            val y = cb[i]
+            val xn = x.toBigIntegerOrNull()
+            val yn = y.toBigIntegerOrNull()
+            val diff = if (xn != null && yn != null) xn.compareTo(yn) else x.compareTo(y)
+            if (diff != 0) return diff
+        }
+        return ca.size.compareTo(cb.size)
     }
 
     override fun toString(): String = parts.joinToString(".") + (preRelease?.let { "-$it" } ?: "")
