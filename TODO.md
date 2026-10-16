@@ -4,7 +4,9 @@ Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (wh
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
 ## RESUME HERE — Milestone 2 "UI lock-in" (owner feedback recorded in PREFERENCES 2026-10-15; owner asleep)
-Status: agents A–D launched (sonnet, parallel). Clip editor hard minimums added to PREFERENCES.
+Status: A–D DONE, committed 367edb2 (full gate green). QA pass 2 agent running (mock + read-only real Live).
+Orchestrator-noted: clip toolbar overflows at 800x360 ("Del" cut); Arrange hint text row wastes height;
+device panels mostly empty vertically (show more params when tall). Then fix pass → tag v0.1.0-test3.
 Plan: 4 parallel sonnet agents, then QA pass + fix pass:
 - [x] A Shell/visual (DONE, uncommitted; reorder note shown in Tracks tab): light-blue accent, 3–4dp radii, immersive fullscreen, keep-screen-on, cutout info strip,
       TRACK VIEW (Arrange) as default/front, Session as tab (not permanent half pane), Takes demoted,

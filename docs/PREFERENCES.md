@@ -61,6 +61,11 @@ Single user (the owner). Read this before every change. Newest entries at the bo
   one-click Windows installer (script + optional helper autostart) and zero config beyond picking the
   control surface once.
 
+## Machine limits (owner's laptop, 15 GB RAM)
+- 2026-10-16: laptop restarted mid-QA (likely RAM exhaustion: 2 emulators + Gradle daemons + agents).
+  Rules: max ONE emulator at a time; never run emulator QA and Gradle-heavy agents concurrently; run
+  `gradlew --stop` after build-heavy phases; kill emulators when a QA round ends.
+
 ## Performance-sensitive areas
 - Remote script runs on Live's main thread. All socket I/O is non-blocking and done in the ~100 ms
   `update_display` tick (plus schedule_message). Never block, never sleep, never do file I/O per tick.
