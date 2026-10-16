@@ -63,7 +63,7 @@ class ClipOps(private val store: LiveStore, private val client: LiveClient) {
 @Composable
 fun StepField(
     label: String, display: String, modifier: Modifier = Modifier, pxPerStep: Float = 8f, typedInit: String = display,
-    onStep: (Int) -> Unit, onTyped: (String) -> Unit,
+    onStep: (Int) -> Unit, onTyped: (String) -> Unit, validate: (String) -> String? = { null },
 ) {
     var acc by remember { mutableFloatStateOf(0f) }
     NumField(
@@ -75,6 +75,7 @@ fun StepField(
         },
         onDragEnd = { acc = 0f },
         onTyped = onTyped,
+        validate = validate,
     )
 }
 
@@ -123,10 +124,20 @@ fun ClipProps(
                 val disp = if (unwarped) "%.2fs".format(value) else formatBbt(value, bb)
                 StepField(
                     label, disp, Modifier.weight(1f), pxPerStep = 8f, typedInit = if (unwarped) "%.3f".format(value) else disp,
-                    onStep = { s -> val nv = max(0.0, value + s * if (unwarped) 0.05 else 0.25); ops.set(key, nv) { upd(it, nv) } },
+                    onStep = { s ->
+                        // Dragging clamps so start<end and loop_start<loop_end always hold.
+                        val nv = clampMarker(key, max(0.0, value + s * if (unwarped) 0.05 else 0.25), clip)
+                        if (nv != null && nv != value) ops.set(key, nv) { upd(it, nv) }
+                    },
+                    validate = { t ->
+                        val nv = if (unwarped) parseNumber(t) else parseBbt(t, bb)?.takeIf { it.isFinite() }
+                        if (nv == null) {
+                            if (unwarped) "Enter seconds, e.g. 1.5" else "Use bar.beat.sixteenth (e.g. 2.1.1) or beats"
+                        } else markerError(key, nv, clip)
+                    },
                     onTyped = { t ->
-                        val nv = if (unwarped) t.trim().replace(',', '.').toDoubleOrNull() else parseBbt(t, bb)
-                        if (nv != null && nv >= 0) ops.set(key, nv) { upd(it, nv) }
+                        val nv = if (unwarped) parseNumber(t) else parseBbt(t, bb)
+                        if (nv != null && markerError(key, nv, clip) == null) ops.set(key, nv) { upd(it, nv) }
                     },
                 )
             }
@@ -150,9 +161,9 @@ fun ClipProps(
                             val db = ((curDb ?: 0.0) + s * 0.1).coerceIn(-70.0, 24.0)
                             ops.set("gain_db", db) { it.copy(gainStr = "%.1f dB".format(java.util.Locale.US, db)) }
                         },
+                        validate = { t -> numberError(t.trim().removeSuffix("dB").removeSuffix("db"), -70.0, 24.0, unit = "dB") },
                         onTyped = { t ->
-                            t.trim().replace(',', '.').removeSuffix("dB").removeSuffix("db").trim().toDoubleOrNull()?.let { v ->
-                                val db = v.coerceIn(-70.0, 24.0)
+                            parseNumber(t.trim().removeSuffix("dB").removeSuffix("db"))?.takeIf { it in -70.0..24.0 }?.let { db ->
                                 ops.set("gain_db", db) { it.copy(gainStr = "%.1f dB".format(java.util.Locale.US, db)) }
                             }
                         },
@@ -160,12 +171,14 @@ fun ClipProps(
                     StepField(
                         "Semi", "${clip.pitchCoarse}", Modifier.weight(1f), pxPerStep = 10f,
                         onStep = { s -> val v = (clip.pitchCoarse + s).coerceIn(-48, 48); ops.set("pitch_coarse", v) { it.copy(pitchCoarse = v) } },
-                        onTyped = { t -> t.trim().toIntOrNull()?.let { v -> ops.set("pitch_coarse", v.coerceIn(-48, 48)) { it.copy(pitchCoarse = v.coerceIn(-48, 48)) } } },
+                        validate = { t -> numberError(t, -48.0, 48.0, int = true, unit = "semitones") },
+                        onTyped = { t -> t.trim().toIntOrNull()?.takeIf { it in -48..48 }?.let { v -> ops.set("pitch_coarse", v) { it.copy(pitchCoarse = v) } } },
                     )
                     StepField(
                         "Cents", "${clip.pitchFine.roundToInt()}", Modifier.weight(1f), pxPerStep = 3f,
                         onStep = { s -> val v = (clip.pitchFine + s).coerceIn(-50f, 50f); ops.set("pitch_fine", v) { it.copy(pitchFine = v) } },
-                        onTyped = { t -> t.trim().toFloatOrNull()?.let { v -> ops.set("pitch_fine", v.coerceIn(-50f, 50f)) { it.copy(pitchFine = v.coerceIn(-50f, 50f)) } } },
+                        validate = { t -> numberError(t, -50.0, 50.0, unit = "cents") },
+                        onTyped = { t -> parseNumber(t)?.takeIf { it in -50.0..50.0 }?.let { d -> val v = d.toFloat(); ops.set("pitch_fine", v) { it.copy(pitchFine = v) } } },
                     )
                     if (clip.warpModes.isNotEmpty()) {
                         ChoiceField(
@@ -183,7 +196,8 @@ fun ClipProps(
                     StepField(
                         "Amount", "$amount%", Modifier.weight(1f), pxPerStep = 5f,
                         onStep = { s -> amount = (amount + s * 5).coerceIn(0, 100) },
-                        onTyped = { t -> t.trim().removeSuffix("%").toIntOrNull()?.let { amount = it.coerceIn(0, 100) } },
+                        validate = { t -> numberError(t.trim().removeSuffix("%"), 0.0, 100.0, int = true, unit = "%") },
+                        onTyped = { t -> t.trim().removeSuffix("%").toIntOrNull()?.takeIf { it in 0..100 }?.let { amount = it } },
                     )
                     Btn("Quantize", { ops.act("clip.quantize", "grid" to Q_GRIDS[gi].second, "amount" to amount / 100.0) }, Modifier.weight(1f))
                     Btn("Dup loop", { ops.act("clip.duplicate_loop") }, Modifier.weight(1f))

@@ -1,6 +1,7 @@
 package com.livecompanion.net
 
 import com.livecompanion.state.LiveJson
+import com.livecompanion.state.sanitizeJson
 import com.livecompanion.state.LiveStore
 import com.livecompanion.state.HelloInfo
 import kotlinx.coroutines.CompletableDeferred
@@ -37,6 +38,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
@@ -72,7 +74,12 @@ class LiveClient(
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(4, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
+        // RFC 6455 control-frame ping: every compliant server answers it, even one that ignores our JSON ping.
+        .pingInterval(10, TimeUnit.SECONDS)
         .build(),
+    private val helloTimeoutMs: Long = HELLO_TIMEOUT_MS,
+    private val pingMs: Long = PING_MS,
+    private val silenceMs: Long = SILENCE_MS,
 ) {
     private val _state = MutableStateFlow(ConnState())
     val state: StateFlow<ConnState> = _state.asStateFlow()
@@ -113,8 +120,14 @@ class LiveClient(
         failPending("Disconnected")
     }
 
+    /**
+     * First attempt: a single try. If it never produces a `hello` (refused, DNS, timeout, not our protocol) the state
+     * goes to IDLE with [ConnState.lastError] and the loop ends - the UI stays on the Connect screen.
+     * Once a hello has been seen, drops are retried forever with backoff (auto-reconnect).
+     */
     private suspend fun runLoop(target: HostTarget) {
         var attempt = 0
+        var established = false
         while (currentCoroutineContext().isActive) {
             _state.value = ConnState(
                 if (attempt == 0) ConnStatus.CONNECTING else ConnStatus.RECONNECTING,
@@ -122,7 +135,9 @@ class LiveClient(
             )
             val closed = CompletableDeferred<String?>()
             val lastRx = AtomicLong(System.nanoTime())
-            var gotHello = false
+            val gotHello = AtomicBoolean(false)
+            val pongSeen = AtomicBoolean(false)
+            val noHello = AtomicBoolean(false)
             val hostPart = if (target.host.contains(':') && !target.host.startsWith("[")) "[${target.host}]" else target.host
             val ws = try {
                 http.newWebSocket(
@@ -130,13 +145,16 @@ class LiveClient(
                     object : WebSocketListener() {
                         override fun onMessage(webSocket: WebSocket, text: String) {
                             lastRx.set(System.nanoTime())
-                            val msg = try {
-                                LiveJson.parseToJsonElement(text).jsonObject
-                            } catch (_: Exception) {
-                                return
+                            try {
+                                val msg = LiveJson.parseToJsonElement(text).jsonObject
+                                when (msg["t"]?.jsonPrimitive?.contentOrNull) {
+                                    "hello" -> gotHello.set(true)
+                                    "pong" -> pongSeen.set(true)
+                                }
+                                dispatch(sanitizeJson(msg) as JsonObject)
+                            } catch (e: Exception) {
+                                // Junk or hostile payload: ignore the message, never drop the connection over it.
                             }
-                            if (msg["t"]?.jsonPrimitive?.contentOrNull == "hello") gotHello = true
-                            dispatch(msg)
                         }
 
                         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -158,29 +176,58 @@ class LiveClient(
                 return
             }
             socket = ws
+            val helloWatch = scope.launch(Dispatchers.IO) {
+                delay(helloTimeoutMs)
+                if (!gotHello.get()) {
+                    noHello.set(true)
+                    ws.cancel() // -> onFailure -> closed
+                }
+            }
             val pinger = scope.launch(Dispatchers.IO) {
                 while (isActive) {
-                    delay(PING_MS)
+                    delay(pingMs)
                     if (!ws.send(PING)) break
-                    if (System.nanoTime() - lastRx.get() > SILENCE_NS) {
+                    // Only a server that has shown it answers JSON pings is held to the silence limit; a minimal
+                    // server (hello + sections only) is kept alive by the WebSocket-level ping instead.
+                    if (pongSeen.get() && System.nanoTime() - lastRx.get() > silenceMs * 1_000_000L) {
                         ws.cancel() // -> onFailure -> closed
                         break
                     }
                 }
             }
-            val reason: String? = try {
+            var reason: String? = try {
                 closed.await()
             } finally {
+                helloWatch.cancel()
                 pinger.cancel()
                 ws.cancel()
                 socket = null
                 failPending("Connection lost")
             }
-            if (gotHello) attempt = 0
+            if (gotHello.get()) { attempt = 0; established = true }
+            if (noHello.get()) reason = "No hello from host within ${helloTimeoutMs / 1000} s - is it LiveCompanion?"
+            if (!established) {
+                _state.value = ConnState(ConnStatus.IDLE, target, 1, friendlyError(reason, target))
+                return
+            }
             _state.value = ConnState(ConnStatus.RECONNECTING, target, attempt + 1, reason)
             delay(BACKOFF_MS[attempt.coerceAtMost(BACKOFF_MS.lastIndex)])
             attempt++
         }
+    }
+
+    private fun friendlyError(raw: String?, target: HostTarget): String {
+        val r = raw ?: "no response"
+        val why = when {
+            r.startsWith("No hello") -> r
+            r.contains("refused", true) -> "connection refused (is Live running with the LiveCompanion control surface?)"
+            r.contains("Unable to resolve host", true) || r.contains("UnknownHost", true) || r.contains("No address associated", true) ->
+                "unknown host name"
+            r.contains("timeout", true) || r.contains("timed out", true) -> "timed out"
+            r.contains("unreachable", true) -> "network unreachable"
+            else -> r.take(120)
+        }
+        return "Could not connect to ${target.label}: $why"
     }
 
     private fun dispatch(msg: JsonObject) {
@@ -325,7 +372,8 @@ class LiveClient(
     companion object {
         private const val PING = """{"t":"ping"}"""
         private const val PING_MS = 3000L
-        private const val SILENCE_NS = 10_000_000_000L
+        private const val SILENCE_MS = 10_000L
+        const val HELLO_TIMEOUT_MS = 5000L
         private val BACKOFF_MS = longArrayOf(500, 1000, 2000, 4000, 5000)
     }
 }

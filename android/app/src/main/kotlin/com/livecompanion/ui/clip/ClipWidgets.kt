@@ -94,6 +94,7 @@ fun NumField(
     label: String, display: String, modifier: Modifier = Modifier,
     typedInit: String = display, enabled: Boolean = true,
     onDrag: (Float) -> Unit, onDragEnd: () -> Unit = {}, onTyped: (String) -> Unit,
+    validate: (String) -> String? = { null },
 ) {
     var typing by remember { mutableStateOf(false) }
     val dragS = rememberUpdatedState(onDrag)
@@ -111,17 +112,20 @@ fun NumField(
             },
         enabled,
     )
-    if (typing) TypeDialog(label, typedInit, onDismiss = { typing = false }, onOk = { typing = false; onTyped(it) })
+    if (typing) TypeDialog(label, typedInit, onDismiss = { typing = false }, onOk = { typing = false; onTyped(it) }, validate = validate)
 }
 
+/** Typing dialog. [validate] returns an inline error (OK stays disabled and the message shows) or null when fine. */
 @Composable
-fun TypeDialog(title: String, initial: String, onDismiss: () -> Unit, onOk: (String) -> Unit) {
+fun TypeDialog(title: String, initial: String, onDismiss: () -> Unit, onOk: (String) -> Unit, validate: (String) -> String? = { null }) {
     var text by remember { mutableStateOf(initial) }
+    val err = validate(text)
     LiveDialog(title = title, onDismiss = onDismiss) {
-        LiveTextField(text, { text = it }, Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text), onDone = { onOk(text) })
+        LiveTextField(text, { text = it }, Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text), onDone = { if (err == null) onOk(text) })
+        if (err != null) LiveText(err, style = LiveType.Small, color = LiveColors.Rec, maxLines = 2)
         LiveDialogButtons {
             LiveTextButton("Cancel", onDismiss, minHeight = DenseH)
-            LiveTextButton("OK", { onOk(text) }, on = true, minHeight = DenseH)
+            LiveTextButton("OK", { onOk(text) }, on = err == null, enabled = err == null, minHeight = DenseH)
         }
     }
 }

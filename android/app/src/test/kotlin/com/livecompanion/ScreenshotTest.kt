@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.test.core.app.ActivityScenario
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.livecompanion.net.DiscoveredHost
+import com.livecompanion.net.ConnStatus
 import com.livecompanion.net.HostTarget
 import com.livecompanion.net.LiveClient
 import com.livecompanion.ui.screens.ConnectScreen
@@ -87,7 +88,36 @@ class ScreenshotTest(private val wDp: Int, private val hDp: Int, private val lan
     @Test fun shellSession() {
         val store = fakeStore()
         val client = LiveClient(store, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
-        launch { MainShell(store, client, Modifier.fillMaxSize(), initialTab = Tab.Session) }
+        launch { MainShell(store, client, Modifier.fillMaxSize(), initialTab = Tab.Session, statusOverride = ConnStatus.CONNECTED) }
         rule.onRoot().captureRoboImage(name("shell_session"))
+    }
+
+    @Test fun shellDisconnected() {
+        // Idle client = not connected: top bar replaced in place by the status strip, body dimmed.
+        val store = fakeStore()
+        val client = LiveClient(store, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
+        launch { MainShell(store, client, Modifier.fillMaxSize(), initialTab = Tab.Session) }
+        rule.onRoot().captureRoboImage(name("shell_disconnected"))
+    }
+
+    @Test fun connectConnecting() {
+        launch {
+            ConnectScreen(
+                discovered = emptyList(), recents = listOf(HostTarget("10.0.2.2", 9010)), onConnect = {},
+                connecting = HostTarget("10.0.2.2", 9099), initialManual = "10.0.2.2:99999",
+            )
+        }
+        rule.onRoot().captureRoboImage(name("connect_connecting"))
+    }
+
+    @Test fun connectError() {
+        launch {
+            ConnectScreen(
+                discovered = emptyList(), recents = emptyList(), onConnect = {},
+                error = "Could not connect to 10.0.2.2:9099: connection refused (is Live running with the LiveCompanion control surface?)",
+                initialManual = "host:abc",
+            )
+        }
+        rule.onRoot().captureRoboImage(name("connect_error"))
     }
 }

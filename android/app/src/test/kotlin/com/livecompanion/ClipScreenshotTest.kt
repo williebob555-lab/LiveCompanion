@@ -69,7 +69,7 @@ class ClipScreenshotTest(private val wDp: Int, private val hDp: Int, private val
         RuntimeEnvironment.setQualifiers("w${w}dp-h${h}dp-${if (land) "land" else "port"}-xhdpi")
         RuntimeEnvironment.setFontScale(fontScale)
         scenario = ActivityScenario.launch(ComponentActivity::class.java)
-        scenario!!.onActivity { it.setContent { LiveTheme { MainShell(store, client, Modifier.fillMaxSize(), initialTab = Tab.Clip) } } }
+        scenario!!.onActivity { it.setContent { LiveTheme { MainShell(store, client, Modifier.fillMaxSize(), initialTab = Tab.Clip, statusOverride = com.livecompanion.net.ConnStatus.CONNECTED) } } }
         rule.waitForIdle()
         rule.onRoot().captureRoboImage(name(shot))
     }

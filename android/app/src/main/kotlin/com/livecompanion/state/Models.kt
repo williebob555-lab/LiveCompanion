@@ -314,3 +314,34 @@ object Loc {
     fun take(tr: String, lane: Int, i: Int): JsonObject =
         buildJsonObject { put("w", "take"); put("tr", tr); put("lane", lane); put("i", i) }
 }
+
+// ------------------------------------------------------------------ hardening
+private const val MAX_STR = 300
+private const val MAX_NUM = 1.0e9
+
+/**
+ * Defends the decoders against hostile/buggy servers: NaN/Infinity and absurd numbers become 0 / are clamped to
+ * +-1e9 (so Int fields can't overflow and drop the whole section) and strings are cut to 300 chars (a 100 KB name
+ * would otherwise be laid out in full). Structure is untouched.
+ */
+fun sanitizeJson(e: kotlinx.serialization.json.JsonElement, depth: Int = 0): kotlinx.serialization.json.JsonElement = when {
+    depth > 24 -> kotlinx.serialization.json.JsonNull
+    e is kotlinx.serialization.json.JsonObject ->
+        kotlinx.serialization.json.JsonObject(e.mapValues { sanitizeJson(it.value, depth + 1) })
+    e is kotlinx.serialization.json.JsonArray -> kotlinx.serialization.json.JsonArray(e.map { sanitizeJson(it, depth + 1) })
+    e is kotlinx.serialization.json.JsonPrimitive && e.isString ->
+        if (e.content.length > MAX_STR) kotlinx.serialization.json.JsonPrimitive(e.content.take(MAX_STR)) else e
+    e is kotlinx.serialization.json.JsonPrimitive && e !is kotlinx.serialization.json.JsonNull -> {
+        val c = e.content
+        val d = c.toDoubleOrNull()
+        when {
+            c == "true" || c == "false" -> e
+            d == null -> kotlinx.serialization.json.JsonPrimitive(0) // NaN / Infinity / garbage literal
+            d.isNaN() || d.isInfinite() -> kotlinx.serialization.json.JsonPrimitive(0)
+            d > MAX_NUM -> kotlinx.serialization.json.JsonPrimitive(MAX_NUM.toLong())
+            d < -MAX_NUM -> kotlinx.serialization.json.JsonPrimitive(-MAX_NUM.toLong())
+            else -> e
+        }
+    }
+    else -> e
+}

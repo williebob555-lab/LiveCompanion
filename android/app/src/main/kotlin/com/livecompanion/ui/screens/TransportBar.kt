@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import com.livecompanion.net.LiveClient
 import com.livecompanion.state.LiveStore
 import com.livecompanion.state.SessionState
+import com.livecompanion.ui.clip.numberError
+import com.livecompanion.ui.clip.parseNumber
 import com.livecompanion.ui.components.LiveButton
 import com.livecompanion.ui.components.LiveDialog
 import com.livecompanion.ui.components.LiveDialogButtons
@@ -162,7 +164,8 @@ internal fun formatPosition(pos: Double, num: Int, den: Int): String {
 @Composable
 private fun TempoDialog(current: Float, onDismiss: () -> Unit, onTap: () -> Unit, onSet: (Float) -> Unit) {
     var text by remember { mutableStateOf(formatTempo(current)) }
-    val parsed = text.replace(',', '.').toFloatOrNull()?.takeIf { it in 20f..999f }
+    val err = numberError(text, 20.0, 999.0, unit = "BPM")
+    val parsed = if (err == null) parseNumber(text)?.toFloat() else null
     LiveDialog("Tempo", onDismiss) {
         LiveLabel("BPM (20-999)")
         LiveTextField(
@@ -170,6 +173,7 @@ private fun TempoDialog(current: Float, onDismiss: () -> Unit, onTap: () -> Unit
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             onDone = { parsed?.let(onSet) },
         )
+        if (err != null) LiveText(err, style = LiveType.Small, color = LiveColors.Rec, maxLines = 2)
         LiveDialogButtons {
             LiveTextButton("Tap", onTap, minWidth = 64.dp)
             LiveTextButton("Cancel", onDismiss, minWidth = 64.dp)

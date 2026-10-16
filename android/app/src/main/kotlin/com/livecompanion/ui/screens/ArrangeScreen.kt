@@ -38,6 +38,7 @@ import com.livecompanion.ui.components.TClip
 import com.livecompanion.ui.components.TLane
 import com.livecompanion.ui.components.TLoop
 import com.livecompanion.ui.components.Timeline
+import com.livecompanion.ui.components.adaptiveLaneHeight
 import com.livecompanion.ui.components.TimelineView
 import com.livecompanion.ui.components.liveColor
 import com.livecompanion.ui.components.timelineHeight
@@ -139,7 +140,7 @@ fun ArrangeScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
             lanes = lanes,
             beatsPerBar = bpb,
             rt = store.rt,
-            laneHeight = 64.dp,
+            laneHeight = adaptiveLaneHeight(1, 64.dp, 260.dp, 0.4f),
             loop = TLoop(session.loop, session.loopStart, session.loopLen),
             onLoopChange = { s, l, done ->
                 client.opThrottled("loop", "song.set", "k" to "loop_start", "v" to s)

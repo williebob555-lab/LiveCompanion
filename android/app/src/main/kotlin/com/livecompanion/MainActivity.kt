@@ -57,6 +57,8 @@ class MainActivity : ComponentActivity() {
                             onForgetRecent = vm::forgetRecent,
                             modifier = Modifier.safeDrawingPadding(),
                             error = conn.lastError?.takeIf { conn.status == ConnStatus.IDLE },
+                            connecting = conn.target?.takeIf { conn.status == ConnStatus.CONNECTING },
+                            onCancel = vm::disconnect,
                         )
                     } else {
                         var confirmBack by remember { mutableStateOf(false) }

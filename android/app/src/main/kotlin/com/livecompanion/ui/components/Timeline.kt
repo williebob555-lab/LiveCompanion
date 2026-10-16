@@ -113,6 +113,18 @@ data class TLoop(val enabled: Boolean, val start: Double, val len: Double)
 @Composable
 fun timelineRulerHeight(): Dp = with(LocalDensity.current) { 11.sp.toDp() } + 8.dp
 
+/**
+ * Lane height that uses the room on large screens (tablets / big windows): [frac] of the screen height shared by
+ * [lanes] lanes, clamped to [min]..[max]. Small screens (phones, esp. landscape) keep [min].
+ */
+@Composable
+fun adaptiveLaneHeight(lanes: Int, min: Dp, max: Dp, frac: Float): Dp {
+    val cfg = androidx.compose.ui.platform.LocalConfiguration.current
+    if (cfg.screenWidthDp < 600 || cfg.screenHeightDp < 500) return min
+    val ruler = timelineRulerHeight()
+    return ((cfg.screenHeightDp.dp * frac - ruler) / lanes.coerceAtLeast(1)).coerceIn(min, max)
+}
+
 /** Total height of a timeline with [lanes] lanes of [laneHeight]. */
 @Composable
 fun timelineHeight(lanes: Int, laneHeight: Dp): Dp = timelineRulerHeight() + laneHeight * lanes

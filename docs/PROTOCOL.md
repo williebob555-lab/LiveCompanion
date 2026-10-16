@@ -17,6 +17,7 @@ Helper HTTP on **9012** (see bottom). Multiple clients allowed; each has its own
 | C→S | `{"t":"ping"}` → S→C `{"t":"pong"}` | keepalive (client every 3 s; drop after 10 s silence) |
 
 On connect the server sends hello, then all global sections. Focus sections are sent after `focus.set`.
+Client treats `hello` as "connected" (missing sections = empty states; a server that never answers JSON ping is kept alive via WS-level ping). `clip.set` rejects (ok:false, err) negative/absurd values and start_marker>=end_marker / loop_start>=loop_end.
 Client must treat sections as authoritative; optimistic UI updates are allowed but reconciled by the next `sec`.
 
 ## References

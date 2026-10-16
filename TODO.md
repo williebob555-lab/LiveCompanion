@@ -4,8 +4,8 @@ Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (wh
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
 ## RESUME HERE (paused 2026-10-15 at owner's usage limit)
-- Released v0.1.0-test1 (prerelease, tag on 8ca7296) with APK + remote-script zip + helper zip. SETUP.md written.
-- Fix agent for QA R3/R4 was told to wrap up; check its uncommitted changes (git status), build, then commit.
+- Released v0.1.0-test1 then v0.1.0-test2 (prerelease, tag on 8ca7296) with APK + remote-script zip + helper zip. SETUP.md written.
+- QA R3/R4 + session-pane toggle fixed and released as v0.1.0-test2 (CI-built; not yet re-QA'd on emulator).
 - Next: (1) easy setup: one-click Windows installer (tools/setup_windows.ps1: install script + helper
   autostart shortcut), helper bundled; (2) real-Live probe once owner selects control surface
   (~/LiveCompanion_probe.json → docs/LOM_NOTES.md); (3) QA pass 2; (4) owner QA feedback.

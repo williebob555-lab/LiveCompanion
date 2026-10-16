@@ -109,10 +109,14 @@ private fun ChainView(
     }
     val pad = PaddingValues(2.dp)
     if (wide) {
-        LazyRow(modifier, contentPadding = pad, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            items(devices, key = { it.path }) { d ->
-                Box(Modifier.width(216.dp).fillMaxHeight().verticalScroll(rememberScrollState())) {
-                    DeviceCard(d, tr, store, client, 0, openPath, onOpen)
+        BoxWithConstraints(modifier) {
+            // Cards are at least 240dp so names fit; with few devices they grow to share the width (max 340dp).
+            val cardW = ((maxWidth - 4.dp) / devices.size).coerceIn(240.dp, 340.dp)
+            LazyRow(Modifier.fillMaxSize(), contentPadding = pad, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                items(devices, key = { it.path }) { d ->
+                    Box(Modifier.width(cardW).fillMaxHeight().verticalScroll(rememberScrollState())) {
+                        DeviceCard(d, tr, store, client, 0, openPath, onOpen)
+                    }
                 }
             }
         }

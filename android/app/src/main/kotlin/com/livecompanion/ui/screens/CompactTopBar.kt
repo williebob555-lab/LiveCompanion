@@ -46,7 +46,7 @@ fun CompactTopBar(store: LiveStore, client: LiveClient, modifier: Modifier = Mod
             Column(Modifier.padding(1.dp), Arrangement.spacedBy(1.dp)) {
                 Row(horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) {
                     TransportButtons(store, client, BarH, 26.dp)
-                    TempoPos(store, client, 1.8f, 1.3f, BarH)
+                    TempoPos(store, client, 1.8f, 1.8f, BarH)
                     UndoRedo(store, client, BarH, 26.dp)
                 }
                 Row(horizontalArrangement = gap, verticalAlignment = Alignment.CenterVertically) {

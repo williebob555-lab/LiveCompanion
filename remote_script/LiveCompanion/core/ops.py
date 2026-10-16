@@ -518,18 +518,14 @@ class Ops(object):
             _put(clip, "color", _i(v, k, 0, 0xFFFFFF))
         elif k in ("looping", "warping", "legato", "muted"):
             _put(clip, k, _b(v, k))
-        elif k == "loop_start":
-            v = float(_n(v, k))
-            if v >= num(g(clip, "loop_end", 0.0)):
-                _put(clip, "loop_end", v + max(0.25, num(g(clip, "loop_end", 0.0)) - num(g(clip, "loop_start", 0.0))))
-            _put(clip, "loop_start", v)
-        elif k == "loop_end":
-            v = float(_n(v, k))
-            if v <= num(g(clip, "loop_start", 0.0)):
-                raise BadArgs("loop_end must be after loop_start")
-            _put(clip, "loop_end", v)
-        elif k in ("start_marker", "end_marker"):
-            _put(clip, k, float(_n(v, k)))
+        elif k in ("loop_start", "loop_end", "start_marker", "end_marker"):
+            v = float(_n(v, k, 0.0, 1e6))
+            lo_k, hi_k = ("loop_start", "loop_end") if k.startswith("loop") else ("start_marker", "end_marker")
+            if k == lo_k and v >= num(g(clip, hi_k, 0.0)):
+                raise BadArgs("%s (%.3g) must be before %s (%.3g)" % (lo_k, v, hi_k, num(g(clip, hi_k, 0.0))))
+            if k == hi_k and v <= num(g(clip, lo_k, 0.0)):
+                raise BadArgs("%s (%.3g) must be after %s (%.3g)" % (hi_k, v, lo_k, num(g(clip, lo_k, 0.0))))
+            _put(clip, k, v)
         elif k == "gain":
             _put(clip, "gain", float(_n(v, k, 0.0, 1.0)))
         elif k == "gain_db":

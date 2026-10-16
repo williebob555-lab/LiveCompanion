@@ -102,6 +102,7 @@ fun PianoRoll(clip: ClipState, ed: NoteEditor, rt: State<RtFrame>, modifier: Mod
     val grid = GRID_OPTS[gridIdx].len(bb)
     val tm = rememberTextMeasurer()
     var gridSize by remember { mutableStateOf(IntSize.Zero) }
+    var confirmDel by remember { mutableStateOf(false) }
 
     // Initial fit once the size is known (and per clip).
     if (gridSize.width > 0 && gridSize.height > 0 && !view.inited) {
@@ -133,7 +134,13 @@ fun PianoRoll(clip: ClipState, ed: NoteEditor, rt: State<RtFrame>, modifier: Mod
             Btn("Prob", { lane = Lane.Prob }, on = lane == Lane.Prob)
             Btn("All", { ed.selectAll() })
             Btn("Dup", { ed.duplicateSelected() }, enabled = ed.sel.isNotEmpty())
-            Btn("Del", { ed.deleteSelected() }, enabled = ed.sel.isNotEmpty())
+            Btn("Del", { if (ed.sel.size > BULK_DELETE_CONFIRM) confirmDel = true else ed.deleteSelected() }, enabled = ed.sel.isNotEmpty())
+        }
+        if (confirmDel) {
+            com.livecompanion.ui.components.ConfirmDialog(
+                "Delete notes", "Delete ${ed.sel.size} notes? (Undo restores them.)", "Delete",
+                { ed.deleteSelected() }, { confirmDel = false },
+            )
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             // Velocity / probability lane: bottom strip, ~20% of the editor, never below 40dp.
@@ -542,3 +549,6 @@ private fun LaneCanvas(clip: ClipState, ed: NoteEditor, view: RollView, lane: La
         }
     }
 }
+
+/** Deleting more than this many notes at once asks first. */
+internal const val BULK_DELETE_CONFIRM = 50

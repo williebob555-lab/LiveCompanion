@@ -49,6 +49,7 @@ import com.livecompanion.ui.components.LiveTextButton
 import com.livecompanion.ui.components.TClip
 import com.livecompanion.ui.components.TLane
 import com.livecompanion.ui.components.Timeline
+import com.livecompanion.ui.components.adaptiveLaneHeight
 import com.livecompanion.ui.components.TimelineView
 import com.livecompanion.ui.components.dim
 import com.livecompanion.ui.components.drawStar
@@ -61,7 +62,6 @@ import com.livecompanion.ui.theme.LiveType
 import kotlin.math.floor
 import kotlin.math.max
 
-private val LaneH = 36.dp
 private val GutterW = 72.dp
 
 /** Phone-local take ratings (1..3 stars) in SharedPreferences, keyed by track name + lane + clip start. */
@@ -160,6 +160,7 @@ fun TakesScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modif
                     })
                 }
                 val vs = remember { TimelineVScroll() }
+                val LaneH = adaptiveLaneHeight(takes.lanes.size, 36.dp, 120.dp, 0.5f)
                 Row(Modifier.fillMaxWidth().weight(1f, fill = false).height(IntrinsicSize.Min)) {
                     Column(Modifier.width(GutterW).fillMaxHeight()) {
                         Spacer(Modifier.height(timelineRulerHeight()))

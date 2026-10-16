@@ -216,8 +216,11 @@ def test_clip_open_set_close(c):
         c.until("clip", lambda d, key=key, v=v: d[key] == v)
     assert c.req("clip.set", loc=loc, k="gain", v=0.5)["ok"] is False     # audio only
     assert c.req("clip.set", loc=loc, k="loop_end", v=0.5)["ok"] is False  # before loop_start
-    c.ok("clip.set", loc=loc, k="loop_start", v=6.0)                       # pushes loop_end out
-    c.until("clip", lambda d: d["loop_start"] == 6.0 and d["loop_end"] > 6.0)
+    r = c.req("clip.set", loc=loc, k="loop_start", v=6.0)                  # after loop_end (4.0)
+    assert r["ok"] is False and "loop_start" in r["err"]
+    for k, v in [("end_marker", 0.1), ("start_marker", 99.0), ("loop_start", -1), ("start_marker", float("nan")),
+                 ("end_marker", 1e9), ("loop_end", "x")]:
+        assert c.req("clip.set", loc=loc, k=k, v=v)["ok"] is False, (k, v)
     c.ok("clip.close")
     c.until("clip", lambda d: d is None)
     assert c.req("notes.add", notes=[{"p": 60, "t": 0, "d": 1}])["ok"] is False   # nothing open
