@@ -22,11 +22,25 @@ android {
         versionName = System.getenv("LIVECOMPANION_VERSION_NAME") ?: "0.1.0"
     }
 
+    // Release key comes from CI secrets (release.yml) via LC_* env vars; the backup lives outside the repo
+    // at %USERPROFILE%\LiveCompanion-signing. Without the env vars (local builds) release falls back to debug.
+    val releaseKeystore = System.getenv("LC_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() }
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("LC_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("LC_KEY_ALIAS")
+                keyPassword = System.getenv("LC_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
-        // Debug signing until the owner sets up a keystore (see docs/PREFERENCES.md).
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (releaseKeystore != null) signingConfigs.getByName("release")
+                else signingConfigs.getByName("debug")
         }
     }
 

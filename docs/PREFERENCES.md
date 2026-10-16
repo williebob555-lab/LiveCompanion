@@ -19,8 +19,14 @@ Single user (the owner). Read this before every change. Newest entries at the bo
   Working software first; signing keys / release polish later.
 - In-app updates must work natively like the owner's other apps: mirror
   `C:\PDF Draw App\core\src\main\kotlin\com\inkslate\core\UpdateCheck.kt` (GitHub Releases API, stable
-  channel = latest, opt-in test channel = prereleases, download APK + system installer). Owner will say when
-  ready to set up repo secrets (signing keystore); until then CI uses debug signing.
+  channel = latest, opt-in test channel = prereleases, download APK + system installer).
+  2026-10-16: release signing SET UP (owner approved). Keystore backup + passwords: %USERPROFILE%\LiveCompanion-signing
+  (outside repo — never commit). GitHub secrets: KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD.
+  release.yml builds assembleRelease signed with it and stamps versionName from the tag, versionCode = run number.
+  Installed test builds always follow the test channel. Owner reported: update check didn't work and install
+  failed (causes: versionName always 0.1.0; per-build debug keys) — fixed from v0.1.0-test5 on.
+- App icon: owner said the first icon looked like "a weird claw" with a too-small C — L and C must be equal
+  cap height and stroke weight.
 - Docs must be human-digestible AND efficient for an agent to re-read. Keep them current.
 - TODO.md is the workstation: plan, in progress, done, next. Return point after interruptions.
 - Parallel agents allowed: use cheaper models (haiku/sonnet) for grunt work, keep total usage moderate.

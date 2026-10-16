@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <group android:scaleX="0.3" android:scaleY="0.3" android:translateX="15" android:translateY="14">
+    <group android:scaleX="0.3" android:scaleY="0.3" android:translateX="10.8" android:translateY="15.6">
         <path
-            android:pathData="M62,60 V176 H130"
+            android:pathData="M60,70 V186 H112"
             android:strokeColor="#FFFFFF" android:strokeWidth="24"
             android:strokeLineCap="round" android:strokeLineJoin="round" />
         <path
-            android:pathData="M194,154.1 A34,34 0 1 0 194,197.9"
-            android:strokeColor="#FFFFFF" android:strokeWidth="17"
+            android:pathData="M207.3,83.6 A58,58 0 1 0 207.3,172.4"
+            android:strokeColor="#FFFFFF" android:strokeWidth="24"
             android:strokeLineCap="round" />
     </group>
 </vector>

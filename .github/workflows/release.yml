@@ -55,32 +55,36 @@ jobs:
         with:
           gradle-home-cache-cleanup: true
 
-      # Release signing (later, once the keystore exists as repo secrets). Uncomment this block and
-      # the signingConfig wiring in android/app/build.gradle(.kts) that reads these env vars:
-      #
-      # - name: Restore the signing keystore
-      #   env:
-      #     KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-      #   run: |
-      #     if [ -z "$KEYSTORE_BASE64" ]; then
-      #       echo "::error::KEYSTORE_BASE64 secret is not set."; exit 1
-      #     fi
-      #     echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/livecompanion.jks"
-      #
-      # Then, on the build step below, add:
-      #   env:
-      #     LC_KEYSTORE: ${{ runner.temp }}/livecompanion.jks
-      #     LC_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-      #     LC_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-      #     LC_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-      # and assemble assembleRelease instead of assembleDebug.
-
       - name: Make the wrapper runnable
         run: chmod +x android/gradlew
 
-      - name: Build the APK (debug-signed for now)
+      - name: Restore the signing keystore
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::KEYSTORE_BASE64 secret is not set."; exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/livecompanion.jks"
+
+      - name: Build the APK (release-signed)
         working-directory: android
-        run: ./gradlew assembleDebug --stacktrace
+        shell: bash
+        env:
+          LC_KEYSTORE: ${{ runner.temp }}/livecompanion.jks
+          LC_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          LC_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          LC_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          TAG="${{ github.event.inputs.version || github.ref_name }}"
+          # The app compares its own versionName with release tags, so it must carry the tag's version.
+          export LIVECOMPANION_VERSION_NAME="${TAG#v}"
+          export LIVECOMPANION_VERSION_CODE="${{ github.run_number }}"
+          echo "Building versionName=$LIVECOMPANION_VERSION_NAME versionCode=$LIVECOMPANION_VERSION_CODE"
+          ./gradlew assembleRelease --stacktrace
+          # Fail loudly if the APK did not get the release certificate.
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --print-certs app/build/outputs/apk/release/*.apk | grep -q "CN=LiveCompanion"
 
       - name: Collect the release files
         shell: bash
@@ -89,7 +93,7 @@ jobs:
           TAG="${{ github.event.inputs.version || github.ref_name }}"
           mkdir -p dist
 
-          APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -n 1)
+          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -n 1)
           cp "$APK" "dist/LiveCompanion-${TAG}.apk"
 
           # The remote script zip keeps its LiveCompanion folder at the top, so unzipping it into

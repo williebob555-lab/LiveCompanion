@@ -50,6 +50,9 @@ object UpdateCheck {
     fun check(installedVersion: String, channel: Channel = Channel.STABLE): Result {
         val installed = Version.parse(installedVersion)
             ?: return Result.Failed("This build has no version number to compare against.")
+        // A test build always follows test builds, whatever the channel switch says; otherwise it could
+        // never be offered the next test build.
+        val channel = if (installed.preRelease != null) Channel.TEST else channel
 
         val body = try {
             fetchJson(ALL_RELEASES_API)
