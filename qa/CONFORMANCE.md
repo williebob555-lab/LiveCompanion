@@ -124,3 +124,36 @@ FAILs: raw release notes; loop-brace hit target; track-picker Rename/Duplicate/D
 
 ### Fix pass (post test3 review) - all FAILs fixed (pending re-check)
 Release notes cleaned (UpdateCheck.cleanNotes, 6 lines + More...); loop brace hit band >= 40dp with 24dp edge zones + grips (track view, clip editor, Takes); track picker: Rename/Duplicate/Delete row above a collapsible Color chip, row scrolls to top; scene column measured to the longest name; top bar = one 40dp row with a flexible name and fixed-width tempo/pos (min width for 999.4.4), secondary controls in a bottom strip on small phones; info strip text fixed at 10dp; Devices chain edge fade + chevron; small phone Tracks: Master pinned only if 5 rows fit; tab rail items fit; clip editor ruler scrub; demo clip moves overlap instead of deleting, demo ships a take lane; Takes empty state with action; Browser opens on Instruments.
+
+
+## Re-check - v0.1.1-test3 candidate (commit 8005c06)
+Reviewer: owner-preference agent. lc_phone (pixel_7, 2400x1080 land / 1080x2400 port), lc_phone_small (640x360dp land), lc_tablet (2560x1600); debug build 8005c06; DEMO + mock on :9021 with "Simulate 300 ms server delay" ON (lc_phone). Screens: qa/screens/conf2_*.png.
+
+### Previous FAILs
+- PASS  Update screen notes: More -> Check shows "TODO: status" only (conf2_04); trailers/markdown/compare link gone. NOTE: the published test2 release body itself is the placeholder "TODO: status" - write a real changelog in the release.
+- PASS  Loop brace: grips visible, edge grabbed from 9 px and from 25 px inside the edge, at y=140 and y=165, 300 ms delay on, no snap-back (conf2_05, 06).
+- PASS  Track-picker: Rename | Duplicate | Delete | Color chip in one row directly under the track, no scroll (pixel_7 conf2_12, small phone conf2_67).
+- PASS  Truncation @1.0: scene names (Chorus 2, Verse 2 full), long track name flexes ("Renamed Drum TrackDrums") (conf2_07, 13). @1.3: position "1.1.1", scene names, track name all complete (conf2_08, 09, 14). Portrait keeps an ellipsis only for a 22-char name (acceptable).
+- PASS  Portrait Devices: edge fade + small ">" chevron at the right of the Compressor (conf2_15). Weak: chevron is tiny and sits on "Param 4"; make it 24dp.
+- PASS (borderline) Small phone chrome: above lane = top bar 11% + ruler/brace 8% = 19% (was 32%); lane 61% of height (was 58%); one 40dp row + 24dp strip + 40dp bottom bar below the lane (conf2_62). Target "<= ~18%" missed by ~1 point; acceptable, but the bottom bar + strip still eat 27%.
+- PASS  Small-phone Tracks: six rows visible, Master not pinned (conf2_63). Rail "More" fully visible at 360dp (y 662-687 of 720).
+- PASS  Clip-editor ruler scrub: playhead tick follows the finger end (conf2_54).
+
+### Previously not verified
+- PASS  Red recording: clip editor red region + red "REC" + red slot row (conf2_26, 27); track view red wash + "REC" + red ruler bar while arrangement-recording (conf2_28). Session tile of the recording slot stays orange with only the slot button red (minor: tint the tile red).
+- PARTIAL TAKE: transport plays, but in the Takes tab nothing shows recording (no red region, conf2_31); mock cannot create a take lane from TAKE. Treat as unverified on real Live.
+- PASS  Take-drop target: lane gets a blue outline/tint + "Demote to this take lane" label during the drag; drop persists (conf2_33, 34). NIT: the dragged ghost overlaps the label ("Demo|e to this take lane").
+- PASS  Faders (volume strip 300 ms delay: follows to the release point, identical 1.5 s later) and knobs (Param 1 0.50 -> 0.67 at once, stays) (conf2_40, 41).
+- PASS  Warp markers: Warp+ then tap adds, drag moves with waveform stretching, stays after 1.5 s (conf2_50-52).
+- FAIL  Locators cannot be moved: dragging the "Verse" flag just scrubs the playhead (conf2_44). Code has no locator drag (TrackLane only draws cues). Checklist says markers hold-drag. Fix: hit-test cue flags (24dp) in TrackLane, hold-drag with optimistic position + a locator move/set op, or demote the checklist row if the API cannot do it.
+- PASS  Tablet quick pass: Arrange, Session, Tracks, Clip, Devices, Browser, Mix, Takes, More all render without overlap; top bar merges transport + mixer in one row (conf2_70-72).
+
+### NEW violations
+- FAIL (principle 4) Tapping a track NAME in the picker dialog starts inline rename; with the keyboard up in landscape the dialog is squeezed to ~10 px and the field is unreadable/unusable (conf2_45). Fix: rename in a small separate dialog or make the dialog scroll/shrink with IME padding, and keep the field >= 48dp.
+- FAIL (principle 8, minor) Clip-editor ruler labels collide when zoomed out on MIDI clips ("10.210.310.411", conf2_27); the audio ruler thins labels correctly. Fix: apply the same label-thinning to the piano-roll ruler.
+- FAIL (principle 4) Notice "Demo: not simulated (device.close)" appeared with no user action on Devices (conf2_15) and persists; unsupported demo ops must be silent.
+- FAIL (principle 6/8) Tablet: Session/Mix/Devices/Browser/Clip leave 50-70% empty with phone-sized controls (conf2_72); Clip tab still shows "Open a clip on Drums" list instead of auto-opening. Fix: scale knobs/faders/tiles with free space, auto-open selected/first clip.
+- NIT: info-strip track name at 10dp is cut to "Rename" for a long name (conf2_14). Takes tab on tablet opens zoomed so Beat A/C are cut at the edges (conf2_71_tab_Takes). Fresh installs start with "Simulate 300 ms delay: off" (correct).
+
+### Totals (re-check)
+Previous FAILs: 8 PASS / 0 FAIL (2 borderline/weak). Not-verified items: 6 PASS, 1 PARTIAL (TAKE), 1 FAIL (locators). New: 4 FAIL (rename-with-keyboard, MIDI ruler labels, demo notice, tablet emptiness/Clip auto-open).

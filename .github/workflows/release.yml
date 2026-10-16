@@ -140,9 +140,12 @@ jobs:
         id: notes
         shell: bash
         run: |
+          # actions/checkout fetches tags lightweight; re-fetch so the annotated tag's own message is available
+          # (otherwise %(contents) falls back to the commit message, e.g. "TODO: status").
+          git fetch --force origin "refs/tags/${{ github.ref_name }}:refs/tags/${{ github.ref_name }}"
           {
             echo 'body<<NOTES'
-            git tag -l --format='%(contents)' "${{ github.ref_name }}"
+            git for-each-ref "refs/tags/${{ github.ref_name }}" --format='%(contents:subject)%0a%0a%(contents:body)'
             echo NOTES
           } >> "$GITHUB_OUTPUT"
 
