@@ -4,6 +4,9 @@ Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (wh
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
 ## RESUME HERE — Milestone 2 "UI lock-in" (owner feedback recorded in PREFERENCES 2026-10-15; owner asleep)
+2026-10-16 evening: test6 (pass-3 fixes + design polish) and test7 (full-height lane, one-row toolbar, nits)
+RELEASED, signed. [~] QA pass 4 running: updater end-to-end test5→test7, icon verdict, portrait/tablet/small matrix.
+Still pending owner: real-Live run of tools/live_verify.py --mutate (empty set).
 2026-10-16 later: release signing set up (secrets + backup in %USERPROFILE%\LiveCompanion-signing), update check
 fixed, icon redrawn (equal L/C) → RELEASED v0.1.0-test5 (versionCode 5, release-signed, verified). From test5 on,
 in-app updates install in place. Icon not yet visually verified on a launcher — check on emulator next QA.
