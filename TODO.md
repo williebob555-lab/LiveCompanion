@@ -4,6 +4,9 @@ Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (wh
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
 ## RESUME HERE — Milestone 2 "UI lock-in" (owner feedback recorded in PREFERENCES 2026-10-15; owner asleep)
+2026-10-16: laptop restarted mid-QA (RAM) → resource rules in PREFERENCES. P2-R1 fixes committed fb66daa,
+RELEASED v0.1.0-test3; remote script reinstalled to owner's User Library (Live restart needed to load it).
+QA pass 2 continuation agent running (R1b/R2/R3/R4 + read-only P2-LIVE). Then: fix pass → test4.
 Status: A–D DONE, committed 367edb2 (full gate green). QA pass 2 agent running (mock + read-only real Live).
 Orchestrator-noted: clip toolbar overflows at 800x360 ("Del" cut); Arrange hint text row wastes height;
 device panels mostly empty vertically (show more params when tall). Then fix pass → tag v0.1.0-test3.
