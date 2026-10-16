@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -188,17 +189,11 @@ private fun TrackRow(
 ) {
     val master = t.kind == "master"
     val ret = t.kind == "return"
-    var text by remember(t.ref, renaming) { mutableStateOf(t.name) }
-    var showErr by remember(t.ref, renaming) { mutableStateOf(false) }
     Column(
         Modifier.fillMaxWidth().clip(LiveShapes.Small)
             .background(if (focused) LiveColors.PanelHi else LiveColors.Panel)
             .then(if (focused) Modifier.border(1.dp, LiveColors.Accent, LiveShapes.Small) else Modifier),
     ) {
-        // Error ABOVE the editor row so the soft keyboard never hides it.
-        if (renaming && showErr) nameError(text)?.let {
-            LiveText(it, Modifier.padding(horizontal = 8.dp, vertical = 2.dp), LiveType.Small, LiveColors.Rec)
-        }
         Row(
             Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = 36.dp).clickable(onClick = onFocus),
             verticalAlignment = Alignment.CenterVertically,
@@ -207,10 +202,7 @@ private fun TrackRow(
             Box(Modifier.width(if (t.group != null) 14.dp else 0.dp))
             Box(Modifier.width(6.dp).fillMaxHeight().heightIn(min = 36.dp).background(liveColor(t.color)))
             if (renaming) {
-                val tryOk = { if (nameError(text) == null) onRename(text) else showErr = true }
-                DenseTextField(text, { text = it; showErr = true }, Modifier.weight(1f).padding(vertical = 2.dp), onDone = tryOk, autoFocus = true)
-                LiveTextButton("OK", tryOk, on = nameError(text) == null, minWidth = 40.dp)
-                LiveTextButton("X", onCancelRename, minWidth = 32.dp)
+                RenameEditor(t.name, onRename, onCancelRename, key = t.ref)
             } else {
                 Box(
                     Modifier.weight(1f).fillMaxHeight().heightIn(min = 36.dp)
@@ -270,4 +262,25 @@ private fun ColorGrid(current: Int, onPick: (Int) -> Unit) {
             }
         }
     }
+}
+
+/**
+ * Inline rename editor (field + OK + X) for use inside a Row. The empty-name error is shown IN the row: the field gets a
+ * red outline and the red text "Name can't be empty" as its placeholder/hint, plus a red OK, so neither the soft
+ * keyboard nor list clipping can hide it. The field keeps focus. [forceError] is for tests.
+ */
+@Composable
+internal fun RowScope.RenameEditor(initial: String, onRename: (String) -> Unit, onCancel: () -> Unit, key: Any = Unit, forceError: Boolean = false) {
+    var text by remember(key) { mutableStateOf(initial) }
+    var showErr by remember(key) { mutableStateOf(forceError) }
+    val err = showErr && nameError(text) != null
+    val tryOk = { if (nameError(text) == null) onRename(text) else showErr = true }
+    Box(Modifier.weight(1f).padding(vertical = 2.dp)) {
+        DenseTextField(text, { text = it }, Modifier.fillMaxWidth(), onDone = tryOk, autoFocus = true, isError = err)
+        if (err && text.isEmpty()) {
+            LiveText("Name can't be empty", Modifier.align(Alignment.CenterStart).padding(horizontal = 8.dp), LiveType.Small, LiveColors.Rec)
+        }
+    }
+    LiveTextButton("OK", tryOk, on = nameError(text) == null, minWidth = 40.dp)
+    LiveTextButton("X", onCancel, minWidth = 32.dp)
 }

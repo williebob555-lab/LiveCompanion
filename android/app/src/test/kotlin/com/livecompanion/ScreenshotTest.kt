@@ -3,6 +3,7 @@ package com.livecompanion
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.background
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onRoot
@@ -13,6 +14,7 @@ import com.livecompanion.net.ConnStatus
 import com.livecompanion.net.HostTarget
 import com.livecompanion.net.LiveClient
 import com.livecompanion.ui.screens.ConnectScreen
+import com.livecompanion.ui.screens.RenameEditor
 import com.livecompanion.ui.screens.MainShell
 import com.livecompanion.ui.screens.Tab
 import com.livecompanion.ui.theme.LiveTheme
@@ -102,6 +104,19 @@ class ScreenshotTest(private val wDp: Int, private val hDp: Int, private val lan
                 cutoutOverride = 44.dp to 0.dp)
         }
         rule.onRoot().captureRoboImage(name("shell_tracks"))
+    }
+
+    @Test fun tracksRenameEmptyError() {
+        // Inline rename with an empty name: red outline + "Name can't be empty" inside the row, next to OK.
+        launch {
+            androidx.compose.foundation.layout.Row(
+                Modifier.fillMaxSize().background(com.livecompanion.ui.theme.LiveColors.Panel),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                RenameEditor("", {}, {}, forceError = true)
+            }
+        }
+        rule.onRoot().captureRoboImage(name("tracks_rename_error"))
     }
 
     @Test fun shellArrangeDefault() {

@@ -210,3 +210,15 @@ Screens: qa/screens/p5_*.png. logcat AndroidRuntime:E: EMPTY. Emulator killed, m
   - [P5-6-1] (fixed(pending commit): MIDI note range fills whole clip body) [minor] [arrange] note bars occupy only the lower ~45% of the full-height body (drum pitch range packed at the bottom, upper half empty), so clips still read as tall brown slabs, esp. portrait. Scale the pitch range to fill the body (or cap block height as Live does).
   - [P5-6-2] [nit] Beat C's name is hidden when B (selected) overlaps it, expected.
 - Not tested: lane rename, pinch, tablet/small, themed icon, real Live.
+
+## QA PASS 6 - verification of test8 -> test9 updater, keyboard rename, Arrange MIDI fill (lc_phone only; mock :9020; Live and :9010 untouched)
+Screens: qa/screens/p6_*.png. Emulator killed and mock stopped at end. Not committed.
+
+- P6-1 UPDATER RESUME (P4-1-1): PASS. Uninstalled, installed signed test8 (appops REQUEST_INSTALL_PACKAGES=deny). More -> Check for updates -> "Version 0.1.0-test9 available" -> Download and install -> "Install unknown apps" screen (p6_03) -> toggled "Allow from this source" on (p6_04) -> Back -> installer "Do you want to update this app?" appeared by itself with no manual retry (p6_05) -> Update -> "App installed." (p6_06). dumpsys versionName=0.1.0-test9.
+  - Note: the earlier P5-1 BLOCKED is now resolved because the test8 build contains the resume code.
+- P6-2 KEYBOARD RENAME, landscape:
+  - Clip rename (Beat B, Clip toolbar "Rename"): PASS. Dialog opens with IME shown (mInputShown=true), field focused. Cleared with MOVE_END + DEL, OK -> "Name can't be empty" shown in red directly above the keyboard (p6_09, p6_10).
+  - [P6-2-1] (fixed(pending commit): error now in-row as red outline + red placeholder text, RenameEditor, screenshot test tracksRenameEmptyError) [minor] [tracks/rename] FAIL. Track inline rename (Tracks tab, tap "Bass"): IME shows (mInputShown=true) and the field is focused, but after clearing and pressing OK the "Name can't be empty" line is NOT visible anywhere, not above the keyboard and not in the row. Only the field, OK and X are visible (p6_13). Same symptom as P5-4-1, which was marked fixed. The fix did not reach the inline track editor or the error is clipped. Screens p6_12, p6_13.
+- P6-3 ARRANGE MIDI FILL, landscape: FAIL (partial). In p6_07 the clip bodies run from about y=165 to y=835 (2000-scale). Note pills sit only between about y=360 and y=693, roughly the middle half, with empty bands above and below. Same as P5-6-1 (declared fixed). The pitch range still does not fill the body height.
+  - [P6-3-1] (fixed(pending commit): span = used range +1 row each side, min 3 rows, bar 3-14dp, centred) [minor] [arrange] Scale the note pitch range to the full clip body (or confirm the fix reached this build).
+- Not tested: portrait, tablet, real Live, mock state changes beyond the rename.
