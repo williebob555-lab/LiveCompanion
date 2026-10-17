@@ -3,6 +3,17 @@
 Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (why)
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
+## MORNING 2026-10-17 — DO THIS FIRST (orchestrator)
+State: a3ede93 committed + script installed; NOT released (newest release = test6). Live is blocked by a modal
+"keep the current timing?" dialog (agent turned Warp on remotely — now guarded in script + app).
+1. Owner: click Cancel on Live's dialog (or restart Live) → Live loads script v3 (sys.reload, new trim/move).
+2. Delete scratch clips (t2 beats 100/110/120, t0 beat 50) — live_edit_check cleans its own.
+3. Run `python tools/live_edit_check.py` on real Live → must be 100%. Fix + `sys.reload` + re-run until green.
+4. Verify clip.set gain_db=-6 on a real audio clip → gain_str ≈ "-6.0 dB" (single mapped write; adjust mapping).
+5. App on emulator vs real Live (10.0.2.2:9010): drag move, trim both edges (audio + MIDI), confirm in Live.
+6. Full real-Live E2E of all editing (slots, notes, props, devices, takes, track.move, cue.move) → conformance →
+   release v0.1.1-test7.
+
 ## OVERNIGHT 2026-10-16→17 (owner AFK, expects AIRTIGHT): arrangement editing on REAL Live
 - Verified broken on real Live: arr.trim (Live ignores marker changes for arrangement edges → "unsupported"),
   arr.move returns i=None (app loses selection). Mock hid both.
