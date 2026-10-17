@@ -183,3 +183,32 @@ Reviewer: owner-preference agent; lc_phone (land, font 1.0/1.3), lc_phone_small 
 - PARTIAL Tablet: Mix (vertical faders), Clip, Devices (scaled knobs) use the space; Session still ~65% empty below 8 short tiles and a mostly empty detail pane; Browser 75% empty (little content); Devices ~60% empty (conf3_70_*).
 - PASS  Regression sweep lc_phone land: Arrange/Session/Devices/Mix/Takes/Browser/More render, font 1.3 top bar and Arrange intact. NIT: Takes tab opens zoomed to bars 1-3 (Beat B cut).
 Totals: 1 blocking FAIL (Clip auto-open on track switch), rest PASS/nits.
+
+
+## Review — v0.1.1-test4 candidate (commit e7974e4)
+Reviewer: owner-preference agent; lc_phone (pixel_7 2400x1080 land, 1080x2400 port), debug build e7974e4, mock :9021 (+ a scratchpad "old script" mock on :9022 with clip.peaks/track.move/takes.demote removed, no product code touched). Screens: qa/screens/c4_*.png.
+Not testable here: reverse landscape (emulator ignored user_rotation 3), font 1.3, small phone, tablet, install-in-place, real Live, red recording with a live envelope (see below).
+
+### New owner items
+- PASS  Picker: tap name/row = switch track and picker closes (c4_02, c4_03). Rename only via the pencil; Tracks tab pencil opens inline field (c4_10).
+- PASS  Hold-drag reorder in the picker on the mock: Keys moved to the top, no dialog, devices (Arpeggiator, Layer Pad, EQ Eight), slot clips (Chords 1,2,3,5), name and colour preserved (c4_04..06). Up/down buttons on the focused row work (Tracks tab).
+- PASS  Loss dialog only when losses exist: group child FX Audio -> "will lose: group membership" (c4_08), Vocals -> "take lanes" (c4_16); Cancel restores order (c4_09). Groups/returns/master have no grip.
+- NIT   Groups/returns/master: tapping the row only switches track; no "why can't I move this" explanation is shown (checklist says explain on tap).
+- PASS  Disconnect while "Connection lost - retrying": returns to Connect immediately, no further attempts after 8 s (c4_11, c4_12).
+- PASS  Outdated script: banner "LiveCompanion script in Live is outdated - run the installer ... restart Live" appears after connect (c4_13); reorder says "Needs script update (track.move)" (c4_17).
+- FAIL (minor) Waveform placeholder on an old script says "Waveform unavailable" (c4_15) instead of "Needs script update"; banner is visible so not silent. Fix: map unknown-op error from clip.peaks to the same "Needs script update (clip.peaks)" text.
+- PASS  Waveforms with no helper: Vocals/Guitar audio clips show waveforms in Arrange blocks and in the clip editor (c4_22, c4_23, c4_43).
+- UNVERIFIED Recording shows red region that grows (arrangement record, c4_30, c4_33: red wash + REC + red ruler bar) but NO envelope shape is visible, and I could not get the mock into a session-recording state with a growing clip (the slot record dot produced a stopped empty "Audio" clip, c4_36/42). The mock only drives meters for session recordings, so envelope-while-recording needs real Live or a mock fix.
+- FAIL  Corners, landscape (2400x1080): the top bar surface (54) stops ~50 px before the right edge; the strip beyond it is the darker window colour (42) while the ruler below extends to the edge (c4_01, c4_51_tr_crop). Bottom bar, rail and info strip are seamless. Fix: paint the top bar background to the right screen edge and inset only the buttons.
+- FAIL  Corners, portrait (1080x2400): the top ~135 px inset is the darker page colour (26) above bars/tabs that are lighter (42/54), with 5 px darker slivers at the left/right of the bar rows (c4_80, c4_81). This is the "inset area is a different colour" the owner complained about. Fix: draw the top bar/tab surface behind the status inset (extend it to y=0) and pad content only.
+- PASS  Content clear of corners in both orientations (nothing in the four corners).
+
+### Regression sweep (landscape, mock)
+PASS  Arrange, Session, Tracks, Clip, Devices, Browser, Mix, Takes, More render, no overlap/truncation at font 1.0 (c4_6x_*, c4_montage_0/1). Not re-run: delay-simulation drags, small phone, tablet, font 1.3, update install (unchanged since test3 re-check 2).
+- Note: a stale mock from another session still listens on :9020 (not touched).
+
+### Tab look review
+- Arrange: Live-like blocks, waveform fills clip, good. Session: compact rows, lots of empty space under 8 scenes. Tracks: clear rows, group children indented, Master pinned at bottom (large gap in portrait). Clip: Live-like; audio waveform strong. Devices: signal chain fine, large empty lower half. Browser: tabs + list, mostly empty. Mix: readable. Takes: lanes + hint, lower half empty. More: clean.
+
+### Totals / verdict
+Blocking FAILs: 2 corner/edge colour (landscape top bar right edge, portrait top inset) — owner rule 2026-10-16. Minor: peaks placeholder text, group-tap explanation. Unverified: recording envelope.
