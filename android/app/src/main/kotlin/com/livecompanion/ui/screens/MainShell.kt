@@ -184,7 +184,9 @@ fun MainShell(
                             .padding(start = padL, top = if (stripL > 0.dp) topIns else maxOf(corners.tl, topIns), bottom = if (stripL > 0.dp) botIns else maxOf(corners.bl, botIns))) { selected = it }
                         Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                             Box(Modifier.fillMaxWidth().background(LiveColors.Panel).padding(top = topIns, start = insStart, end = insEnd + padR)) { TopChrome(live, client) { CompactTopBar(store, client, onSecondary = { secondaryBar = it }) } }
-                            Gated(live, Modifier.fillMaxWidth().weight(1f).padding(end = padR, bottom = bodyBottom)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
+                            // The body's corner/cutout inset is painted Panel like the top bar and rail, so the right edge is one
+                            // continuous frame instead of a near-black app-background sliver (re-check test4).
+                            Gated(live, Modifier.fillMaxWidth().weight(1f).background(LiveColors.Panel).padding(end = padR, bottom = bodyBottom)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
                             // Small phones: the controls that do not fit the single 40dp top row live in a bottom strip.
                             if (secondaryBar && live) Box(Modifier.fillMaxWidth().background(LiveColors.Panel).padding(start = botStart, end = botEnd + padR)) { CompactSecondaryBar(store, client) }
                             if (hasNotice) Box(Modifier.fillMaxWidth().background(LiveColors.Panel).padding(start = botStart, end = botEnd + padR, bottom = botIns)) { noticeBar() }
@@ -200,7 +202,7 @@ fun MainShell(
                             }
                         } }
                         TabRow(Tab.entries, selected, Modifier.background(LiveColors.Panel).padding(start = padL, end = padR)) { selected = it }
-                        Gated(live, Modifier.fillMaxWidth().weight(1f).padding(start = padL, end = padR, bottom = bodyBottom)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
+                        Gated(live, Modifier.fillMaxWidth().weight(1f).background(LiveColors.Panel).padding(start = padL, end = padR, bottom = bodyBottom)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
                         if (hasNotice) Box(Modifier.fillMaxWidth().background(LiveColors.Panel).padding(start = botStart + padL, end = botEnd + padR, bottom = botIns)) { noticeBar() }
                     }
                 }

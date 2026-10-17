@@ -218,3 +218,13 @@ Blocking FAILs: 2 corner/edge colour (landscape top bar right edge, portrait top
 - Peaks placeholder on outdated script: now "Needs script update (clip.peaks) ..." (pending re-check).
 - Group/return/master grip slot: shows a faint dot; tapping shows the reason inline in the track list (the picker covers the shell notice bar) and as a notice (pending re-check).
 - Mock: meters now driven for ARRANGEMENT recording on an armed track (record_mode + playing) so the red envelope can be checked (pending re-check).
+
+## Re-check — test4 candidate (commit 7fbc777)
+Reviewer: release-gate agent; lc_phone (-port 5554), debug APK built from 7fbc777, mock :9021. Screens: qa/screens/c5_*.png. Pixel values read with PIL.
+- FAIL  Landscape top bar (2400x1080): bar surface (54) still ends at x~2345; the ~55 px strip to the right edge is 42 (rows y 5-80), and below it the page strip is 26 / ruler ends ~5 px short (c5_01_start, c5_02_land_tr_crop). Owner rule 2026-10-16 (inset areas must not be a different colour) still violated at the top-right. Bottom-right (c5_03) uses 42 bar surface to the edge.
+- PASS  Portrait (1080x2400): top inset (y 0-135) is 42, same as the bar-row surface below; no darker slivers at the sides of bar/tab rows (x 0..8 = 42); bottom corners = page colour 26 to the edge (c5_10_portrait).
+- PASS  Recording envelope in track view: arm Drums + arrangement record + play ~6 s: red region grows from the start with a clearly varying (non-flat) envelope shape, REC label, red ruler bar (c5_11_rec_arr).
+- UNVERIFIED  Envelope in the clip editor: the Clip tab shows the existing MIDI clip (Drums) / Vox A (Vocals), not a growing recording clip (c5_12, c5_17); the mock creates no recording clip in arrangement record.
+- PASS  Group-track grip tap shows "Group tracks can't be moved here - move them in Live" inline in the list and as a notice (c5_14). Return/master not separately captured (same code path assumed).
+- NOT TESTED  Outdated-script placeholder text (needs old-script mock).
+Verdict: NOT RELEASE OK - blocking FAIL: landscape top bar does not reach the right screen edge.
