@@ -3,6 +3,11 @@
 Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (why)
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
+## STATUS 2026-10-16 night: v0.1.1-test4 RELEASED (passed review; edge fix verified on emulator).
+Unverified on real Live: track.move (rebuild), .asd waveform via clip.peaks inside Live, rec_env on real recording,
+arr.move/trim, takes ops, cue.move → owner: restart Live, then `python tools/live_verify.py --mutate` on an empty set.
+Minor open: clip-editor rec envelope unverified (mock), rename-dialog error text cut, tablet partly empty, Takes zoom.
+
 ## STATUS 2026-10-16 late: v0.1.1-test3 released after conformance review + re-checks (blocking clip-follow race
 fixed & verified on emulator vs mock). Open nits (non-blocking, from qa/CONFORMANCE.md Re-check 2): rename-dialog
 error text half-cut; tablet Session/Browser/Devices still partly empty; Takes opens too zoomed; demo "Add device"
