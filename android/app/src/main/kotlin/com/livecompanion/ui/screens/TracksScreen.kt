@@ -206,6 +206,9 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
         return if (i >= 0) i + 1 else -1
     }
 
+    var gripNote by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(gripNote) { if (gripNote != null) { delay(4000); gripNote = null } }
+
     val rowFor: @Composable (TrackInfo) -> Unit = { t ->
         val movable = t.kind == "audio" || t.kind == "midi"
         val idx = shownTracks.indexOfFirst { it.ref == t.ref }
@@ -222,12 +225,14 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
             onGripDrag = { dragMove(it) },
             onGripEnd = { dragEnd() },
             onGripBlocked = {
-                store.notice(when (t.kind) {
+                val why = when (t.kind) {
                     "group" -> "Group tracks can't be moved here - move them in Live"
                     "return" -> "Return tracks can't be reordered"
                     "master" -> "The master track can't be moved"
                     else -> "This track can't be moved"
-                })
+                }
+                gripNote = why   // shown inline: the picker popup covers the shell's notice bar
+                store.notice(why)
             },
             focused = t.ref == focus.ref,
             open = expanded == t.ref,
@@ -272,6 +277,7 @@ fun TracksScreen(store: LiveStore, client: LiveClient, modifier: Modifier = Modi
             LiveTextButton("+ MIDI", { client.op("track.create", "kind" to "midi", "i" to insertIndex()) }, Modifier.weight(1f))
             LiveTextButton("+ Return", { client.op("track.create", "kind" to "return") }, Modifier.weight(1f))
         }
+        gripNote?.let { n -> LiveText(n, Modifier.fillMaxWidth().background(LiveColors.Panel).padding(horizontal = 8.dp, vertical = 4.dp), LiveType.Small, LiveColors.Warn) }
         val rows = shownTracks + tracks.returns + listOfNotNull(tracks.master)
         if (rows.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -389,7 +395,7 @@ private fun TrackRow(
                         detectHoldDrag({ begin() }, { _, d -> drag(Offset(d.x, d.y)) }, { end() })
                     } else Modifier.clickable(onClick = onGripBlocked)),
                 contentAlignment = Alignment.Center,
-            ) { if (movable) LiveText(if (dragging) "≡" else "⋮⋮", style = LiveType.Body, color = if (dragging) LiveColors.Accent else LiveColors.TextDim, softWrap = false) }
+            ) { if (movable) LiveText(if (dragging) "≡" else "⋮⋮", style = LiveType.Body, color = if (dragging) LiveColors.Accent else LiveColors.TextDim, softWrap = false) else LiveText("·", style = LiveType.Body, color = LiveColors.TextDim.copy(alpha = 0.4f), softWrap = false) }
             Box(Modifier.width(6.dp).fillMaxHeight().heightIn(min = 36.dp).background(liveColor(t.color)))
             if (renaming) {
                 RenameEditor(t.name, onRename, onCancelRename, key = t.ref)

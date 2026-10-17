@@ -1075,7 +1075,8 @@ class FakeSong(Observable):
         for i, t in enumerate(self.tracks + self.return_tracks + [self.master_track]):
             active = self.is_playing and (t is self.master_track or t.kind == "return" or t.playing_slot_index >= 0)
             recording = any(sl.clip is not None and sl.clip.is_recording for sl in getattr(t, "clip_slots", ()))
-            active = active or (self.is_playing and recording)     # input is audible on the meters while recording
+            arr_rec = bool(self.is_playing and self.record_mode and getattr(t, "arm", False))   # ARRANGEMENT recording on an armed track
+            active = active or (self.is_playing and (recording or arr_rec))     # input is audible on the meters while recording
             lvl = (0.25 + 0.2 * abs(math.sin(ph * 2.0 + i))) if active else 0.0
             t.output_meter_left = lvl * t.mixer_device.volume.value
             t.output_meter_right = lvl * 0.9 * t.mixer_device.volume.value

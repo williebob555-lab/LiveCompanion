@@ -97,6 +97,7 @@ private val STRIP_MIN = 28.dp
 fun MainShell(
     store: LiveStore, client: LiveClient, modifier: Modifier = Modifier, initialTab: Tab = Tab.Arrange,
     statusOverride: ConnStatus? = null, cutoutOverride: Pair<Dp, Dp>? = null, cornersOverride: Corners? = null,
+    topInsetOverride: Dp? = null, bottomInsetOverride: Dp? = null,
 ) {
     val corners = cornersOverride ?: rememberCorners()
     var selected by rememberSaveable { mutableStateOf(initialTab) }
@@ -141,17 +142,21 @@ fun MainShell(
     val cut = WindowInsets.displayCutout
     val cutL = cutoutOverride?.first ?: with(d) { cut.getLeft(d, LayoutDirection.Ltr).toDp() }
     val cutR = cutoutOverride?.second ?: with(d) { cut.getRight(d, LayoutDirection.Ltr).toDp() }
+    val sd = WindowInsets.safeDrawing
+    val topIns = topInsetOverride ?: with(d) { sd.getTop(d).toDp() }
+    val botIns = bottomInsetOverride ?: with(d) { sd.getBottom(d).toDp() }
+    val hasNotice = (script.outdated && !demo) || demo || notice != null
 
     var bodyCorners by remember { mutableStateOf(BodyCorners()) }
     var secondaryBar by remember { mutableStateOf(false) }
     CompositionLocalProvider(LocalTabNavigator provides { t: Tab -> selected = t }, LocalBodyCorners provides bodyCorners) {
-    BoxWithConstraints(
-        modifier.fillMaxSize().background(LiveColors.Bg).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical)),
-    ) {
+    // SEAMLESS EDGES (owner rule): no padding on this root. Every surface paints its background FIRST (edge to edge,
+    // under the status/cutout/corner insets) and only then pads its own content.
+    BoxWithConstraints(modifier.fillMaxSize().background(LiveColors.Bg)) {
         val land = maxWidth > maxHeight
         val stripL = if (land && cutL >= STRIP_MIN) cutL else 0.dp
         val stripR = if (land && cutR >= STRIP_MIN) cutR else 0.dp
-        // Sides without a strip keep their inset (cutout / nav bar) so content never touches a notch.
+        // Sides without a strip keep their inset (cutout / nav bar) as content padding inside edge-to-edge surfaces.
         val padL = if (stripL > 0.dp) 0.dp else cutL.coerceAtLeast(2.dp)
         val padR = if (stripR > 0.dp) 0.dp else cutR.coerceAtLeast(2.dp)
         val contentW = maxWidth - stripL - stripR - padL - padR
@@ -165,9 +170,9 @@ fun MainShell(
         val botStart = (corners.bl - leftOcc).coerceAtLeast(0.dp)
         val botEnd = (corners.br - rightOcc).coerceAtLeast(0.dp)
         SideEffect { if (bodyCorners.bottomStart != botStart || bodyCorners.bottomEnd != botEnd) bodyCorners = BodyCorners(botStart, botEnd) }
+        val bodyBottom = if (hasNotice) 0.dp else botIns
         Row(Modifier.fillMaxSize()) {
-            if (stripL > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripL).fillMaxHeight().background(LiveColors.Panel).padding(top = corners.tl, bottom = corners.bl))
-            Box(Modifier.width(padL))
+            if (stripL > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripL).fillMaxHeight().background(LiveColors.Panel).padding(top = maxOf(corners.tl, topIns), bottom = maxOf(corners.bl, botIns)))
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 // Back: any non-home tab returns to Arrange first; only home asks to disconnect (MainActivity).
                 BackHandler(enabled = selected != Tab.Arrange) { selected = Tab.Arrange }
@@ -175,32 +180,32 @@ fun MainShell(
                     val fs = LocalDensity.current.fontScale.coerceAtLeast(1f)
                     val railW = (52.dp * fs).coerceIn(52.dp, 80.dp)
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-                        TabRail(Tab.entries, selected, Modifier.width(railW).fillMaxHeight().background(LiveColors.Panel).padding(top = if (stripL > 0.dp) 0.dp else corners.tl, bottom = if (stripL > 0.dp) 0.dp else corners.bl)) { selected = it }
+                        TabRail(Tab.entries, selected, Modifier.width(railW + padL).fillMaxHeight().background(LiveColors.Panel)
+                            .padding(start = padL, top = if (stripL > 0.dp) topIns else maxOf(corners.tl, topIns), bottom = if (stripL > 0.dp) botIns else maxOf(corners.bl, botIns))) { selected = it }
                         Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                            Box(Modifier.background(LiveColors.Panel).padding(start = insStart, end = insEnd)) { TopChrome(live, client) { CompactTopBar(store, client, onSecondary = { secondaryBar = it }) } }
-                            Gated(live, Modifier.fillMaxWidth().weight(1f)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
+                            Box(Modifier.fillMaxWidth().background(LiveColors.Panel).padding(top = topIns, start = insStart, end = insEnd + padR)) { TopChrome(live, client) { CompactTopBar(store, client, onSecondary = { secondaryBar = it }) } }
+                            Gated(live, Modifier.fillMaxWidth().weight(1f).padding(end = padR, bottom = bodyBottom)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
                             // Small phones: the controls that do not fit the single 40dp top row live in a bottom strip.
-                            if (secondaryBar && live) Box(Modifier.background(LiveColors.Panel).padding(start = botStart, end = botEnd)) { CompactSecondaryBar(store, client) }
-                            Box(Modifier.background(LiveColors.Panel).padding(start = botStart, end = botEnd)) { noticeBar() }
+                            if (secondaryBar && live) Box(Modifier.fillMaxWidth().background(LiveColors.Panel).padding(start = botStart, end = botEnd + padR)) { CompactSecondaryBar(store, client) }
+                            if (hasNotice) Box(Modifier.fillMaxWidth().background(LiveColors.Panel).padding(start = botStart, end = botEnd + padR, bottom = botIns)) { noticeBar() }
                         }
                     }
                 } else {
                     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Box(Modifier.background(LiveColors.Panel).padding(start = insStart, end = insEnd)) { TopChrome(live, client) {
+                        Box(Modifier.fillMaxWidth().background(LiveColors.Panel).padding(top = topIns, start = insStart + padL, end = insEnd + padR)) { TopChrome(live, client) {
                             if (contentW >= 340.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) PortraitTopBar(store, client)
                             else Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                 TransportBar(store, client)
                                 TrackHeader(store, client)
                             }
                         } }
-                        TabRow(Tab.entries, selected) { selected = it }
-                        Gated(live, Modifier.fillMaxWidth().weight(1f)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
-                        Box(Modifier.background(LiveColors.Panel).padding(start = botStart, end = botEnd)) { noticeBar() }
+                        TabRow(Tab.entries, selected, Modifier.background(LiveColors.Panel).padding(start = padL, end = padR)) { selected = it }
+                        Gated(live, Modifier.fillMaxWidth().weight(1f).padding(start = padL, end = padR, bottom = bodyBottom)) { TabBody(selected, store, client, Modifier.fillMaxSize()) }
+                        if (hasNotice) Box(Modifier.fillMaxWidth().background(LiveColors.Panel).padding(start = botStart + padL, end = botEnd + padR, bottom = botIns)) { noticeBar() }
                     }
                 }
             }
-            Box(Modifier.width(padR))
-            if (stripR > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripR).fillMaxHeight().background(LiveColors.Panel).padding(top = corners.tr, bottom = corners.br))
+            if (stripR > 0.dp) InfoStrip(store, statusOverride, client, Modifier.width(stripR).fillMaxHeight().background(LiveColors.Panel).padding(top = maxOf(corners.tr, topIns), bottom = maxOf(corners.br, botIns)))
         }
     }
     }

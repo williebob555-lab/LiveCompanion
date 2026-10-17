@@ -212,3 +212,9 @@ PASS  Arrange, Session, Tracks, Clip, Devices, Browser, Mix, Takes, More render,
 
 ### Totals / verdict
 Blocking FAILs: 2 corner/edge colour (landscape top bar right edge, portrait top inset) — owner rule 2026-10-16. Minor: peaks placeholder text, group-tap explanation. Unverified: recording envelope.
+
+### Fix pass after test4 (pending re-check)
+- Corners landscape top bar right edge + portrait top inset: FIXED (pending re-check). MainShell root no longer pads; every surface (top bar, tab row, rail, strips, notice bar) paints its background edge-to-edge first, then pads content. New pixel test EdgeSeamTest (portrait, land-left cutout, land-right cutout; 6px edge bands never app-background where a chrome surface sits) - failed on the old shell (3/3), passes now.
+- Peaks placeholder on outdated script: now "Needs script update (clip.peaks) ..." (pending re-check).
+- Group/return/master grip slot: shows a faint dot; tapping shows the reason inline in the track list (the picker covers the shell notice bar) and as a notice (pending re-check).
+- Mock: meters now driven for ARRANGEMENT recording on an armed track (record_mode + playing) so the red envelope can be checked (pending re-check).

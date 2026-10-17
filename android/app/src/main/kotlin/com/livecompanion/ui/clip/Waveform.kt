@@ -293,7 +293,7 @@ fun AudioEditor(
                 }
                 if (peaks == null && !rec) {
                     Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                        val msg = if (clip.filePath.isBlank()) "No audio file yet" else if (err != null) "Waveform unavailable" + (if (err!!.contains("format", true)) " (format)" else "") else "Loading waveform..."
+                        val msg = if (clip.filePath.isBlank()) "No audio file yet" else if (err != null && err!!.startsWith("Needs script update")) "Needs script update (clip.peaks) - reinstall the script, restart Live" else if (err != null) "Waveform unavailable" + (if (err!!.contains("format", true)) " (format)" else "") else "Loading waveform..."
                         Box(Modifier.background(LiveColors.PanelHi).padding(horizontal = 10.dp, vertical = 6.dp)) {
                             LiveText(msg, style = LiveType.Small, color = LiveColors.TextDim)
                         }
