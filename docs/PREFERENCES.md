@@ -2,6 +2,18 @@
 
 Single user (the owner). Read this before every change. Newest entries at the bottom of each section.
 
+## REAL-LIVE TESTING (owner, 2026-10-16 — "it shouldn't be this hard, plus I shouldn't have to keep telling you
+## that it doesn't work")
+Every owner-reported bug so far only existed in REAL Live (locked recordings, follow-mode snap-back, Standard edition
+devices, stale script) — the mock passed them all. Therefore:
+- NO release without an end-to-end pass against the owner's real Live 12 (Windows), app on the emulator connected
+  to 10.0.2.2:9010, plus tools/live_verify.py (read-only always; --mutate in a scratch set).
+- Owner APPROVED automated editing tests in a SCRATCH SET: the agent may open a new empty set in Live (Ctrl+N via
+  the window), but must ABORT and cancel if any dialog appears (application.open_dialog_count > 0, e.g. "save
+  changes?"); mutate only when tools/live_verify's empty-set gate passes; never save; afterwards return to the
+  owner's set (reopen song.file_path if it had one) and leave Live as found. Never edit a set that has content.
+- Every owner report becomes a real-Live regression check in live_verify.py / the E2E checklist.
+
 ## CORE PRINCIPLES (distilled from all owner feedback — apply them to cases the owner hasn't mentioned yet)
 1. **It's Ableton on a phone.** When unsure how something should look or behave, do what Live does.
 2. **Direct manipulation.** Anything you can see you can grab: hold-drag to move/reorder/promote/trim, drag to

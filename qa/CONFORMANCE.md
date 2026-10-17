@@ -15,6 +15,9 @@ owner gives new feedback.
 
 - [ ] Disconnect/Cancel works instantly in every connection state (incl. while reconnecting).
 
+- [ ] Waveforms show for EVERY audio clip when not recording (session + arrangement), including right after a
+      recording stops; the live recording waveform is smooth, not blocky (owner, 2026-10-16).
+
 ## Feel (principle 3)
 - [ ] Every drag (loop brace, markers, clips, trim, notes, velocity, faders, knobs, params, scrub) tracks the finger
       at frame rate and never snaps back after release (test with an artificial 300 ms server delay).
