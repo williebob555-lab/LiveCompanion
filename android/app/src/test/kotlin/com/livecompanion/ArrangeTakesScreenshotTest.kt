@@ -78,7 +78,7 @@ class ArrangeTakesScreenshotTest(private val wDp: Int, private val hDp: Int, pri
             {"i":1,"name":"Verse with a very long name","color":16724787,"start":16,"end":32,"audio":true,"muted":true,"file_path":"/x/verse.wav","warping":true,"warp_first":0,"warp_last":16,"end_marker":16},
             {"i":2,"name":"Fill","color":16766720,"start":32,"end":36,"pn":[[0,1,60],[1,1,64],[2,1,67]],"end_marker":4},
             {"i":3,"name":"Drop","color":3452671,"start":40,"end":72,"audio":true,"file_path":"/x/verse.wav","warping":true,"warp_first":0,"warp_last":32,"end_marker":32}]}""")
-        com.livecompanion.net.PeaksClient.shared.put("/x/verse.wav", 1024, wavePeaks())
+        for (len in listOf(16.0, 32.0)) com.livecompanion.net.PeaksClient.shared.put("/x/verse.wav", 1024, wavePeaks(), com.livecompanion.net.peaksVer(len))
         if (supported) {
             sec("takes", """{"tr":"t1","supported":true,"lanes":[
                 {"i":0,"name":"Take lane 1","clips":[{"i":0,"name":"Take 1","color":3452671,"start":0,"end":16},{"i":1,"name":"Take 2","color":3452671,"start":16,"end":32}]},

@@ -167,3 +167,4 @@ Port note: stop any mock on 9010 before using real Live (it blocked the script o
 
 - QA pass 5 follow-ups P5-3-1, P5-4-1, P5-5-1, P5-6-1: fixed (pending commit; unit/roborazzi/pytest green).
 - [x] Conformance fix pass 2 (uncommitted, gate green): locator hold-drag + cue.move, picker rename dialog, piano-roll ruler thinning, silent demo, tablet layouts, Clip auto-open, small-phone chrome, chevron. Needs reviewer re-check; cue.move unverified on real Live.
+- 2026-10-16 waveform fix: arrange peaks loop gave up after any error (e.g. .asd not yet written at record end) -> blank forever; now PeaksClient.await retries (0/1.5/3/5 s) until real peaks, cache key path+len+n, rec_env step 1/16 beat + ramped + smooth filled envelope.

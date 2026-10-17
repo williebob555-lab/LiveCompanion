@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.livecompanion.net.LiveClient
+import com.livecompanion.net.jsonArgs
 import com.livecompanion.state.Device
 import com.livecompanion.state.LiveStore
 import com.livecompanion.ui.components.DenseButton
@@ -51,6 +52,8 @@ import com.livecompanion.ui.theme.LiveColors
 import com.livecompanion.ui.theme.LiveShapes
 import com.livecompanion.ui.theme.LiveType
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.LaunchedEffect
+import com.livecompanion.ui.components.LiveTextField
 
 /**
  * A left-to-right row of device panels joined by flow arrows. Hold a panel's title and drag to reorder
@@ -204,26 +207,44 @@ fun AddDeviceDialog(
 ) {
     val cats = if (focusKind == "midi") NativeCat.values().toList() else listOf(NativeCat.AudioFx)
     var cat by remember { mutableStateOf(cats.first()) }
+    var query by remember { mutableStateOf("") }
+    // Live's own list for this edition (Standard lacks Amp etc.); the filtered built-in list until it arrives / on old scripts.
+    var avail by remember { mutableStateOf(standardFallback()) }
+    LaunchedEffect(Unit) {
+        val d = try { client.request("device.available") } catch (e: Exception) { null }
+        parseAvailable(d)?.let { avail = it }
+    }
     LiveDialog("Add device", onDismiss) {
         if (cats.size > 1) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 for (c in cats) DenseButton(c.label, { cat = c }, Modifier.weight(1f), on = c == cat)
             }
         }
+        LiveTextField(query, { query = it }, Modifier.fillMaxWidth(), placeholder = "Search devices")
+        val q = query.trim()
+        val shown = if (q.isEmpty()) listOf(cat) else cats
         LiveScrollColumn(Modifier.weight(1f, fill = false).height(200.dp)) {
-            for (n in cat.devices) {
+          for (sc in shown) {
+            val names = (avail[sc] ?: emptyList()).filter { q.isEmpty() || it.contains(q, ignoreCase = true) }
+            if (q.isNotEmpty() && names.isNotEmpty()) LiveText(sc.label, Modifier.padding(top = 4.dp, bottom = 2.dp), LiveType.Label)
+            for (n in names) {
+                val itemCat = sc
                 Row(
                     Modifier.fillMaxWidth().height(32.dp).clip(LiveShapes.Small).background(LiveColors.PanelHi)
                         .clickable {
-                            val idx = insertIndexFor(cat, into)
-                            if (into.isEmpty()) DevicePending.add(store, tr, n, atStart = idx == 0)
-                            client.op("device.insert", "tr" to tr, "name" to n, "i" to idx, "into" to into.ifEmpty { null })
+                            val idx = insertIndexFor(itemCat, into)
+                            val pend = if (into.isEmpty()) DevicePending.add(store, tr, n, atStart = idx == 0) else null
+                            // "<name> isn't available in your Live edition" comes back as the notice; drop the placeholder.
+                            client.send("device.insert", jsonArgs("tr" to tr, "name" to n, "i" to idx, "into" to into.ifEmpty { null })) {
+                                pend?.let { DevicePending.remove(store, it) }
+                            }
                             onDismiss()
                         }
                         .padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) { LiveText(n) }
             }
+          }
         }
         LiveDialogButtons {
             DenseButton("Browser...", { onDismiss(); onBrowser() })

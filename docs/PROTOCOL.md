@@ -102,6 +102,7 @@ Devices: `device.open {tr,path}` / `device.close`, `device.toggle {tr,path}`, `d
 `device.delete {tr,path}`, `device.select {tr,path}`,
 `device.move {tr,path,to,into?}` (to = FINAL index in destination; `into` = rack chain path like `"2.c1"` to move into a chain, absent = same list; server converts to Live's pre-removal insertion index for `song.move_device`),
 `device.insert {tr,name,i?,into?}` (`track.insert_device(name,i)`, native device by display name, i default = end, `into` = chain path),
+`device.available {}` -> `{instruments:[name], audio_effects:[name], midi_effects:[name]}` (top-level device items of those browser roots = the native devices of the user's Live edition; cached per session; the phone's "+" list uses it). An unavailable name in `device.insert` answers `err: "<name> isn't available in your Live edition"`,
 `device.duplicate {tr,path}` (`duplicate_device`, copy lands right after the original). All three (and `device.delete`, `browser.load`) mark `devices` dirty immediately and keep re-checking it for ~4 s (Live applies loads late), so the phone sees the new tree within one tick of Live changing it. `device.var {tr,path,act:"store"|"recall"|"select"|"delete",i?}`,
 `chain.select {tr,path,i}`.
 Browser: `browser.list {path:[str]}` → `[{name,folder,loadable,uri?}]` (path `[]` = roots), `browser.load {tr,path}`,
@@ -138,13 +139,13 @@ never the LOM), the `res` is sent by a later tick. Newer request for the same cl
 resolution; reply has `"src":"asd"`, `sr` = the clip's `sample_rate` when the LOM reports it else 0);
 3. the meter envelope recorded while the clip was recording (`core/recenv.py`): coarse, reply `"approx": true`
 (`sr:1000, ch:1, frames` = clip milliseconds, `min` = -max); 4. `err: "audio file locked by Live (save the set to unlock)"`.
-The app re-asks every ~5 s while it only has an `approx` result and never caches it.
+The app never caches failures or `approx` results (cache key = path + clip length + n) and keeps asking (now, +1.5 s, +3 s, then every 5 s) until a real result arrives; it re-asks immediately when recording stops.
 
 ## rt.rec_env (growing waveform while recording)
-While a clip records on the FOCUSED track, `rt` frames carry `rec_env: {"k":"s<slot>"|"arr","step":0.25,"f":F,"i":I,"v":[0..100]}`:
-meter peaks (max of output/input meters, sampled once per ~100 ms tick) on an absolute song-time grid, `step` beats per
-point, point index = floor(song_beat/step). `f` = index of the first point of this recording (a change of `k` or `f`
-= new recording, reset), `i` = index of `v[0]`, `v` = newest <= 96 points. Absent when nothing records. Arrangement
+While a clip records on the FOCUSED track, `rt` frames carry `rec_env: {"k":"s<slot>"|"arr","step":0.0625,"f":F,"i":I,"v":[0..100]}`:
+meter peaks (max of output/input meters, sampled every tick; grid points skipped between ticks are linearly ramped, so no stair steps) on an absolute song-time grid, `step` beats per
+point (1/16 beat), point index = floor(song_beat/step). `f` = index of the first point of this recording (a change of `k` or `f`
+= new recording, reset), `i` = index of `v[0]`, `v` = newest <= 160 points. The app draws a smooth mirrored filled envelope (linear interpolation) and fades the real waveform in when it arrives. Absent when nothing records. Arrangement
 recording key is `arr` (needs `record_mode` + armed track + playing). The app merges frames (`RecEnvBuf`) and draws the shape
 inside the red region (clip editor: axis unit -> song beat via the current playhead; track view: beat = song time).
 

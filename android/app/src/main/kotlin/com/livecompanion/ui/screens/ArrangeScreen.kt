@@ -43,6 +43,8 @@ import com.livecompanion.net.Peaks
 import com.livecompanion.net.PeaksClient
 import com.livecompanion.net.PeaksResult
 import com.livecompanion.net.jsonArgs
+import com.livecompanion.net.peaksKey
+import com.livecompanion.net.peaksVer
 import com.livecompanion.state.LiveStore
 import com.livecompanion.state.Loc
 import com.livecompanion.ui.components.LiveDialog
@@ -159,25 +161,37 @@ fun ArrangeScreen(
         rec.active = recActive
     }
 
-    // ---- waveform peaks for audio clips (helper, cached)
+    // ---- waveform peaks for every audio clip of the focused track (in-Live clip.peaks, helper fallback).
+    // One retrying request loop per clip (PeaksClient.await): requested on appear, on file/length change and when recording
+    // STOPS (the effect restarts: immediate ask, then again after ~1.5 s - Live writes the .asd at record end). Failures and
+    // approx results are never cached and never end the loop; the reason shows in the clip until the real waveform arrives.
     val peaks: SnapshotStateMap<String, Peaks> = remember { mutableStateMapOf() }
+    val wfNote: SnapshotStateMap<String, String> = remember { mutableStateMapOf() }
     val host = conn.target?.host.orEmpty()
     SideEffect { PeaksClient.shared.live = client }
-    val peakSrc = clips.filter { it.audio && it.filePath.isNotBlank() }.distinctBy { it.filePath }
-        .map { it.filePath to buildJsonObject { put("w", "arr"); put("tr", tr); put("i", it.i) } }
-    LaunchedEffect(peakSrc, host) {
-        while (true) {
-            for ((p, loc) in peakSrc) {
-                if (peaks[p]?.approx == false) continue
-                val cached = PeaksClient.shared.cached(p, PEAK_N)
-                if (cached != null) { peaks[p] = cached; continue }
-                val r = PeaksClient.shared.get(host, p, PEAK_N, loc)
-                if (r is PeaksResult.Ok) peaks[p] = r.peaks
+    val peakSrc = clips.filter { it.audio && it.filePath.isNotBlank() }.distinctBy { peaksKey(it.filePath, it.end - it.start) }
+        .map { Triple(it.filePath, it.end - it.start, buildJsonObject { put("w", "arr"); put("tr", tr); put("i", it.i) }) }
+    LaunchedEffect(peakSrc, host, recActive) {
+        val alive = peakSrc.map { peaksKey(it.first, it.second) }.toSet()
+        peaks.keys.filter { it !in alive }.forEach { peaks.remove(it) }
+        wfNote.keys.filter { it !in alive }.forEach { wfNote.remove(it) }
+        for ((p, len, loc) in peakSrc) {
+            val key = peaksKey(p, len)
+            launch {
+                PeaksClient.shared.await(host, p, PEAK_N, loc, peaksVer(len)) { r ->
+                    when (r) {
+                        is PeaksResult.Ok -> {
+                            peaks[key] = r.peaks
+                            if (r.peaks.approx) wfNote[key] = "" else wfNote.remove(key)
+                        }
+                        is PeaksResult.Err -> wfNote[key] = if (r.msg.startsWith("Needs script update")) "Needs script update - restart Live" else r.msg.take(48)
+                    }
+                }
             }
-            if (peaks.values.none { it.approx }) break
-            kotlinx.coroutines.delay(5000)   // meter-envelope waveform of a still-locked recording: look again for the real one
         }
     }
+    val anyReal = peaks.isNotEmpty()
+    val waveFade by androidx.compose.animation.core.animateFloatAsState(if (anyReal) 1f else 0f, androidx.compose.animation.core.tween(350), label = "wf")
 
     // Zoom limits: whole arrangement (+ margin) fills the width .. 1/64 note per ~24dp.
     val dens = LocalDensity.current.density
@@ -289,7 +303,7 @@ fun ArrangeScreen(
     Column(modifier.fillMaxSize().background(LiveColors.Bg), verticalArrangement = Arrangement.spacedBy(1.dp)) {
         // ---- the lane (ruler + loop brace on top; every control lives in the slim strips BELOW so the lane stays tall)
         TrackLane(
-            view = view, model = model, actions = actions, clock = clock, rec = rec, peaks = peaks, follow = follow,
+            view = view, model = model, actions = actions, clock = clock, rec = rec, peaks = peaks, follow = follow, wfNote = wfNote, waveFade = waveFade,
             modifier = Modifier.weight(1f).fillMaxWidth(),
         )
 

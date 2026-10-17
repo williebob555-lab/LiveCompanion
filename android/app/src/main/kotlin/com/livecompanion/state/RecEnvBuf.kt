@@ -37,10 +37,21 @@ class RecEnvBuf {
         return if (k in 0 until count) vals[k] else -1f
     }
 
+    /** Like [at] but linearly interpolated between grid points (no stair steps); -1 outside the recorded envelope. */
+    @Synchronized fun smoothAt(beat: Double): Float {
+        if (key == null || count == 0) return -1f
+        val pos = beat / step - first
+        val k0 = floor(pos).toInt()
+        if (k0 < 0 || k0 >= count) return -1f
+        val a = vals[k0]
+        val b = vals[minOf(k0 + 1, count - 1)]
+        return a + (b - a) * (pos - k0).toFloat()
+    }
+
     @Synchronized fun clear() { key = null; count = 0 }
 
     companion object {
-        const val MAX = 24000
+        const val MAX = 64000
         val shared = RecEnvBuf()
     }
 }

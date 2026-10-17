@@ -103,5 +103,25 @@ enum class NativeCat(val label: String, val devices: List<String>) {
     )),
 }
 
+/**
+ * Fallback when `device.available` can't be fetched (old script): the list above minus the devices only Suite has.
+ * Best effort - Live's own answer (server op `device.available`) always wins.
+ */
+private val SUITE_ONLY = setOf(
+    "Amp", "Cabinet", "Corpus", "Pedal", "Roar", "Vocoder", "Spectral Resonator", "Spectral Time", "Auto Shift",
+    "Operator", "Analog", "Electric", "Tension", "Collision",
+)
+
+fun standardFallback(): Map<NativeCat, List<String>> = NativeCat.values().associateWith { c -> c.devices.filter { it !in SUITE_ONLY } }
+
+/** Parse a `device.available` reply ({instruments, audio_effects, midi_effects}); null if it has no usable lists. */
+fun parseAvailable(d: kotlinx.serialization.json.JsonElement?): Map<NativeCat, List<String>>? {
+    val o = d as? kotlinx.serialization.json.JsonObject ?: return null
+    fun names(k: String) = (o[k] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+    val i = names("instruments") ?: return null
+    return mapOf(NativeCat.Instruments to i, NativeCat.AudioFx to (names("audio_effects") ?: emptyList()),
+        NativeCat.MidiFx to (names("midi_effects") ?: emptyList()))
+}
+
 /** Instruments go first in a chain; effects at the end. */
 fun insertIndexFor(cat: NativeCat, into: String): Int? = if (cat == NativeCat.Instruments && into.isEmpty()) 0 else null

@@ -172,6 +172,7 @@ class Ops(object):
         t["device.select"] = self.device_select
         t["device.move"] = self.device_move
         t["device.insert"] = self.device_insert
+        t["device.available"] = self.device_available
         t["device.duplicate"] = self.device_duplicate
         t["device.var"] = self.device_var
         t["chain.select"] = self.chain_select
@@ -1332,8 +1333,30 @@ class Ops(object):
         n = len(seq(g(dest, "devices", ())))
         i = a.get("i")
         i = n if i is None else min(_i(i, "i", 0), n)
-        _call(dest, "insert_device", name, i)
+        try:
+            _call(dest, "insert_device", name, i)
+        except ValueError as e:
+            if "not available" not in str(e).lower():
+                raise
+            self.core.log("device.insert: %s not available in this Live edition" % name)
+            raise OpError("%s isn't available in your Live edition" % name)
         self.core.mark_devices(tr)
+
+    def device_available(self, c, a):
+        """Native devices installed in this Live edition: top-level device items of the three device roots (cached)."""
+        if getattr(self, "_avail", None) is None:
+            b = self._browser()
+            out = {}
+            for key in ("instruments", "audio_effects", "midi_effects"):
+                names = []
+                for ch in seq(g(g(b, key, None), "children", ())):
+                    nm = _s(g(ch, "name", ""))
+                    if nm and nm not in names and (g(ch, "is_device", False) or
+                                                   (g(ch, "is_loadable", False) and not g(ch, "is_folder", False))):
+                        names.append(nm)
+                out[key] = names
+            self._avail = out
+        return {k: list(v) for k, v in self._avail.items()}
 
     def device_duplicate(self, c, a):
         tr, path, d, owner, idx = self._dev(a)

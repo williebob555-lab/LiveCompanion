@@ -13,6 +13,24 @@
    "uri": "query:InstrumentRack"
   },
   {
+   "folder": false,
+   "loadable": true,
+   "name": "Operator",
+   "uri": "query:Operator"
+  },
+  {
+   "folder": false,
+   "loadable": true,
+   "name": "Wavetable",
+   "uri": "query:Wavetable"
+  },
+  {
+   "folder": false,
+   "loadable": true,
+   "name": "Simpler",
+   "uri": "query:Simpler"
+  },
+  {
    "folder": true,
    "loadable": false,
    "name": "Synths",

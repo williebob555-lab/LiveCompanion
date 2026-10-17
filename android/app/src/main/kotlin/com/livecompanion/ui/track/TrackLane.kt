@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.livecompanion.net.Peaks
+import com.livecompanion.net.peaksKey
 import com.livecompanion.state.ArrClip
 import com.livecompanion.state.CuePoint
 import com.livecompanion.state.TakeLane
@@ -152,6 +153,10 @@ fun TrackLane(
     peaks: Map<String, Peaks>,
     follow: Boolean,
     modifier: Modifier = Modifier,
+    /** Per [peaksKey]: why a clip has no waveform yet ("" = still loading); clips with real peaks are absent. */
+    wfNote: Map<String, String> = emptyMap(),
+    /** 0..1 fade-in of waveforms (crossfade from the red recording envelope when the real peaks arrive). */
+    waveFade: Float = 1f,
 ) {
     val density = LocalDensity.current
     val dens = density.density
@@ -574,7 +579,7 @@ fun TrackLane(
             val takesN = if (model.showTakes) min(model.takes.size, 4) else 0
             val takeH = takeHFor(size.height, rulerPx, takesN, takeH0)
             val mh = max(size.height - rulerPx - takesN * takeH, 40f * dens)
-            drawBase(view, model, cueDrag, loopPrev?.loop, drag, takeDrop, peaks, scrubPx, rulerPx, mh, takeH, tm, dens)
+            drawBase(view, model, cueDrag, loopPrev?.loop, drag, takeDrop, peaks, wfNote, waveFade, scrubPx, rulerPx, mh, takeH, tm, dens)
         }
         // Overlay: recording region + playhead (reads clock.shown per frame; nothing recomposes).
         Canvas(Modifier.fillMaxSize()) {
@@ -617,7 +622,7 @@ private fun lighten(c: Color, t: Float): Color =
 private fun barPxOf(ppb: Float, bpb: Double): Float = (ppb * bpb).toFloat()
 
 private fun DrawScope.drawBase(
-    view: TimelineView, m: LaneModel, cueDrag: CueDrag?, loopOverride: TLoop?, drag: DragEdit?, drop: TakeDrop?, peaks: Map<String, Peaks>,
+    view: TimelineView, m: LaneModel, cueDrag: CueDrag?, loopOverride: TLoop?, drag: DragEdit?, drop: TakeDrop?, peaks: Map<String, Peaks>, wfNote: Map<String, String>, waveFade: Float,
     scrubPx: Float, rulerPx: Float, mainH: Float, takeH: Float, tm: TextMeasurer, dens: Float,
 ) {
     val w = size.width
@@ -799,7 +804,7 @@ private fun DrawScope.drawBase(
             }
         }
         drawClip(c, s, e, sx, ex, top, h, c.i == m.sel, dragging && !drag!!.committed,
-            peaks[c.filePath], view, m.tempo, tm, dens)
+            peaks[peaksKey(c.filePath, c.end - c.start)], view, m.tempo, tm, dens, waveFade, wfNote[peaksKey(c.filePath, c.end - c.start)])
     }
     if (drag != null && !drag.committed) {
         // red outline on the covered parts again, above the dragged clip, so the overlap stays visible through it
@@ -883,7 +888,7 @@ private fun DrawScope.drawTakeDrop(
 
 private fun DrawScope.drawClip(
     c: ArrClip, s: Double, e: Double, sx: Float, ex: Float, top: Float, h: Float, selected: Boolean, ghost: Boolean,
-    pk: Peaks?, view: TimelineView, tempo: Double, tm: TextMeasurer, dens: Float,
+    pk: Peaks?, view: TimelineView, tempo: Double, tm: TextMeasurer, dens: Float, waveFade: Float = 1f, note: String? = null,
 ) {
     val w = size.width
     val x0 = max(sx, -2f); val x1 = min(ex, w + 2f); val cw = max(x1 - x0, 2f)
@@ -905,7 +910,7 @@ private fun DrawScope.drawClip(
             val mid = bodyTop + bodyH / 2f
             val amp = bodyH / 2f * 0.92f
             val stepPx = max(1f, 1.5f * dens)
-            val wf = onColor(body).copy(alpha = if (c.muted) 0.35f else if (pk.approx) 0.5f else 0.8f)
+            val wf = onColor(body).copy(alpha = (if (c.muted) 0.35f else if (pk.approx) 0.5f else 0.8f) * waveFade)
             var x = max(sx, 0f)
             val xEnd = min(ex, w)
             while (x < xEnd) {
@@ -924,6 +929,9 @@ private fun DrawScope.drawClip(
                 }
                 x += stepPx
             }
+        } else if (c.audio && pk == null && bodyH > 10f * dens && cw > 60f * dens) {
+            val l = tm.measure(if (note.isNullOrEmpty()) "Loading waveform…" else note, BeatText.copy(color = onColor(body).copy(alpha = 0.6f)), maxLines = 1)
+            drawText(l, topLeft = Offset(max(sx, 0f) + 6f * dens, bodyTop + (bodyH - l.size.height) / 2f))
         } else if (!c.audio && c.pn.isNotEmpty() && bodyH > 6f * dens) {
             // Live-style mini piano roll: solid rounded note bars whose HEIGHT scales with the lane
             // (row = body height / pitch span; bar height clamped 3..14dp). Span = used range + 1 row padding each side (min 3 rows);
@@ -1023,13 +1031,8 @@ private fun DrawScope.drawRecSpan(
         // meter envelope of the take so far, mirrored around the lane middle
         val mid = rulerPx + mainH / 2f
         val amp = mainH / 2f * 0.9f
-        var x = x0
-        val stepPx = max(1f, 1.5f * dens)
-        while (x < x1) {
-            val e = b.at(view.start + x / view.ppb.toDouble())
-            if (e >= 0f) drawLine(Color.White.copy(alpha = 0.75f), Offset(x, mid - e * amp), Offset(x, mid + e * amp), stepPx)
-            x += stepPx
-        }
+        val path = com.livecompanion.ui.clip.envelopePath(x0, x1, max(2f, 2f * dens), mid, amp) { x -> b.smoothAt(view.start + x / view.ppb.toDouble()) }
+        if (path != null) drawPath(path, Color.White.copy(alpha = 0.7f))
     }
     if (x1 - x0 > 40f * dens) {
         val l = tm.measure("REC", BeatText.copy(color = Color.White), maxLines = 1)

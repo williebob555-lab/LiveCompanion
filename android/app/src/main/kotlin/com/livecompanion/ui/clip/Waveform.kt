@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.livecompanion.net.Peaks
 import com.livecompanion.state.RecEnvBuf
 import com.livecompanion.net.PeaksClient
+import com.livecompanion.net.peaksVer
 import com.livecompanion.net.PeaksResult
 import com.livecompanion.state.ClipState
 import com.livecompanion.state.RtFrame
@@ -194,17 +195,16 @@ fun AudioEditor(
                 val widthPx = v.width.toInt().coerceAtLeast(256)
                 val fullSpan = max(extent.second - extent.first, 1e-6)
                 val n = peakBuckets(widthPx, fullSpan, max((v.width - v.leftW) / v.ppu.toDouble(), 1e-6))
-                LaunchedEffect(clip.filePath, n, host, rec) {
+                val pver = peaksVer(clip.sampleLen)
+                // Requested on appear, on file/length change and when recording stops (rec flips -> restart: ask now, again after
+                // ~1.5 s). Failures / approx results are never cached and never end the loop (PeaksClient.await).
+                LaunchedEffect(clip.filePath, n, host, rec, pver) {
                     if (rec) return@LaunchedEffect
                     if (clip.filePath.isBlank()) { err = "No file"; return@LaunchedEffect }
-                    while (true) {
-                        when (val r = peaksClient.get(host, clip.filePath, n, clip.loc)) {
-                            is PeaksResult.Ok -> {
-                                peaks = r.peaks; err = null
-                                if (!r.peaks.approx) break
-                                delay(5000)   // coarse meter envelope of a still-locked recording: look again for the real file
-                            }
-                            is PeaksResult.Err -> { err = r.msg; delay(4000) }
+                    peaksClient.await(host, clip.filePath, n, clip.loc, pver) { r ->
+                        when (r) {
+                            is PeaksResult.Ok -> { peaks = r.peaks; err = if (r.peaks.approx) "" else null }
+                            is PeaksResult.Err -> err = r.msg
                         }
                     }
                 }
@@ -293,7 +293,7 @@ fun AudioEditor(
                 }
                 if (peaks == null && !rec) {
                     Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                        val msg = if (clip.filePath.isBlank()) "No audio file yet" else if (err != null && err!!.startsWith("Needs script update")) "Needs script update (clip.peaks) - reinstall the script, restart Live" else if (err != null) "Waveform unavailable" + (if (err!!.contains("format", true)) " (format)" else "") else "Loading waveform..."
+                        val msg = if (clip.filePath.isBlank()) "No audio file yet" else if (err != null && err!!.startsWith("Needs script update")) "Needs script update (clip.peaks) - reinstall the script, restart Live" else if (!err.isNullOrEmpty()) "Waveform unavailable: " + err!!.take(60) else "Loading waveform…"
                         Box(Modifier.background(LiveColors.PanelHi).padding(horizontal = 10.dp, vertical = 6.dp)) {
                             LiveText(msg, style = LiveType.Small, color = LiveColors.TextDim)
                         }
@@ -307,18 +307,35 @@ fun AudioEditor(
     }
 }
 
-/** Growing meter-envelope shape inside the red recording region (clip-editor axis units; [beatsPerUnit] converts to song beats). */
+/** Closed polygon of a mirrored envelope sampled every [stepPx] over [x0,xEnd]; [at] gives 0..1 (or < 0 = no data). Null if nothing to draw. */
+internal fun envelopePath(x0: Float, xEnd: Float, stepPx: Float, mid: Float, amp: Float, at: (Float) -> Float): Path? {
+    if (xEnd <= x0) return null
+    val xs = ArrayList<Float>(); val es = ArrayList<Float>()
+    var x = x0
+    while (true) {
+        val e = at(x)
+        if (e >= 0f) { xs.add(x); es.add(e) }
+        if (x >= xEnd) break
+        x = minOf(x + stepPx, xEnd)
+    }
+    if (xs.size < 2) return null
+    val p = Path()
+    p.moveTo(xs[0], mid - es[0] * amp)
+    for (i in 1 until xs.size) p.lineTo(xs[i], mid - es[i] * amp)
+    for (i in xs.indices.reversed()) p.lineTo(xs[i], mid + es[i] * amp)
+    p.close()
+    return p
+}
+
+/** Growing meter-envelope shape inside the red recording region (clip-editor axis units; [beatsPerUnit] converts to song beats).
+ *  Drawn as ONE smooth filled envelope mirrored around the middle (linear interpolation between grid points), like Live. */
 private fun DrawScope.drawRecEnv(v: ClipView, buf: RecEnvBuf, songNow: Double, headU: Double, beatsPerUnit: Double, top: Float, bottom: Float) {
     val mid = (top + bottom) / 2f
     val amp = (bottom - top) / 2f * 0.9f
-    var x = max(v.xOf(0.0), v.leftW)
+    val x0 = max(v.xOf(0.0), v.leftW)
     val xEnd = min(v.xOf(headU), size.width)
-    val stepPx = 2f
-    while (x < xEnd) {
-        val e = buf.at(songNow - (headU - v.unitOf(x)) * beatsPerUnit)
-        if (e >= 0f) drawLine(Color.White.copy(alpha = 0.75f), Offset(x, mid - e * amp), Offset(x, mid + e * amp), stepPx)
-        x += stepPx
-    }
+    val path = envelopePath(x0, xEnd, 3f, mid, amp) { x -> buf.smoothAt(songNow - (headU - v.unitOf(x)) * beatsPerUnit) }
+    if (path != null) drawPath(path, Color.White.copy(alpha = 0.7f))
 }
 
 private fun DrawScope.drawWave(

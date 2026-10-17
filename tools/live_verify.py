@@ -99,6 +99,8 @@ def main():
                 ROWS.append(("  peaks shape", "-", "ok", "ch=%s n=%s" % (d.get("ch"), d.get("n"))))
             break
 
+    peaks_all(c, tracks)
+
     if args.mutate:
         if args.mock_ok and hello.get("host") == "mock":
             run_mutations(c)
@@ -112,6 +114,35 @@ def main():
             run_mutations(c)
     write_report(hello, info)
     c.close()
+
+
+def peaks_all(c, tracks):
+    """READ-ONLY: clip.peaks for every audio clip (session slots + arrangement) of the first tracks; reports src/approx/peak."""
+    for i in range(min(16, len(tracks))):
+        tr = "t%d" % i
+        c.forget("slots", "arr")
+        c.req("focus.set", tr=tr)
+        try:
+            slots = c.until("slots", timeout=4)
+            arr = c.until("arr", timeout=4)
+        except AssertionError:
+            continue
+        locs = [("slot %d" % s.get("i", k), {"w": "slot", "tr": tr, "i": s.get("i", k)})
+                for k, s in enumerate(slots.get("slots", [])) if s.get("has_clip") and (s.get("clip") or {}).get("audio")]
+        locs += [("arr %d" % k["i"], {"w": "arr", "tr": tr, "i": k["i"]}) for k in arr.get("clips", []) if k.get("audio")]
+        for name, loc in locs:
+            try:
+                r = c.req("clip.peaks", timeout=20.0, loc=loc, n=200)
+            except Exception as e:
+                ROWS.append(("peaks %s %s" % (tr, name), "clip.peaks", "TIMEOUT", str(e)[:100]))
+                continue
+            if not r.get("ok"):
+                ROWS.append(("peaks %s %s" % (tr, name), "clip.peaks", "ERR", str(r.get("err"))))
+                continue
+            d = r.get("d") or {}
+            pk = max([abs(x) for ch in (d.get("max") or []) for x in ch] + [abs(x) for ch in (d.get("min") or []) for x in ch] + [0.0])
+            ROWS.append(("peaks %s %s" % (tr, name), "clip.peaks", "ok",
+                         "src=%s approx=%s n=%s peak=%.3f" % (d.get("src", "wav"), bool(d.get("approx")), d.get("n"), pk)))
 
 
 def run_mutations(c):

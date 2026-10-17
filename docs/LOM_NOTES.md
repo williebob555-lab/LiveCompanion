@@ -53,3 +53,6 @@ Re-verify any time with `python tools/asd_probe.py [dir]` (read-only; prints mis
 exist (mirrors Track.create_audio_clip/create_midi_clip) and that `Track.delete_clip(clip)` also deletes a take-lane clip. The ops check
 `hasattr` first and answer `unsupported: take-lane clip creation (TakeLane.create_*_clip missing in this Live)` without touching anything; a
 delete failure after a successful copy is reported as `copied, but could not remove the original`. Verify with the next probe (tools/live_verify.py --mutate).
+
+## Edition-dependent devices
+`track.insert_device(name, i)` raises `ValueError: Device <name> not available.` for devices the edition lacks (Live 12.4.2 Standard has no Amp, Cabinet, Roar, ...). The installed set = top-level `is_device` items under `application.browser.instruments / audio_effects / midi_effects` (server op `device.available`); never hard-code a device list. `device.insert` maps the ValueError to a friendly `err` and logs one line.

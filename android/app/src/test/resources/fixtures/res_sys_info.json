@@ -25,6 +25,7 @@
    "clip.stop_scrub",
    "clip.to_arr",
    "cue.move",
+   "device.available",
    "device.close",
    "device.delete",
    "device.duplicate",

@@ -274,6 +274,13 @@ class DemoClient(
                 return fixture(when (path) { 0 -> "res_browser_roots"; 1 -> "res_browser_sub"; else -> "res_browser_deep" }) ?: JsonArray(emptyList())
             }
             "browser.preview", "browser.preview_stop" -> Unit
+            "device.available" -> {
+                val m = com.livecompanion.ui.devices.standardFallback()
+                fun arr(c: com.livecompanion.ui.devices.NativeCat) = JsonArray((m[c] ?: emptyList()).map { JsonPrimitive(it) })
+                return JsonObject(mapOf("instruments" to arr(com.livecompanion.ui.devices.NativeCat.Instruments),
+                    "audio_effects" to arr(com.livecompanion.ui.devices.NativeCat.AudioFx),
+                    "midi_effects" to arr(com.livecompanion.ui.devices.NativeCat.MidiFx)))
+            }
             else -> return unsupported(op)
         }
         return JsonNull

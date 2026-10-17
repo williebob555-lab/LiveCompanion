@@ -72,6 +72,8 @@ fun peaksUrl(host: String, path: String, n: Int, port: Int = 9012): HttpUrl? = t
  * Order: `clip.peaks` over the Live WebSocket (needs no helper) -> helper HTTP (exotic formats such as mp3/flac).
  */
 class PeaksClient(
+    /** Test hook: replaces the in-Live `clip.peaks` request (returns the `d` JSON text, throws on `ok:false`). */
+    private val liveFetch: (suspend (loc: JsonObject, n: Int) -> String)? = null,
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(3, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build(),
     private val port: Int = 9012,
@@ -83,21 +85,23 @@ class PeaksClient(
     /** The connected client used for `clip.peaks`; set by the screens that show waveforms. */
     @Volatile var live: LiveClient? = null
 
-    @Synchronized fun cached(path: String, n: Int): Peaks? = cache["$path|$n"]
+    /** Only REAL (non-approx) results are ever cached; failures never. [ver] = clip length etc., so a re-recorded/trimmed file refetches. */
+    @Synchronized fun cached(path: String, n: Int, ver: String = ""): Peaks? = cache["$path|$ver|$n"]
 
-    @Synchronized fun put(path: String, n: Int, p: Peaks) { cache["$path|$n"] = p }
+    @Synchronized fun put(path: String, n: Int, p: Peaks, ver: String = "") { if (!p.approx) cache["$path|$ver|$n"] = p }
 
     /** [loc] = the clip locator (slot/arr/take) for the in-Live path; without it only the helper is tried. */
-    suspend fun get(host: String, path: String, n: Int, loc: JsonObject? = null): PeaksResult {
-        cached(path, n)?.let { return PeaksResult.Ok(it) }
+    suspend fun get(host: String, path: String, n: Int, loc: JsonObject? = null, ver: String = ""): PeaksResult {
+        cached(path, n, ver)?.let { return PeaksResult.Ok(it) }
         if (path.isBlank()) return PeaksResult.Err("No file")
         var viaLive: String? = null
         val lc = live
-        if (lc != null && loc != null) {
+        if ((lc != null || liveFetch != null) && loc != null) {
             try {
-                val d = lc.request("clip.peaks", buildJsonObject { put("loc", loc); put("n", n) }, timeoutMs = 60000)
-                val p = parsePeaks(d.toString())
-                if (!p.approx) synchronized(this) { cache["$path|$n"] = p }
+                val d = liveFetch?.invoke(loc, n)
+                    ?: lc!!.request("clip.peaks", buildJsonObject { put("loc", loc); put("n", n) }, timeoutMs = 20000).toString()
+                val p = parsePeaks(d)
+                put(path, n, p, ver)
                 return PeaksResult.Ok(p)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -106,11 +110,11 @@ class PeaksClient(
             }
         }
         if (host.isBlank()) return PeaksResult.Err(viaLive ?: "No host")
-        val r = fetchHelper(host, path, n)
+        val r = fetchHelper(host, path, n, ver)
         return if (r is PeaksResult.Err && viaLive != null) PeaksResult.Err(viaLive) else r
     }
 
-    private suspend fun fetchHelper(host: String, path: String, n: Int): PeaksResult {
+    private suspend fun fetchHelper(host: String, path: String, n: Int, ver: String): PeaksResult {
         return withContext(Dispatchers.IO) {
             try {
                 val url = peaksUrl(host, path, n, port) ?: return@withContext PeaksResult.Err("Bad host")
@@ -121,7 +125,7 @@ class PeaksClient(
                         return@use PeaksResult.Err(msg ?: "HTTP ${r.code}")
                     }
                     val p = parsePeaks(body)
-                    synchronized(this@PeaksClient) { cache["$path|$n"] = p }
+                    put(path, n, p, ver)
                     PeaksResult.Ok(p)
                 }
             } catch (e: Exception) {
@@ -130,7 +134,31 @@ class PeaksClient(
         }
     }
 
+    /**
+     * Keeps asking until a REAL waveform arrives (e.g. Live writes the .asd only at record end): every attempt's outcome
+     * (approx, error, final Ok) goes to [onResult]; failures are never cached and never end the loop. Cancel the caller's
+     * coroutine to stop. [retryMs] (attempt) = delay before attempt+1 (default 1.5 s, 1.5 s, 3 s, then 5 s).
+     */
+    suspend fun await(
+        host: String, path: String, n: Int, loc: JsonObject?, ver: String = "",
+        retryMs: (Int) -> Long = ::defaultRetryMs, onResult: (PeaksResult) -> Unit,
+    ) {
+        var attempt = 0
+        while (true) {
+            val r = get(host, path, n, loc, ver)
+            onResult(r)
+            if (r is PeaksResult.Ok && !r.peaks.approx) return
+            kotlinx.coroutines.delay(retryMs(attempt++))
+        }
+    }
+
     companion object {
+        fun defaultRetryMs(attempt: Int): Long = when (attempt) { 0, 1 -> 1500L; 2 -> 3000L; else -> 5000L }
+
         val shared = PeaksClient()
     }
 }
+
+/** Key for per-clip peaks state: file + clip extent, so a new/longer recording of the same path is a different waveform. */
+fun peaksVer(len: Double): String = "%.3f".format(java.util.Locale.ROOT, len)
+fun peaksKey(path: String, len: Double): String = path + "|" + peaksVer(len)

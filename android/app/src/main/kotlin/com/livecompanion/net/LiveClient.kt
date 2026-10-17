@@ -350,13 +350,14 @@ open class LiveClient(
         }
 
     /** Fire-and-forget. Failures surface as store notices. */
-    fun send(op: String, args: JsonObject = JsonObject(emptyMap())) {
+    fun send(op: String, args: JsonObject = JsonObject(emptyMap()), onFail: (() -> Unit)? = null) {
         if (op == "focus.set") args["tr"]?.jsonPrimitive?.contentOrNull?.let { lastFocus = it }
         scope.launch {
             try {
                 request(op, args)
             } catch (e: LiveException) {
                 store.notice(e.message ?: op)
+                onFail?.invoke()
             }
         }
     }

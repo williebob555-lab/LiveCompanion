@@ -11,9 +11,9 @@ import math
 
 from .util import g, num, slots_of, resolve_track
 
-STEP = 0.25            # beats per envelope point
-RT_POINTS = 96         # newest points sent per rt frame
-MAX_POINTS = 24000     # per envelope (~100 min at 60 bpm); recording past it stops growing the envelope
+STEP = 0.0625          # beats per envelope point (1/16 beat: smooth; the app interpolates between points)
+RT_POINTS = 160        # newest points sent per rt frame (~10 beats)
+MAX_POINTS = 64000     # per envelope (~8.9 h at 120 bpm); recording past it stops growing the envelope
 MAX_ENVS = 24
 
 
@@ -27,12 +27,13 @@ def _level(track):
 
 
 class Env(object):
-    __slots__ = ("tr", "slot", "first", "vals", "last", "active")
+    __slots__ = ("tr", "slot", "first", "vals", "last", "active", "level")
 
     def __init__(self, tr, slot, first):
         self.tr, self.slot, self.first = tr, slot, first
         self.vals = []          # vals[k] = peak (0..1) at index first + k
         self.last = first - 1
+        self.level = 0.0        # level of the newest tick (start of the ramp towards the next one)
         self.active = True
 
     def add(self, idx, v):
@@ -46,6 +47,17 @@ class Env(object):
             self.vals.extend([fill] * (k + 1 - len(self.vals)))     # carry the new level over skipped steps
         elif v > self.vals[k]:
             self.vals[k] = v
+        self.last = max(self.last, idx)
+
+
+    def vals_set(self, idx, v):
+        """Write a ramp point (overwrites: skipped points have no data of their own)."""
+        k = idx - self.first
+        if k < 0 or k >= MAX_POINTS:
+            return
+        if k >= len(self.vals):
+            self.vals.extend([0.0] * (k + 1 - len(self.vals)))
+        self.vals[k] = max(0.0, v)
         self.last = max(self.last, idx)
 
 
@@ -81,7 +93,7 @@ class RecEnv(object):
                     e.active = False
             if not keys:
                 continue
-            v = _level(t)
+            v = _level(t)    # sampled EVERY tick; points between two ticks ramp linearly (no stair steps)
             for k in keys:
                 e = self.envs.get(k)
                 if e is None or not e.active:
@@ -90,11 +102,13 @@ class RecEnv(object):
                     self.envs[k] = e
                     while len(self.envs) > MAX_ENVS:
                         self.envs.pop(next(iter(self.envs)))
-                if e.last >= 0 and idx - e.last > 1 and e.last >= e.first:
-                    # skipped steps (tick slower than STEP): hold the new level across the gap
-                    for j in range(e.last + 1, idx):
-                        e.add(j, v)
+                if e.last >= e.first and idx - e.last > 1:
+                    # grid points skipped since the previous tick: ramp from the previous level to the new one
+                    last0, span = e.last, idx - e.last
+                    for j in range(last0 + 1, idx):
+                        e.vals_set(j, e.level + (v - e.level) * (j - last0) / float(span))
                 e.add(idx, v)
+                e.level = v
 
     def forget_track(self, tr):
         for k in [k for k in self.envs if k[0] == tr]:

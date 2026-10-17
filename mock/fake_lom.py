@@ -169,6 +169,8 @@ def _make_native_device(name):
     if not name or name.startswith("!"):
         raise RuntimeError("unknown device: %r" % name)
     low = name.lower()
+    if low in ("amp", "cabinet", "roar", "meld", "tension", "collision", "electric"):   # Suite-only in Standard
+        raise ValueError("Device %s not available." % name)
     inst = ("operator", "wavetable", "simpler", "sampler", "analog", "drift", "meld", "electric", "tension",
             "collision", "impulse", "instrument rack", "drum rack")
     midi = ("arpeggiator", "chord", "scale", "velocity", "pitch", "random", "note length", "midi effect rack")
@@ -1100,6 +1102,7 @@ class FakeBrowser(object):
         self.instruments = FakeBrowserItem("Instruments", [
             FakeBrowserItem("Drum Rack", None, True, True, kind="instrument"),
             FakeBrowserItem("Instrument Rack", None, True, True, kind="instrument"),
+            D("Operator", "instrument"), D("Wavetable", "instrument"), D("Simpler", "instrument"),
             FakeBrowserItem("Synths", [D("Operator", "instrument"), D("Wavetable", "instrument"),
                                        D("Analog", "instrument"), D("Drift", "instrument")]),
             FakeBrowserItem("Samplers", [D("Simpler", "instrument"), D("Sampler", "instrument")]),
@@ -1108,7 +1111,8 @@ class FakeBrowser(object):
             FakeBrowserItem("Dynamics", [D("Compressor", "audio"), D("Glue Compressor", "audio"), D("Limiter", "audio")]),
             FakeBrowserItem("EQ and Filters", [D("EQ Eight", "audio"), D("Auto Filter", "audio")]),
             FakeBrowserItem("Reverb and Resonance", [D("Reverb", "audio"), D("Hybrid Reverb", "audio")]),
-            D("Saturator", "audio"), D("Delay", "audio"),
+            D("Saturator", "audio"), D("Delay", "audio"), D("Utility", "audio"), D("Reverb", "audio"),
+            D("Compressor", "audio"), D("EQ Eight", "audio"),   # Standard-like: no Amp / Cabinet / Roar (Suite)
         ])
         self.midi_effects = FakeBrowserItem("MIDI Effects", [D("Arpeggiator", "midi"), D("Chord", "midi"), D("Scale", "midi")])
         self.drums = FakeBrowserItem("Drums", [FakeBrowserItem("Kits", [D("808 Core Kit", "instrument"), D("909 Core Kit", "instrument")]),

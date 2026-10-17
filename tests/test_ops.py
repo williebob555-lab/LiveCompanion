@@ -14,7 +14,7 @@ slot.create slot.delete slot.duplicate slot.copy slot.move take.next clip.fire c
 clip.delete clip.duplicate_loop clip.crop clip.quantize clip.to_arr arr.create_midi arr.move arr.trim notes.add notes.modify
 notes.remove notes.clear notes.transpose notes.duplicate warp.add warp.move warp.remove takes.create_lane
 takes.rename takes.promote takes.demote takes.move device.open device.close device.toggle device.param device.delete device.select
-device.var device.move device.insert device.duplicate chain.select browser.list browser.load browser.preview browser.preview_stop sys.info sys.probe""".split()
+device.var device.move device.insert device.available device.duplicate chain.select browser.list browser.load browser.preview browser.preview_stop sys.info sys.probe""".split()
 
 
 def test_all_protocol_ops_registered(c):
@@ -943,8 +943,8 @@ def test_recording_streams_rec_env_and_approx_peaks(c, h, tmp_path, monkeypatch)
     c.wait(lambda x: any(m.get("t") == "rt" and m["d"].get("rec_env") for m in x.msgs), timeout=5)
     c.wait(lambda x: sum(1 for m in x.msgs if m.get("t") == "rt" and m["d"].get("rec_env")) > 12, timeout=8)
     re_ = [m["d"]["rec_env"] for m in c.msgs if m.get("t") == "rt" and m["d"].get("rec_env")][-1]
-    assert re_["k"] == "s0" and re_["step"] == 0.25 and len(re_["v"]) >= 2 and max(re_["v"]) > 5
-    assert len(re_["v"]) <= 96 and all(0 <= v <= 100 for v in re_["v"])
+    assert re_["k"] == "s0" and re_["step"] == 0.0625 and len(re_["v"]) >= 2 and max(re_["v"]) > 5
+    assert len(re_["v"]) <= 160 and all(0 <= v <= 100 for v in re_["v"])
     c.ok("track.stop", tr="t4")
     c.until("slots", lambda d: d["slots"][0]["status"] == "stopped")
     clip = h.song.tracks[4].clip_slots[0].clip
@@ -959,3 +959,12 @@ def test_recording_streams_rec_env_and_approx_peaks(c, h, tmp_path, monkeypatch)
     c.drain(0.3)
     c.wait(lambda x: any(m.get("t") == "rt" for m in x.msgs))
     assert not any(m["d"].get("rec_env") for m in c.msgs if m.get("t") == "rt")
+
+
+def test_device_available_and_unavailable_insert(c, h):
+    av = c.ok("device.available")
+    assert set(av) == {"instruments", "audio_effects", "midi_effects"}
+    assert "Operator" in av["instruments"] and "Utility" in av["audio_effects"] and "Arpeggiator" in av["midi_effects"]
+    assert "Amp" not in av["audio_effects"] and "Synths" not in av["instruments"]
+    r = c.req("device.insert", tr="t2", name="Amp")
+    assert r["ok"] is False and r["err"] == "Amp isn't available in your Live edition"

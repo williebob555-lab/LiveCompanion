@@ -101,7 +101,7 @@ class ClipScreenshotTest(private val wDp: Int, private val hDp: Int, private val
         val mx = FloatArray(n) { i -> abs(sin(i * 2 * PI / 128)).toFloat() * (0.3f + 0.7f * ((i / 256) % 2)) }
         val pk = Peaks(44100, 2, 44100L * 8, n, FloatArray(n) { -mx[it] * 0.9f }, mx)
         var b = 256
-        while (b <= 8192) { PeaksClient.shared.put(AUDIO_PATH, b, Peaks(pk.sr, 2, pk.frames, n, pk.min, pk.max)); b *= 2 }
+        while (b <= 8192) { PeaksClient.shared.put(AUDIO_PATH, b, Peaks(pk.sr, 2, pk.frames, n, pk.min, pk.max), com.livecompanion.net.peaksVer(352800.0)); b *= 2 }
         val s = fakeStore()
         s.handleSection("clip", LiveJson.parseToJsonElement("""{"loc":{"w":"slot","tr":"t0","i":1},"name":"Drum Loop","color":16724787,"audio":true,"len":16,
             "looping":true,"loop_start":0,"loop_end":8,"start_marker":0,"end_marker":8,"signature":[4,4],"launch_mode":0,"launch_quant":0,"rec":$rec,
