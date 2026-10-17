@@ -68,6 +68,9 @@ def scale_info(song):
 def cpu_load(app):
     """Live's CPU load 0..1 (application.average_process_usage); 0 when unavailable."""
     v = num(g(app, "average_process_usage", 0.0))
+    # Live 12 reports a percentage (e.g. 12.5), not a fraction - it showed as a pinned 100% on the owner's machine.
+    if v > 1.0:
+        v = v / 100.0
     return round(min(max(v, 0.0), 1.0), 3)
 
 
@@ -292,6 +295,9 @@ def arr(song, app, ref):
             if wms:
                 d["warp_first"] = num(g(wms[0], "beat_time", 0.0))
                 d["warp_last"] = num(g(wms[-1], "beat_time", 0.0))
+                # Full beat->seconds map (Live gives a fresh recording markers at 0 and 1/32 beat only, so first/last
+                # alone cannot place the file on the timeline). Capped to keep the section small.
+                d["wm"] = [[num(g(w, "beat_time", 0.0)), num(g(w, "sample_time", 0.0))] for w in list(wms)[:64]]
         else:
             pn = _preview_notes(c, budget)
             budget -= len(pn)

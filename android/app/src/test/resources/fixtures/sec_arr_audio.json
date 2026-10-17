@@ -17,7 +17,17 @@
     "start_marker": 0.0,
     "warp_first": 0.0,
     "warp_last": 6.0,
-    "warping": true
+    "warping": true,
+    "wm": [
+     [
+      0.0,
+      0.0
+     ],
+     [
+      6.0,
+      3.0
+     ]
+    ]
    },
    {
     "audio": true,
@@ -35,7 +45,17 @@
     "start_marker": 0.0,
     "warp_first": 0.0,
     "warp_last": 6.0,
-    "warping": true
+    "warping": true,
+    "wm": [
+     [
+      0.0,
+      0.0
+     ],
+     [
+      6.0,
+      3.0
+     ]
+    ]
    }
   ],
   "tr": "t3"

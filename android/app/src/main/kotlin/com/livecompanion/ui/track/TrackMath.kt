@@ -64,7 +64,28 @@ fun contentBeat(c: ArrClip, rel: Double): Double {
 /** Fraction (0..1) of the audio file under content beat [cb]; approximation from first/last warp markers or tempo. */
 fun fileFraction(c: ArrClip, cb: Double, tempo: Double, fileSec: Double): Double {
     if (fileSec <= 0.0) return 0.0
-    return if (c.warping && c.warpLast > c.warpFirst + 1e-6) {
+    val wm = c.wm.filter { it.size >= 2 }
+    if (c.warping && wm.isNotEmpty()) {
+        // Piecewise-linear beat -> seconds through the warp markers; outside them extend the nearest segment's rate
+        // (or the song tempo when there is only one marker / a degenerate segment), like Live plays it.
+        val secPerBeatTempo = 60.0 / max(tempo, 1.0)
+        fun rate(a: List<Double>, b: List<Double>): Double =
+            if (b[0] - a[0] > 1e-6 && b[1] > a[1]) (b[1] - a[1]) / (b[0] - a[0]) else secPerBeatTempo
+        val sec = when {
+            wm.size == 1 -> wm[0][1] + (cb - wm[0][0]) * secPerBeatTempo
+            cb <= wm.first()[0] -> wm[0][1] + (cb - wm[0][0]) * rate(wm[0], wm[1])
+            cb >= wm.last()[0] -> wm.last()[1] + (cb - wm.last()[0]) * rate(wm[wm.size - 2], wm.last())
+            else -> {
+                val k = wm.indexOfFirst { it[0] > cb }.coerceAtLeast(1)
+                val a = wm[k - 1]; val b = wm[k]
+                a[1] + (cb - a[0]) * rate(a, b)
+            }
+        }
+        return sec / fileSec
+    }
+    // Old scripts send only first/last marker beats: trust them only when they plausibly span the file (>= 1 beat);
+    // a fresh recording's 0 .. 1/32-beat marker pair would squeeze the whole file into a sliver.
+    return if (c.warping && c.warpLast > c.warpFirst + 1.0) {
         (cb - c.warpFirst) / (c.warpLast - c.warpFirst)
     } else {
         cb * 60.0 / max(tempo, 1.0) / fileSec

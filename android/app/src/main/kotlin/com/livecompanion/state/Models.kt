@@ -200,6 +200,8 @@ data class ArrClip(
     val warping: Boolean = false,
     @SerialName("warp_first") val warpFirst: Double = 0.0,
     @SerialName("warp_last") val warpLast: Double = 0.0,
+    /** Warp markers as [beat, seconds-in-file] pairs (beat->file time map). */
+    val wm: List<List<Double>> = emptyList(),
     /** MIDI only: mini preview notes as [time, duration, pitch] triples (thinned by the server). */
     val pn: List<List<Double>> = emptyList(),
 )
