@@ -2,9 +2,10 @@
 
 Missing LOM API -> Unsupported("..."). Core wraps every call so a bad op can never break the tick."""
 from . import sections as S
+from . import arrange
 from .util import (OpError, NeedsConfirm, BadArgs, Unsupported, g, num, intv, seq, need, need_num, need_int, is_int,
                    resolve_track, resolve_slot, resolve_clip, resolve_device, slots_of, lane_clips,
-                   track_ref, parse_ref)
+                   track_ref, parse_ref, loc_key)
 
 BROWSER_ROOTS = ("instruments", "audio_effects", "midi_effects", "drums", "sounds", "samples", "packs",
                  "user_library", "plugins", "clips")
@@ -68,7 +69,7 @@ def _parse_db(s):
         s = str(s).strip()
         if not s.lower().endswith("db"):
             return None
-        return float(s[:-2].strip().replace(",", "."))
+        return float(s[:-2].strip().replace(",", ".").replace("−", "-"))
     except (TypeError, ValueError):
         return None
 
@@ -84,6 +85,14 @@ def _call(obj, meth, *args):
     if f is None:
         raise Unsupported(meth)
     return f(*args)
+
+
+def _jsonable(v, depth=0):
+    if v is None or isinstance(v, (bool, int, float, str)):
+        return v
+    if depth < 3 and isinstance(v, (list, tuple)):
+        return [_jsonable(x, depth + 1) for x in list(v)[:200]]
+    return repr(v)[:300]
 
 
 def clean_loc(loc):
@@ -182,6 +191,9 @@ class Ops(object):
         t["browser.preview_stop"] = lambda c, a: _call(self._browser(), "stop_preview")
         t["sys.info"] = self.sys_info
         t["sys.probe"] = self.sys_probe
+        t["sys.lom"] = self.sys_lom
+        if getattr(core, "reloadable", False):
+            t["sys.reload"] = self.sys_reload
         self.table = t
 
     @property
@@ -855,6 +867,10 @@ class Ops(object):
             _put(clip, "name", _s(v, k))
         elif k == "color":
             _put(clip, "color", _i(v, k, 0, 0xFFFFFF))
+        elif k == "warping" and _b(v, k) and not S._bool(g(clip, "warping", False)):
+            # Turning warp ON makes Live open a modal "keep the current timing?" dialog that blocks this script until
+            # someone clicks it in Live (verified on real Live 12.4.2) - never do it remotely.
+            raise BadArgs("Turn Warp on in Live itself (Live asks how to keep the timing)")
         elif k in ("looping", "warping", "legato", "muted"):
             _put(clip, k, _b(v, k))
         elif k in ("loop_start", "loop_end", "start_marker", "end_marker"):
@@ -870,14 +886,11 @@ class Ops(object):
         elif k == "gain_db":
             # Edit in displayed units. Start from the linear guess (raw 0.4 == 0 dB), then refine against
             # the clip's own gain_display_string, since Live's raw->dB curve is not linear.
+            # NOTE: no refinement loop - on real Live gain_display_string can be stale within the same tick, which made
+            # the old loop diverge (-6 dB request ended at raw 1.0 = +24 dB). One mapped write; verify on real Live.
             db = float(_n(v, k, -70.0, 24.0))
             raw = min(1.0, max(0.0, 0.4 * 10 ** (db / 20.0)))
-            for _ in range(6):
-                _put(clip, "gain", raw)
-                shown = _parse_db(g(clip, "gain_display_string", ""))
-                if shown is None or abs(shown - db) < 0.05:
-                    break
-                raw = min(1.0, max(0.0, raw * 10 ** ((db - shown) / 20.0)))
+            _put(clip, "gain", raw)
         elif k == "pitch_coarse":
             _put(clip, "pitch_coarse", _i(v, k, -48, 48))
         elif k == "pitch_fine":
@@ -943,74 +956,57 @@ class Ops(object):
         cr = self._clip(a)
         t = float(_n(need(a, "time"), "time", 0.0))
         _call(cr.track, "duplicate_clip_to_arrangement", cr.clip, t)
+        idx, x = arrange.find_by_start(list(seq(g(cr.track, "arrangement_clips", ()))), t)
+        if x is not None:
+            s0, e0 = arrange.edges(x)
+            return {"i": idx, "start": s0, "end": e0}
 
     def arr_create_midi(self, c, a):
         t = resolve_track(self.song, need(a, "tr", str))
         if not g(t, "has_midi_input", False):
             raise BadArgs("not a MIDI track")
-        _call(t, "create_midi_clip", float(_n(need(a, "start"), "start", 0.0)),
-              float(_n(need(a, "len"), "len", 0.0001)))
+        st = float(_n(need(a, "start"), "start", 0.0))
+        _call(t, "create_midi_clip", st, float(_n(need(a, "len"), "len", 0.0001)))
+        idx, x = arrange.find_by_start(list(seq(g(t, "arrangement_clips", ()))), st)
+        if x is not None:
+            s0, e0 = arrange.edges(x)
+            return {"i": idx, "start": s0, "end": e0}
 
     def arr_move(self, c, a):
+        """Move an arrangement clip to an absolute start (beats). Returns {i,start,end}: the clip's NEW index."""
         cr = self._clip(a)
         if cr.kind == "slot":
             raise BadArgs("not an arrangement clip")
         start = float(_n(need(a, "start"), "start", 0.0))
-        if not hasattr(cr.track, "duplicate_clip_to_arrangement") or not hasattr(cr.track, "delete_clip"):
-            raise Unsupported("moving arrangement clips")
-        old = num(g(cr.clip, "start_time", 0.0))
-        if abs(old - start) < 1e-6:
-            return {"i": cr.index}
-        new = cr.track.duplicate_clip_to_arrangement(cr.clip, start)
-        try:
-            cr.track.delete_clip(cr.clip)
-        except Exception:
-            pass      # the copy may have overwritten the (stale) original when the move overlaps it
-        clips = list(seq(g(cr.track, "arrangement_clips", ())))
-        for k, x in enumerate(clips):
-            if x is new:
-                return {"i": k}
-        return {"i": None}
+        old_loc = clean_loc(need(a, "loc", dict))
+        res = arrange.move(cr, start)
+        self._follow_open_clip(old_loc, res)
+        return res
 
     def arr_trim(self, c, a):
-        """Trim an arrangement clip's edges to absolute beats. Best effort via the clip markers; verified by
-        reading start_time/end_time back, reverted + error if this Live build did not honour it."""
+        """Trim an arrangement clip's edges to absolute beats (start and/or end, shorter or longer).
+        Returns {i,start,end[,clamped]}; clamped = audio could not extend past its file. See core/arrange.py."""
         cr = self._clip(a)
         if cr.kind == "slot":
             raise BadArgs("not an arrangement clip")
         if "start" not in a and "end" not in a:
             raise BadArgs("start or end required")
-        clip = cr.clip
-        cs, ce = num(g(clip, "start_time", 0.0)), num(g(clip, "end_time", 0.0))
-        ns = float(_n(a["start"], "start", 0.0)) if "start" in a else cs
-        ne = float(_n(a["end"], "end", 0.0)) if "end" in a else ce
-        if ne - ns < MIN_ARR_LEN - 1e-9:
-            raise BadArgs("clip would be shorter than 1/16 beat")
-        for attr in ("start_marker", "end_marker"):
-            if not hasattr(clip, attr):
-                raise Unsupported("trimming arrangement clips")
-        saved = {k: g(clip, k, None) for k in ("start_marker", "end_marker", "loop_start", "loop_end")}
-        err = ""
-        try:
-            if abs(ne - ce) > 1e-6:
-                new_end = saved["end_marker"] + (ne - ce)
-                if saved["loop_end"] is not None and g(clip, "looping", False) and new_end > saved["loop_end"]:
-                    clip.loop_end = new_end
-                clip.end_marker = new_end
-            if abs(ns - cs) > 1e-6:
-                clip.start_marker = saved["start_marker"] + (ns - cs)
-            ok = (abs(num(g(clip, "start_time", 0.0)) - ns) < 1e-3 and abs(num(g(clip, "end_time", 0.0)) - ne) < 1e-3)
-        except Exception as e:
-            ok = False
-            err = repr(e)
-        if not ok:
-            for k, v in saved.items():
-                try:
-                    if v is not None:
-                        setattr(clip, k, v)
-                except Exception:
-                    pass
-            raise Unsupported("trimming this clip edge (" + (err or "Live ignored the marker change") + ")")
+        ns = float(_n(a["start"], "start", 0.0)) if "start" in a else None
+        ne = float(_n(a["end"], "end", 0.0)) if "end" in a else None
+        old_loc = clean_loc(need(a, "loc", dict))
+        res = arrange.trim(self.song, cr, ns, ne)
+        self._follow_open_clip(old_loc, res)
+        return res
+
+    def _follow_open_clip(self, old_loc, res):
+        """Clients that have the edited clip open in the clip editor follow it to its new index."""
+        if res.get("i") is None:
+            return
+        for cl in self.core.clients:
+            if cl.clip and loc_key(cl.clip) == loc_key(old_loc):
+                cl.clip = dict(old_loc, i=res["i"])
+                cl.pending.add("clip")
+        self.core.listeners_dirty = True
 
     # ------------------------------------------------------------ notes
     def _note_args(self, n, need_id=False):
@@ -1479,6 +1475,37 @@ class Ops(object):
     def sys_info(self, c, a):
         from . import VERSION
         return {"live": self.core.live_version, "proto": 1, "script_version": VERSION, "host": self.core.host, "ops": sorted(self.table)}
+
+    def sys_lom(self, c, a):
+        """DEV ONLY: poke any LOM attribute/method to verify recipes on real Live. Refuses unless the file
+        ~/LiveCompanion_dev exists. a = {target: {w,tr,i[,lane]} clip loc | {tr} track | {song:true},
+        attr, action: get|set|call, args: []}."""
+        import os
+        if not os.path.exists(os.path.join(os.path.expanduser("~"), "LiveCompanion_dev")):
+            raise OpError("dev ops disabled (create ~/LiveCompanion_dev to enable sys.lom)")
+        tg = need(a, "target", dict)
+        if "w" in tg:
+            obj = resolve_clip(self.song, tg).clip
+        elif "tr" in tg:
+            obj = resolve_track(self.song, tg["tr"])
+        else:
+            obj = self.song
+        attr = need(a, "attr", str)
+        act = a.get("action", "get")
+        args = a.get("args", [])
+        if act == "get":
+            return _jsonable(getattr(obj, attr))
+        if act == "set":
+            setattr(obj, attr, args[0] if isinstance(args, list) else args)
+            return _jsonable(getattr(obj, attr, None))
+        if act == "call":
+            return _jsonable(getattr(obj, attr)(*(args if isinstance(args, list) else [args])))
+        raise BadArgs("action must be get|set|call")
+
+    def sys_reload(self, c, a):
+        """Re-import the script from disk without restarting Live (see core/reloader.py). Clients reconnect."""
+        self.core.reload_requested = True
+        return {"reloading": True}
 
     def sys_probe(self, c, a):
         return self.core.run_probe()

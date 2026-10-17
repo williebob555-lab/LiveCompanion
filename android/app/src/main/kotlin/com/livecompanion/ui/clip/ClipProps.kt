@@ -58,6 +58,8 @@ class ClipOps(private val store: LiveStore, private val client: LiveClient) {
     }
 
     fun act(op: String, vararg extra: Pair<String, Any?>) = client.op(op, "loc" to loc(), *extra)
+
+    fun notice(msg: String) = store.notice(msg)
 }
 
 /** Numeric cell: dragging accumulates pixels into whole steps; tap types a value. */
@@ -121,7 +123,11 @@ fun ClipProps(
                 Btn("Loop", { ops.set("looping", !clip.looping) { it.copy(looping = !clip.looping) } }, Modifier.weight(1f), on = clip.looping)
                 Btn("Muted", { ops.set("muted", !clip.muted) { it.copy(muted = !clip.muted) } }, Modifier.weight(1f), on = clip.muted, onColor = LiveColors.MuteOn)
                 Btn("Legato", { ops.set("legato", !clip.legato) { it.copy(legato = !clip.legato) } }, Modifier.weight(1f), on = clip.legato)
-                if (clip.audio) Btn("Warp", { ops.set("warping", !clip.warping) { it.copy(warping = !clip.warping) } }, Modifier.weight(1f), on = clip.warping)
+                // Warp ON from the phone would make Live open a modal timing dialog that blocks the connection - only allow OFF.
+                if (clip.audio) Btn("Warp", {
+                    if (clip.warping) ops.set("warping", false) { it.copy(warping = false) }
+                    else ops.notice("Turn Warp on in Live itself (Live asks how to keep the timing)")
+                }, Modifier.weight(1f), on = clip.warping)
             }
             fun pos(label: String, value: Double, key: String, upd: (ClipState, Double) -> ClipState): @Composable FlowRowScope.() -> Unit = {
                 // positions in beats; seconds for unwarped audio

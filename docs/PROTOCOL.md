@@ -90,8 +90,10 @@ Clips: `clip.fire {loc}`, `clip.stop {loc}`, `clip.scrub {loc,beat}` / `clip.sto
 k ∈ name,color,sig_num (1-99),sig_den (1,2,4,8,16),looping,loop_start,loop_end,start_marker,end_marker,gain,gain_db (dB in displayed units; server converts and refines against gain_display_string),pitch_coarse,pitch_fine,warping,warp_mode,
 launch_mode,launch_quant,legato,muted; `clip.delete {loc}`, `clip.duplicate_loop {loc}`, `clip.crop {loc}`,
 `clip.quantize {loc,grid,amount}`, `clip.to_arr {loc,time}`, `arr.create_midi {tr,start,len}`,
-`arr.move {loc,start}` (duplicate_clip_to_arrangement + delete original; returns `{i}` = new index),
-`arr.trim {loc, start?, end?}` (absolute beats; refuses a result shorter than 1/16 beat; edits clip markers, verifies start_time/end_time, reverts + unsupported err if Live ignores it; unverified on real Live).
+`arr.move {loc,start}` (duplicate + delete, see LOM_NOTES; returns `{i,start,end}` = the clip's NEW index; the phone keeps its selection on it),
+`arr.trim {loc, start?, end?}` (absolute beats, shorter or longer, audio + MIDI, warped or not, looped or not; content stays under the same song time;
+returns `{i,start,end[,clamped:true]}`; audio is clamped to its file (not an error); errors: below 1/16 beat, recording clip, take-lane start trim),
+`clip.to_arr` / `arr.create_midi` also return `{i,start,end}`,
 Notes (opened MIDI clip): `notes.add {notes:[N without id]}`, `notes.modify {notes:[N]}`, `notes.remove {ids}`,
 `notes.clear`, `notes.transpose {ids,semis}`, `notes.duplicate {ids,offset}`.
 Warp (opened audio clip): `warp.add {beat,sample_time?}`, `warp.move {beat,to_beat}`, `warp.remove {beat}`.
@@ -108,9 +110,12 @@ Devices: `device.open {tr,path}` / `device.close`, `device.toggle {tr,path}`, `d
 Browser: `browser.list {path:[str]}` → `[{name,folder,loadable,uri?}]` (path `[]` = roots), `browser.load {tr,path}`,
 `browser.preview {path}`, `browser.preview_stop`.
 Meta: `sys.info` → `{live, proto, host, script_version:int, ops:[str]}`.
-`script_version` (core `VERSION`, bumped whenever ops change; now 2) + `ops` let the phone detect an OLD script still loaded in Live: after `hello` the app sends `sys.info` and compares `ops` with its `REQUIRED_OPS`
+`script_version` (core `VERSION`, bumped whenever ops change; now 3) + `ops` let the phone detect an OLD script still loaded in Live: after `hello` the app sends `sys.info` and compares `ops` with its `REQUIRED_OPS`
 (clip.peaks, track.move, track.move_check, cue.move, takes.demote, takes.move, arr.move, arr.trim, clip.scrub, device.move) and `script_version` with `MIN_SCRIPT_VERSION`. If outdated it shows a compact banner in the shell
 ("LiveCompanion script in Live is outdated - run the installer (or tools/install) and restart Live"); an op unknown to the script (`err:"unknown op: x"`) is shown as "Needs script update (x)" instead of a bare error (e.g. in place of a waveform).
+`sys.reload {}` (only listed in `ops` when the script runs under `core/reloader.Host`, i.e. from v3 on): replies `{reloading:true}`, then ~200 ms later re-imports every core module from disk (syntax-checked first; a failed reload keeps the old code running and
+a failed new Core is rolled back to the previous classes), drops all clients (they auto-reconnect) and rebuilds Core/ops/listeners on the same port. Lets the installer (`tools/setup_windows.ps1` step 4) update a running Live without restarting it. The app offers a "Reload script" button when an outdated script has `sys.reload`.
+`sys.lom {target,attr,action:get|set|call,args}` DEV ONLY: pokes any LOM attribute; refuses unless the file `%USERPROFILE%\LiveCompanion_dev` exists. Used to verify recipes on real Live; never leave that file in place.
 An error `res` may carry `d` (e.g. `needs_confirm` losses).
 
 ## Clarifications (binding)

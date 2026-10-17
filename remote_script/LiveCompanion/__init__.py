@@ -37,17 +37,27 @@ if ControlSurface is not None:
         def __init__(self, c_instance):
             ControlSurface.__init__(self, c_instance)
             self._lc_core = None
+            self._lc_host = None
             self._lc_ticks = 0
             self._lc_probed = False
             try:
-                from .core.server import Core
+                from .core.reloader import Host
                 try:
                     import Live
                     app = Live.Application.get_application()
                 except Exception:
                     app = self.application()
-                self._lc_core = Core(self.song(), app, host=_detect_host(), live_version=_live_version(app),
-                                     port=PORT, log=self.log_message)
+                song = self.song()
+                ver = _live_version(app)
+                hostname = _detect_host()
+
+                def make_core():
+                    from .core.server import Core       # re-imported fresh after every hot reload
+                    return Core(song, app, host=hostname, live_version=ver, port=PORT, log=self.log_message,
+                                reloadable=True)
+
+                self._lc_host = Host(make_core, self.log_message)
+                self._lc_core = self._lc_host.core
                 self.log_message("LiveCompanion loaded (port %d)" % PORT)
             except Exception:
                 self.log_message("LiveCompanion failed to start:\n" + traceback.format_exc())
@@ -57,11 +67,12 @@ if ControlSurface is not None:
                 ControlSurface.update_display(self)
             except Exception:
                 pass
-            core = self._lc_core
-            if core is None:
+            host = self._lc_host
+            if host is None or host.core is None:
                 return
             try:
-                core.tick()
+                host.tick()
+                core = host.core
                 self._lc_ticks += 1
                 if not self._lc_probed and self._lc_ticks >= PROBE_AFTER_TICKS:
                     self._lc_probed = True
@@ -73,10 +84,11 @@ if ControlSurface is not None:
                 self.log_message("LiveCompanion tick error:\n" + traceback.format_exc())
 
         def disconnect(self):
-            core, self._lc_core = self._lc_core, None
+            host, self._lc_host = self._lc_host, None
+            self._lc_core = None
             try:
-                if core is not None:
-                    core.shutdown()
+                if host is not None:
+                    host.shutdown()
             except Exception:
                 self.log_message("LiveCompanion shutdown error:\n" + traceback.format_exc())
             try:

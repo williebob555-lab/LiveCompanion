@@ -3,6 +3,20 @@
 Legend: `[ ]` todo · `[~]` in progress (who) · `[x]` done · `[!]` blocked (why)
 Rule: update this file when starting/finishing anything. If interrupted, resume from "In progress".
 
+## OVERNIGHT 2026-10-16→17 (owner AFK, expects AIRTIGHT): arrangement editing on REAL Live
+- Verified broken on real Live: arr.trim (Live ignores marker changes for arrangement edges → "unsupported"),
+  arr.move returns i=None (app loses selection). Mock hid both.
+- NOTE: agents may NOT restart/kill Live (permission system denied it). Owner must restart Live ONCE in the
+  morning to load the new script (incl. sys.reload); after that, updates reload without restarts.
+  Morning checklist: owner restarts Live → orchestrator runs tools/live_edit_check.py + full real-Live E2E.
+- [x] Agent (code done, 108 pytest + Gradle unit tests green, APK edits verified on emulator vs mock): recipes in LOM_NOTES, core/arrange.py, sys.reload (core/reloader.py), sys.lom dev op, realistic fake LOM, tools/live_edit_check.py, app follows returned clip index.
+- [!] REAL-LIVE STATE: Live is BLOCKED by a modal "keep current timing?" dialog (caused by my clip.set warping=True test; script frozen). Owner/orchestrator must click Cancel in Live (or restart Live, which is needed anyway). Scratch clips left in the set: t2 at beats 100/110/120, t0 at 50 (delete). Then: python tools/live_edit_check.py (must PASS), then tools/setup_windows.ps1 already installed new script files.
+- [x] (old line) Agent: empirical recipes for trim/move (audio+MIDI), sys.reload (no more Live restarts), real fake-LOM
+      semantics, tools/live_edit_check.py matrix (must pass 100% on real Live), UI verification on emulator.
+- [ ] Then: full real-Live E2E of ALL editing (slots move/copy/swap, notes, clip props, devices insert/move,
+      takes, track.move, cue.move) + fixes → conformance review → release v0.1.1-test7.
+- Released tonight: test5 (track-view waveform fix verified on real Live, CPU fix), test6 (smooth playhead).
+
 ## STATUS 2026-10-16 night: v0.1.1-test4 RELEASED (passed review; edge fix verified on emulator).
 Unverified on real Live: track.move (rebuild), .asd waveform via clip.peaks inside Live, rec_env on real recording,
 arr.move/trim, takes ops, cue.move → owner: restart Live, then `python tools/live_verify.py --mutate` on an empty set.

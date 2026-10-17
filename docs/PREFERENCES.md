@@ -14,6 +14,12 @@ devices, stale script) — the mock passed them all. Therefore:
   owner's set (reopen song.file_path if it had one) and leave Live as found. Never edit a set that has content.
 - Every owner report becomes a real-Live regression check in live_verify.py / the E2E checklist.
 
+- 2026-10-17 (owner, "completely janked up": moving/trimming clips, "unsupported" message on edge trim; "should be supported"):
+  arrangement edits must behave like Live's own edge drag (same content under the same song time), keep the selection on the edited
+  clip, and never show "unsupported" for supported cases (clamp audio at its file ends instead). Recipes: LOM_NOTES "Arrangement editing".
+  Real-Live rule learned the hard way: NEVER set `warping` True from scripts/tests (modal "keep timing?" dialog freezes the remote script);
+  the owner must be able to update the script WITHOUT restarting Live: `sys.reload` (installer sends it).
+
 ## CORE PRINCIPLES (distilled from all owner feedback — apply them to cases the owner hasn't mentioned yet)
 1. **It's Ableton on a phone.** When unsure how something should look or behave, do what Live does.
 2. **Direct manipulation.** Anything you can see you can grab: hold-drag to move/reorder/promote/trim, drag to

@@ -258,7 +258,7 @@ class DemoClient(
             }
             "clip.peaks" -> return demoPeaks(a)
             "arr.move" -> return arrMove(a)
-            "arr.trim" -> arrTrim(a)
+            "arr.trim" -> return arrTrim(a)
             "arr.create_midi" -> arrCreate(a)
             "clip.delete" -> clipDelete(a)
             "clip.to_arr" -> toArr(a)
@@ -620,16 +620,19 @@ class DemoClient(
         val all = reindex(rest + moved)
         arrBy[tr] = arrFor(tr).copy(clips = all)
         pushArr(tr)
-        return buildJsonObject { put("i", all.indexOfFirst { it.start == moved.start && it.name == moved.name }) }
+        return buildJsonObject { put("i", all.indexOfFirst { it.start == moved.start && it.name == moved.name }); put("start", moved.start); put("end", moved.end) }
     }
 
-    private fun arrTrim(a: JsonObject) {
+    private fun arrTrim(a: JsonObject): JsonElement {
         val loc = locOf(a); val tr = S(loc, "tr") ?: ""; val i = I(loc, "i") ?: -1
         val c = arrFor(tr).clips.firstOrNull { it.i == i } ?: throw LiveException("no such arrangement clip")
         val ns = D(a, "start") ?: c.start; val ne = D(a, "end") ?: c.end
         if (ne - ns < 0.0625) throw LiveException("clip would be shorter than 1/16 beat")
-        arrBy[tr] = arrFor(tr).copy(clips = reindex(arrFor(tr).clips.map { if (it.i == i) it.copy(start = ns, end = ne) else it }))
+        val edited = c.copy(start = ns, end = ne, startMarker = if (c.looping) c.startMarker else (c.startMarker + (ns - c.start)).coerceAtLeast(0.0))
+        val all = reindex(arrFor(tr).clips.map { if (it.i == i) edited else it })
+        arrBy[tr] = arrFor(tr).copy(clips = all)
         pushArr(tr)
+        return buildJsonObject { put("i", all.indexOfFirst { it.start == ns && it.end == ne }); put("start", ns); put("end", ne) }
     }
 
     private fun arrCreate(a: JsonObject) {

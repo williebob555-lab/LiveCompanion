@@ -342,13 +342,112 @@ class FakeClip(Observable):
             self.warp_mode = 0
             self.available_warp_modes = (0, 1, 2, 3, 4, 6)
             self.warp_markers = (FakeWarpMarker(0.0, 0.0), FakeWarpMarker(float(length), float(sample_seconds)))
+        self._song_ref = None
+        if arr_start is not None:
+            self._arr_init(float(length))
+
+    # ---- arrangement-clip model, VERIFIED on real Live 12.4 (docs/LOM_NOTES.md "Arrangement editing"):
+    #  * start_time/end_time are read-only; marker changes never move the clip edges.
+    #  * looping OFF: the clip is the region [start_marker(=loop_start), _reg_b(=loop_end)]; loop_start sets the
+    #    content start (start_time stays), loop_end moves the right edge; start_marker writes are inert and
+    #    end_marker is independent.
+    #  * looping ON: edges fixed (_arr_len), loop_start/loop_end edit the stored brace only.
+    #  * toggling looping: ON -> end_marker := region end, brace = the stored one; OFF -> region end := end_marker.
+    #  * units: warped/MIDI beats; unwarped audio seconds. Unwarped loop_end clamps at the file length; warped
+    #    clips accept ~5x the file (observed cap), the remote script clamps to the file itself.
+    def _arr_init(self, length):
+        d = self.__dict__
+        d["looping"] = False
+        d["_reg_b"] = float(length)
+        d["_arr_len"] = float(length)
+        d["_arr_ready"] = True
+
+    def _tempo(self):
+        sr = self.__dict__.get("_song_ref")
+        return float(getattr(sr, "tempo", 120.0)) if sr is not None else 120.0
+
+    def _k(self):
+        """song beats per clip unit"""
+        d = self.__dict__
+        if d.get("is_audio_clip") and not d.get("warping", True):
+            return self._tempo() / 60.0
+        return 1.0
+
+    def _native_spb(self):
+        ms = sorted(self.__dict__.get("warp_markers", ()), key=lambda m: m.beat_time)
+        if ms and ms[-1].beat_time > 1e-9 and ms[-1].sample_time > 1e-9:
+            return ms[-1].sample_time / ms[-1].beat_time
+        return 60.0 / 120.0
+
+    def _file_secs(self):
+        d = self.__dict__
+        return d["sample_length"] / max(d["sample_rate"], 1.0)
+
+    def _clamp_end(self, v):
+        d = self.__dict__
+        if not d.get("is_audio_clip"):
+            return v
+        secs = self._file_secs()
+        if not d.get("warping", True):
+            return min(v, secs)
+        return min(v, 5.0 * secs / self._native_spb())
+
+    def __getattribute__(self, name):
+        if name == "loop_start" or name == "loop_end":
+            d = Observable.__getattribute__(self, "__dict__")
+            if d.get("_arr_ready") and not d.get("looping"):
+                return d["start_marker"] if name == "loop_start" else d["_reg_b"]
+        return Observable.__getattribute__(self, name)
 
     def __setattr__(self, name, value):
-        # Assumed Live behaviour for arrangement clips: moving start_marker moves the clip's left edge
-        # (right edge stays), so start_time follows. Unverified against real Live (see LOM_NOTES).
-        if name == "start_marker" and self.__dict__.get("is_arrangement_clip") and "start_marker" in self.__dict__:
-            self.__dict__["_arr_start"] += value - self.__dict__["start_marker"]
+        if self.__dict__.get("_arr_ready") and self._arr_set(name, value):
+            return
         Observable.__setattr__(self, name, value)
+
+    def _arr_set(self, name, v):
+        d = self.__dict__
+        looping = d["looping"]
+        if name == "loop_start" and not looping:
+            v = float(v)
+            if v < 0 or v >= d["_reg_b"] - 1e-9:
+                raise RuntimeError("invalid loop_start")
+            d["start_marker"] = v
+            self._fire("start_marker")
+            self._fire("loop_start")
+            return True
+        if name == "loop_end" and not looping:
+            v = float(v)
+            if v <= d["start_marker"] + 1e-9:
+                raise RuntimeError("invalid loop_end")
+            d["_reg_b"] = self._clamp_end(v)
+            self._fire("loop_end")
+            return True
+        if name == "start_marker" and not looping:
+            return True                     # inert while unlooped (observed)
+        if name == "looping":
+            v = bool(v)
+            if v == looping:
+                return True
+            if v:
+                d["end_marker"] = d["_reg_b"]
+                d["_arr_len"] = (d["_reg_b"] - d["start_marker"]) * self._k()
+                Observable.__setattr__(self, "looping", True)
+            else:
+                if d["end_marker"] > d["start_marker"]:
+                    d["_reg_b"] = d["end_marker"]
+                Observable.__setattr__(self, "looping", False)
+            for k in ("end_marker", "loop_start", "loop_end"):
+                self._fire(k)
+            return True
+        if name == "warping" and d.get("is_audio_clip") and bool(v) != d.get("warping"):
+            f = self._native_spb()
+            for k in ("start_marker", "_reg_b", "loop_start", "loop_end"):
+                d[k] = d[k] * f if not v else d[k] / f       # beats <-> seconds (end_marker left as observed)
+            Observable.__setattr__(self, "warping", bool(v))
+            for k in ("start_marker", "loop_start", "loop_end"):
+                self._fire(k)
+            return True
+        return False
 
     # ---- derived
     @property
@@ -364,7 +463,10 @@ class FakeClip(Observable):
     @property
     def end_time(self):
         if self.is_arrangement_clip:
-            return self._arr_start + (self.end_marker - self.start_marker)
+            d = self.__dict__
+            if d["looping"]:
+                return self._arr_start + d["_arr_len"]
+            return self._arr_start + (d["_reg_b"] - d["start_marker"]) * self._k()
         return self.loop_end
 
     @property
@@ -395,6 +497,17 @@ class FakeClip(Observable):
             c.__dict__["warp_markers"] = tuple(FakeWarpMarker(m.beat_time, m.sample_time) for m in self.warp_markers)
         c._notes = [n.copy() for n in self._notes]
         c._next_id = self._next_id
+        c.__dict__["_song_ref"] = self.__dict__.get("_song_ref")
+        if arr_start is not None:
+            d, sd = c.__dict__, self.__dict__
+            if sd.get("_arr_ready"):
+                d["_reg_b"], d["_arr_len"] = sd["_reg_b"], sd["_arr_len"]
+                d["loop_start"], d["loop_end"] = sd["loop_start"], sd["loop_end"]     # raw brace
+            else:
+                d["_reg_b"] = sd["end_marker"]
+                d["_arr_len"] = ((sd["loop_end"] - sd["loop_start"]) if sd["looping"]
+                                 else (sd["end_marker"] - sd["start_marker"]))
+            d["_arr_ready"] = True
         return c
 
     # ---- transport
@@ -670,15 +783,44 @@ class FakeTrack(_DeviceListMixin, Observable):
         if not self.has_midi_input:
             raise RuntimeError("not a MIDI track")
         c = FakeClip("", self.color, length, arr_start=float(start_time))
+        c.__dict__["_song_ref"] = self._song
+        self._overwrite(c)
         self.arrangement_clips = sorted(self.arrangement_clips + [c], key=lambda x: x.start_time)
         self._song._edit()
         return c
 
     def duplicate_clip_to_arrangement(self, clip, time):
         c = clip.clone(arr_start=float(time))
+        c.__dict__["_song_ref"] = self._song
+        self._overwrite(c)
         self.arrangement_clips = sorted(self.arrangement_clips + [c], key=lambda x: x.start_time)
         self._song._edit()
         return c
+
+    def _overwrite(self, new):
+        """Live semantics: a clip placed over others cuts them (partial overlap trims the other clip's
+        edge, full cover removes it, a clip placed inside another splits it - we keep the left part)."""
+        ns, ne = new.start_time, new.end_time
+        keep = []
+        for x in self.arrangement_clips:
+            xs, xe = x.start_time, x.end_time
+            if xe <= ns + 1e-9 or xs >= ne - 1e-9:
+                keep.append(x)
+            elif xs >= ns - 1e-9 and xe <= ne + 1e-9:
+                continue                                # fully covered -> gone
+            elif xs < ns:                               # overlaps on the left: cut its right edge
+                if x.__dict__.get("_arr_ready") and not x.looping:
+                    x.__dict__["_reg_b"] = x.start_marker + (ns - xs) / x._k()
+                elif x.__dict__.get("_arr_ready"):
+                    x.__dict__["_arr_len"] = ns - xs
+                keep.append(x)
+            else:                                       # overlaps on the right: cut its left edge
+                shift = ne - xs
+                if x.__dict__.get("_arr_ready") and not x.looping:
+                    x.__dict__["start_marker"] += shift / x._k()
+                x.__dict__["_arr_start"] = ne
+                keep.append(x)
+        self.arrangement_clips = keep
 
     def delete_clip(self, clip):
         if clip in self.arrangement_clips:

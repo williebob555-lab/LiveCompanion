@@ -115,11 +115,16 @@ fun MainShell(
     val script by store.script.collectAsState()
     val noticeBar: @Composable () -> Unit = {
         if (script.outdated && !demo) {
-            LiveText(
-                com.livecompanion.state.SCRIPT_OUTDATED_TEXT,
+            Row(
                 Modifier.fillMaxWidth().background(LiveColors.Panel).padding(horizontal = 8.dp, vertical = 2.dp),
-                LiveType.Small.copy(fontSize = 10.sp, lineHeight = 12.sp), LiveColors.Warn, maxLines = 2,
-            )
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                LiveText(
+                    if (script.canReload) com.livecompanion.state.SCRIPT_RELOADABLE_TEXT else com.livecompanion.state.SCRIPT_OUTDATED_TEXT,
+                    Modifier.weight(1f), LiveType.Small.copy(fontSize = 10.sp, lineHeight = 12.sp), LiveColors.Warn, maxLines = 2,
+                )
+                if (script.canReload) LiveTextButton("Reload script", { client.op("sys.reload") })
+            }
         }
         if (notice == null && demo) {
             LiveText(

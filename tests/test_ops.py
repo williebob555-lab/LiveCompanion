@@ -315,6 +315,9 @@ def test_audio_clip_and_warp(c):
     d = c.until("clip", lambda d: d["gain_str"] == "-6.0 dB")
     assert abs(d["gain"] - 0.2005) < 0.01
     assert c.req("clip.set", loc=loc, k="gain_db", v=99)["ok"] is False
+    # warping was set False above: turning it back ON remotely is refused (real Live opens a blocking modal dialog)
+    r = c.req("clip.set", loc=loc, k="warping", v=True)
+    assert r["ok"] is False and "Warp on in Live" in r["err"]
     assert c.req("clip.set", loc=loc, k="warp_mode", v="Nope")["ok"] is False
     assert c.req("clip.set", loc=loc, k="pitch_coarse", v=99)["ok"] is False
     c.ok("warp.add", beat=3.0)
@@ -402,8 +405,10 @@ def test_arrangement_and_takes(c, h):
     c.until("takes", lambda d: d["lanes"][3]["name"] == "Keeper")
     assert c.req("takes.rename", tr="t3", lane=9, name="x")["ok"] is False
     na = len(c.until("arr", lambda d: d["tr"] == "t3")["clips"])
+    tkn = h.song.tracks[3].take_lanes[1].arrangement_clips[0]
     c.ok("takes.promote", loc={"w": "take", "tr": "t3", "lane": 1, "i": 0})
-    c.until("arr", lambda d: len(d["clips"]) == na + 1)
+    # like Live, the promoted clip overwrites whatever it lands on, so the count may stay the same
+    c.until("arr", lambda d: any(abs(x["start"] - tkn.start_time) < 1e-6 and x["name"] == tkn.name for x in d["clips"]))
     assert c.req("takes.promote", loc=SLOT("t3", 0))["ok"] is False
     c.ok("clip.open", loc={"w": "take", "tr": "t3", "lane": 0, "i": 1})
     c.until("clip", lambda d: d and d["loc"]["w"] == "take" and d["name"] == "Vox take 1b")

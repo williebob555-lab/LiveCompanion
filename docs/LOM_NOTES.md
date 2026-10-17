@@ -56,3 +56,40 @@ delete failure after a successful copy is reported as `copied, but could not rem
 
 ## Edition-dependent devices
 `track.insert_device(name, i)` raises `ValueError: Device <name> not available.` for devices the edition lacks (Live 12.4.2 Standard has no Amp, Cabinet, Roar, ...). The installed set = top-level `is_device` items under `application.browser.instruments / audio_effects / midi_effects` (server op `device.available`); never hard-code a device list. `device.insert` maps the ValueError to a friendly `err` and logs one line.
+
+## Arrangement editing - verified recipes, Live 12.4.x (owner's real Live, Windows, 2026-10-16/17)
+Experiments ran against the owner's open (disposable) set through the existing ops (clip.set / clip.to_arr / notes.add),
+waiting >= 1 s and re-reading after each step. Remote-script implementation: `core/arrange.py` (same code runs on the fake LOM).
+- `start_time` / `end_time` are READ-ONLY. Writing `start_marker` / `end_marker` never moves a clip edge (this is why the
+  old arr.trim "failed"). `clip.crop` did not resize either. A clip's left edge only changes by `duplicate_clip_to_arrangement`.
+- Model for an UNLOOPED arrangement clip (looping False): it is the region [loop_start, loop_end] where `loop_start`
+  ALIASES `start_marker` (writing it sets the content start, `start_time` stays; writing `start_marker` while unlooped is inert).
+  `end_time = start_time + (loop_end - loop_start) / units_per_beat`. Writing `loop_end` moves the RIGHT edge (shorter and longer).
+  `end_marker` is independent (writes do nothing visible). Examples: clip 100..104, loop 0..4 -> loop_end=3 gives end 103;
+  loop_end=6 gives 106; loop_start=1 gives start_marker 1, end 103 (start_time still 100); loop_start=0 restores.
+- LOOPED clip: edges are fixed; `loop_start`/`loop_end` edit only the brace. To resize: `looping=False` (region :=
+  [start_marker, end_marker], loop values then alias the region), set the region, `looping=True` again: Live KEEPS the stored
+  loop brace, the clip keeps the resized length and `end_marker` becomes the region end. Verified: 120..127.47 clip with brace 1..4
+  -> unloop, loop_end=5, reloop -> 120..125, brace still 1..4.
+- Units: warped audio and MIDI are in beats; UNWARPED audio is in seconds (loop_start 0.5 beat -> 0.25 at 120 bpm file tempo) and
+  `end_time` uses the SONG tempo (1.75 s -> 3.118 beats at the owner's tempo). Unwarped `loop_end` clamps at the file length
+  (2.0 s file: 3.0 -> 2.0). WARPED clips accept far more than the file (loop_end 100 on a 4-beat file -> clamped to 20 beats),
+  so the script clamps to the file itself (beat of the last warp marker + remaining seconds at the last segment's rate).
+- MIDI: same model; notes outside the region are KEPT (hidden): shortening to 3 then extending to 8 shows all notes again.
+- `duplicate_clip_to_arrangement(clip, t)` copies EVERYTHING: name, colour, gain, pitch, warp mode, mute, loop/markers, notes
+  (verified). It returns None in the real API (so identify the new clip by `start_time`). It overwrites what it lands on, including
+  part of the source when the target overlaps it; delete_clip(original handle) afterwards removes the remnant (or raises when the
+  original was fully overwritten - ignore). Unverified: automation envelopes (assumed copied with the clip).
+- RECIPES (all keep the content under the same song time, like Live's own edge drag):
+  * move: duplicate at the new start, delete original, delete any remnant inside the old footprint, find new clip by start.
+  * trim END (any state): [unloop] set loop_end = loop_start + (newEnd-start)*units [reloop].
+  * trim START later by d: shrink in place first (loop_start += d*units, clip is now [s, e-d]) then MOVE the clip right by d.
+  * trim START earlier by d: MOVE the clip left by d first, then loop_start -= d*units (end grows back to e inside the old footprint,
+    so no neighbour is overwritten beyond the original footprint). Clamped at the audio file start (content start 0).
+  * looped clips: content start p = start_marker + d with the loop phase kept (p wraps into the brace when past loop_end).
+  * Setting order for loop_start/loop_end never grows the clip beyond max(old,new) length (growth would overwrite neighbours).
+- DANGER (cost an hour): setting `warping` back to True on an unwarped clip makes Live open a MODAL dialog "Would you like to keep
+  the current timing of the clip(s)?" - the whole remote script (single main thread) stops answering until someone clicks
+  Yes/No/Cancel in Live. NEVER toggle warping from scripts/tests on a real set. (Turning warping OFF is silent.)
+- Gotchas seen: clip.set gain_db=-6 on the real clip produced gain 1.0 (+24 dB): the dB refinement loop in ops.clip_set diverges - TODO.
+- Re-run on the reloaded script: `tools/live_edit_check.py` (the whole matrix) - see TODO.

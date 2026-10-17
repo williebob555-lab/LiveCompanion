@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(ROOT, "remote_script"))
 sys.path.insert(0, HERE)
 
 from fake_lom import build_demo  # noqa: E402
-from LiveCompanion.core.server import Core  # noqa: E402
+from LiveCompanion.core.reloader import Host  # noqa: E402
 
 
 def main(argv=None):
@@ -21,8 +21,11 @@ def main(argv=None):
     ap.add_argument("--interval", type=float, default=0.05)
     args = ap.parse_args(argv)
     song, app = build_demo()
-    core = Core(song, app, host="mock", live_version="12.4.1", port=args.port, beacon=not args.no_beacon,
-                beacon_port=args.beacon_port, log=lambda m: print(m, flush=True))
+    def make_core():
+        from LiveCompanion.core.server import Core      # fresh class after a sys.reload
+        return Core(song, app, host="mock", live_version="12.4.1", port=args.port, beacon=not args.no_beacon,
+                    beacon_port=args.beacon_port, log=lambda m: print(m, flush=True), reloadable=True)
+    core = Host(make_core, lambda m: print(m, flush=True))
     print("LiveCompanion mock on ws://0.0.0.0:%d (Ctrl+C to stop)" % args.port, flush=True)
     last = time.monotonic()
     try:

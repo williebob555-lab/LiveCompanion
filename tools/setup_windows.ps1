@@ -62,5 +62,17 @@ if (-not $NoFirewall) {
     } else { Write-Host "[3/3] Firewall rules already present." }
 }
 
+# --- 4. Hot reload: if Live already runs a LiveCompanion script that supports it, swap in the new code now.
+try {
+    $ws = New-Object System.Net.WebSockets.ClientWebSocket
+    $cts = New-Object System.Threading.CancellationTokenSource 3000
+    $ws.ConnectAsync([Uri]"ws://127.0.0.1:9010", $cts.Token).Wait()
+    $msg = [Text.Encoding]::UTF8.GetBytes('{"t":"req","id":1,"op":"sys.reload","a":{}}')
+    $ws.SendAsync([ArraySegment[byte]]$msg, [Net.WebSockets.WebSocketMessageType]::Text, $true, $cts.Token).Wait()
+    Start-Sleep -Milliseconds 800
+    $ws.Dispose()
+    Write-Host "[4/4] Asked the running script to reload (if it supports it; otherwise restart Live once)."
+} catch { Write-Host "[4/4] Live not reachable on 127.0.0.1:9010 - the new script loads when Live starts." }
+
 Write-Host ""
 Write-Host "Last step, once: restart Live, then Settings > Link, Tempo & MIDI > Control Surface = LiveCompanion."

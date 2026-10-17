@@ -77,6 +77,7 @@ import com.livecompanion.ui.theme.LiveType
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -225,6 +226,21 @@ fun ArrangeScreen(
         store.editSession({ it.copy(pos = b) }, { it.playing || kotlin.math.abs(it.pos - b) < 0.05 })
     }
 
+    // Move/trim: the server answers with the edited clip's NEW index (moving the left edge re-creates the clip in Live),
+    // so the selection follows it. Audio cannot extend past its file: the server clamps and says so (not an error).
+    suspend fun editArr(what: String, op: String, args: kotlinx.serialization.json.JsonObject) {
+        try {
+            val r = client.request(op, args) as? kotlinx.serialization.json.JsonObject
+            r?.get("i")?.jsonPrimitive?.intOrNull?.let { sel = it; selTake = null }
+            if (r?.get("clamped")?.jsonPrimitive?.booleanOrNull == true) store.notice("Limited to the length of the audio file")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val m = (e.message ?: "").removePrefix("unsupported: ").removePrefix("error: ")
+            store.notice("Couldn't $what: ${m.ifBlank { "Live refused" }}")
+        }
+    }
+
     val takeOps = remember(store, client, scope) { com.livecompanion.ui.track.TakeOps(store, client, scope) }
     val actions = remember(client, store, tr, session.playing) {
         LaneActions(
@@ -270,17 +286,14 @@ fun ArrangeScreen(
             onSelectTake = { lane, i -> selTake = lane to i; sel = -1 },
             onDeselect = { sel = -1; selTake = null },
             onMove = { i, start ->
-                scope.launch {
-                    val r = client.requestOrNull("arr.move", jsonArgs("loc" to Loc.arr(tr, i), "start" to start))
-                    (r as? kotlinx.serialization.json.JsonObject)?.get("i")?.jsonPrimitive?.intOrNull?.let { sel = it }
-                }
+                scope.launch { editArr("move the clip", "arr.move", jsonArgs("loc" to Loc.arr(tr, i), "start" to start)) }
             },
             onTrim = { i, s, e ->
                 val a = ArrayList<Pair<String, Any?>>()
                 a.add("loc" to Loc.arr(tr, i))
                 if (s != null) a.add("start" to s)
                 if (e != null) a.add("end" to e)
-                client.send("arr.trim", jsonArgs(*a.toTypedArray()))
+                scope.launch { editArr("trim the clip", "arr.trim", jsonArgs(*a.toTypedArray())) }
             },
             onCreate = { beat ->
                 if (store.focus.value.kind != "midi") {

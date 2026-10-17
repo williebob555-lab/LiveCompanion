@@ -50,8 +50,11 @@ class Client(object):
 class Core(object):
     def __init__(self, song, application, host="win", live_version="12.4.1", port=9010, bind_host="0.0.0.0",
                  beacon=True, beacon_port=9011, beacon_targets=None, helper_port=9012, log=None,
-                 probe_path=None, ping_timeout=10.0, rt_interval=0.05, poll_interval=2.0, peaks_disk_cache=True):
+                 probe_path=None, ping_timeout=10.0, rt_interval=0.05, poll_interval=2.0, peaks_disk_cache=True,
+                 reloadable=False):
         self.song, self.app = song, application
+        self.reloadable = reloadable          # True when a reloader.Host drives this Core (op sys.reload)
+        self.reload_requested = False
         self.host, self.live_version = host, live_version
         self.log = log or (lambda m: None)
         self.probe_path = probe_path
