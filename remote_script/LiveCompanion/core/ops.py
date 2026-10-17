@@ -610,13 +610,19 @@ class Ops(object):
     # ------------------------------------------------------------ focus
     def focus_set(self, c, a):
         tr = need(a, "tr", str)
-        resolve_track(self.song, tr)
+        t = resolve_track(self.song, tr)
         self.core.set_focus(c, tr)
+        if c.follow:
+            # Two-way follow: picking a track on the phone selects it in Live too, so the next follow check
+            # does not snap the phone back to Live's old selection (owner: "keeps jumping back to the midi 1 track").
+            _put(g(self.song, "view", None), "selected_track", t)
+            c.last_sel = tr
 
     def focus_follow(self, c, a):
         on = _b(need(a, "on"), "on")
         c.follow = on
         c.pending.add("session")
+        c.last_sel = None
         if on:
             self.core.follow_check(c)
 

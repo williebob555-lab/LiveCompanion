@@ -41,6 +41,7 @@ class Client(object):
         self.clip = None
         self.device = None
         self.follow = False
+        self.last_sel = None      # Live's selected track as last seen by follow_check (react to changes only)
         self.sent = {}
         self.pending = set()      # sections to (re)send unconditionally next flush
         self.last_rt = 0.0
@@ -360,6 +361,11 @@ class Core(object):
             sel = S.session(self.song, self.app)["sel_track"]
         except Exception:
             sel = None
+        # Only react when Live's selection actually CHANGES (session is dirty every tick while playing, since it
+        # carries the playhead); otherwise the phone's own track choice would be overridden constantly.
+        if sel == getattr(cl, "last_sel", None):
+            return
+        cl.last_sel = sel
         if sel and sel != cl.focus:
             self.set_focus(cl, sel)
 

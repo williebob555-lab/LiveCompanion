@@ -257,3 +257,19 @@ def test_follow_focus_on_selected_track(c, h):
     c.ok("view.select", tr="t2")
     c.until("focus", lambda d: d["ref"] == "t2")
     assert h.song.view.selected_track is h.song.tracks[2]
+
+
+def test_follow_does_not_snap_back_while_playing(c, h):
+    """Owner bug: with follow on, picking a track on the phone kept jumping back to Live's selected track."""
+    c.ok("focus.follow", on=True)
+    c.until("focus", lambda d: d["ref"] == "t0")
+    c.ok("song.play")
+    c.ok("focus.set", tr="t3")
+    c.until("focus", lambda d: d["ref"] == "t3")
+    assert h.song.view.selected_track is h.song.tracks[3]   # two-way: Live follows the phone
+    c.drain(1.5)                                             # many session flushes while playing
+    c.pump(0.3)
+    assert c.sections["focus"]["ref"] == "t3"
+    c.ok("view.select", tr="t1")                             # a real selection change in Live still wins
+    c.until("focus", lambda d: d["ref"] == "t1")
+    c.ok("song.stop")
