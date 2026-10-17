@@ -18,6 +18,35 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TrackViewUnitTests {
+
+    /** Owner: "The playhead stutters during playback." rt frames arrive in uneven bursts (~100 ms +- 45 ms, some 2 at once). */
+    @Test fun playheadIsSmoothWithJitteryFrames() {
+        val clock = com.livecompanion.ui.track.PlayheadClock()
+        clock.setSong(120.0, false, 0.0, 0.0)
+        val bps = 2.0
+        val rnd = java.util.Random(7)
+        var nextFrame = 0L
+        var prev = Double.NaN
+        val steps = ArrayList<Double>()
+        var t = 0L
+        val frame = 16_666_667L
+        while (t < 6_000_000_000L) {
+            if (t >= nextFrame) {
+                // the frame carries Live's position at its own (earlier, jittered) sampling time
+                val sampled = (t - rnd.nextInt(40_000_000)) / 1e9 * bps
+                clock.onFrame(sampled, true, t)
+                nextFrame = t + 100_000_000L + (rnd.nextInt(90_000_000) - 45_000_000)
+            }
+            clock.tick(t)
+            if (t > 1_000_000_000L && !prev.isNaN()) steps += clock.shown - prev
+            prev = clock.shown
+            t += frame
+        }
+        val nominal = bps * frame / 1e9
+        assertTrue("never steps backwards", steps.all { it >= 0.0 })
+        assertTrue("every frame step within 50% of the tempo step", steps.all { kotlin.math.abs(it - nominal) <= nominal * 0.5 })
+        assertTrue("tracks Live within 0.1 beat", kotlin.math.abs(clock.shown - (t - frame) / 1e9 * bps) < 0.1)
+    }
     @Test fun signatureMath() {
         assertEquals(4.0, beatsPerBar(4, 4), 1e-9)
         assertEquals(3.0, beatsPerBar(6, 8), 1e-9)

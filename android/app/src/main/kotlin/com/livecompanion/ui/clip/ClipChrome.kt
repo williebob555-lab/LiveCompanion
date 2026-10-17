@@ -484,10 +484,29 @@ class PlayheadInterp {
         if (cp != lastClipPos || tNanos == 0L) { lastClipPos = cp; pos = cp; tNanos = nowNanos }
     }
 
+    private var shown = Double.NaN
+    private var lastNow = 0L
+
+    /**
+     * Smooth head: constant speed at [unitsPerSec], gentle drift correction toward the predicted position, never
+     * backwards while playing (rt samples arrive in uneven ~100 ms bursts - snapping to each one stuttered).
+     * Big errors (seek, loop wrap) snap.
+     */
     fun at(nowNanos: Long, unitsPerSec: Double, looping: Boolean, ls: Double, le: Double, endLimit: Double): Double? {
-        if (lastClipPos == null) return null
-        if (!playing) return pos
-        return predictPos(pos, (nowNanos - tNanos) / 1e9, unitsPerSec, looping, ls, le, endLimit)
+        if (lastClipPos == null) { shown = Double.NaN; return null }
+        val target = if (!playing) pos else predictPos(pos, (nowNanos - tNanos) / 1e9, unitsPerSec, looping, ls, le, endLimit, maxAheadSec = 0.5)
+        val dt = if (lastNow == 0L) 0.0 else ((nowNanos - lastNow) / 1e9).coerceIn(0.0, 0.1)
+        lastNow = nowNanos
+        if (!playing || shown.isNaN() || kotlin.math.abs(target - shown) > unitsPerSec * 0.25 + 1e-9) { shown = target; return shown }
+        val err = target - shown
+        val corr = (err * 2.0 * dt).coerceIn(-unitsPerSec * dt * 0.5, unitsPerSec * dt * 0.5)
+        var next = shown + unitsPerSec * dt + corr
+        if (next < shown) next = shown
+        val span = le - ls
+        if (looping && span > 1e-9 && shown < le && next >= le) next -= span
+        if (!looping && next > endLimit) next = endLimit
+        shown = next
+        return shown
     }
 }
 
